@@ -204,10 +204,10 @@ describe('extension pages', () => {
   })
 
   it("are recognised in Firefox by their address's origin", async () => {
-    const firefox: Identity = { id: 'extension@kemlock.app', origins: ['moz-extension://1b2c3d'] }
+    const firefox: Identity = { id: 'kemlock@arsslensoft.com', origins: ['moz-extension://1b2c3d'] }
     const answer = await route(
       { kind: 'state' },
-      { id: 'extension@kemlock.app', url: 'moz-extension://1b2c3d/src/setup/index.html' },
+      { id: 'kemlock@arsslensoft.com', url: 'moz-extension://1b2c3d/src/setup/index.html' },
       firefox,
       handlers(),
     )
