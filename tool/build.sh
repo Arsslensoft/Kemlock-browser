@@ -43,10 +43,10 @@ echo "building $commit"
 if [ "$local_node" = "1" ]; then
   (cd "$work/extension" && npm ci --no-audit --no-fund && npm run build && node tool/zip.mjs dist "$out")
 else
-  # Git Bash would rewrite the container paths below as Windows paths.
-  export MSYS_NO_PATHCONV=1
   "$engine" build -q -t "$image" --target extension -f "$repo/mobile/tool/docker/Containerfile" \
     "$repo/mobile/tool/docker" >/dev/null
+  # Git Bash would rewrite the container paths below as Windows paths.
+  export MSYS_NO_PATHCONV=1
   "$engine" run --rm --platform linux/amd64 -v "$work:/src:ro" -v "$out:/out" \
     -v kemlock-npmcache:/root/.npm "$image" \
     bash -c 'set -e; cp -r /src/. /w; cd /w/extension; npm ci; npm run build; node tool/zip.mjs dist /out'
