@@ -19,4 +19,29 @@ describe('icons', () => {
       expect([png.readUInt32BE(16), png.readUInt32BE(20)], file).toEqual([size, size])
     }
   })
+
+  it('come for each toolbar state at 16, 24 and 32 pixels, and for the store at 128', async () => {
+    const files = await readdir(icons)
+    for (const state of ['locked', 'unlocked', 'sync-stopped'])
+      for (const size of [16, 24, 32]) expect(files).toContain(`${state}-${size}.png`)
+    for (const size of [16, 32, 48, 128]) expect(files).toContain(`kemlock-${size}.png`)
+  })
+
+  it("draw the keyhole K of the app's brand.svg", async () => {
+    const brand = await readFile(join(root, '..', 'mobile', 'tool', 'icons', 'brand.svg'), 'utf8')
+    const shapes = [...brand.matchAll(/ d="([^"]+)"/g)].map((m) => m[1])
+    expect(shapes).toHaveLength(2)
+    for (const state of ['locked', 'unlocked', 'sync-stopped']) {
+      const svg = await readFile(join(root, 'tool', 'icons', `${state}.svg`), 'utf8')
+      for (const d of shapes) expect(svg, state).toContain(`d="${d}"`)
+    }
+  })
+
+  it('are the ones the manifest names', async () => {
+    const base = JSON.parse(await readFile(join(root, 'manifests', 'base.json'), 'utf8'))
+    const named = [...Object.values(base.icons), ...Object.values(base.action.default_icon)]
+    expect(named).toContain('icons/locked-16.png')
+    const files = await readdir(icons)
+    for (const path of named) expect(files).toContain(path.replace(/^icons\//, ''))
+  })
 })
