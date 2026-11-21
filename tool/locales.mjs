@@ -13,8 +13,9 @@ export const appLocales = join(root, 'locales', 'app')
 export const languages = ['en', 'fr']
 
 /**
- * The app's keys the extension takes. The Save and Update prompts of
- * add-passwords join once it is merged.
+ * The app's keys the extension takes. Others join as the screens that share
+ * them are built. The app has no save or update prompts, since Android and
+ * iOS show their own, so the extension's are its own strings.
  */
 export const appKeys = [/^sync\.problem\./]
 
