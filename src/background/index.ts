@@ -2,7 +2,7 @@
 // Firefox (design decision 3). It loads the core, holds the vault and is
 // the only part that knows a secret (decision 4).
 import { route, type Handlers } from './router'
-import type { Identity } from './senders'
+import { originOf, type Identity } from './senders'
 
 /**
  * The extension's own origin. Chrome loads the menu frame from a
@@ -10,7 +10,7 @@ import type { Identity } from './senders'
  * come from this origin.
  */
 function identity(): Identity {
-  return { id: chrome.runtime.id, origins: [new URL(chrome.runtime.getURL('')).origin] }
+  return { id: chrome.runtime.id, origins: [originOf(new URL(chrome.runtime.getURL('')))] }
 }
 
 const self = identity()

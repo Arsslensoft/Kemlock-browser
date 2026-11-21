@@ -42,6 +42,15 @@ export type Sender = ContentSender | PageSender
 const extensionSchemes = new Set(['chrome-extension:', 'moz-extension:'])
 
 /**
+ * An address's origin. The URL standard gives "null" for schemes it
+ * doesn't know, the extensions' among them, though Chrome gives its own
+ * scheme's, so an extension address's is built from its scheme and host.
+ */
+export function originOf(url: URL): string {
+  return extensionSchemes.has(url.protocol) ? `${url.protocol}//${url.host}` : url.origin
+}
+
+/**
  * The frame's origin: the browser's own `sender.origin` where it gives one
  * (Chrome, also for about:blank frames, which inherit theirs), else the
  * address's, for web addresses only.
@@ -63,8 +72,9 @@ export function identifySender(
   } catch {
     return null
   }
-  if (self.origins.includes(url.origin)) {
-    if (sender.origin !== undefined && sender.origin !== url.origin) return null
+  const origin = originOf(url)
+  if (self.origins.includes(origin)) {
+    if (sender.origin !== undefined && sender.origin !== origin) return null
     const page = pages[url.pathname]
     if (page === undefined) return null
     return { from: 'page', page, tabId: sender.tab?.id, frameId: sender.frameId }
