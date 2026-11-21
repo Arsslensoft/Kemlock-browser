@@ -1,4 +1,5 @@
 // The toolbar popup (design decision 3).
+import '../shared/fonts.css'
 import '../shared/tokens.css'
 import { render } from 'preact'
 
