@@ -34,6 +34,11 @@ export default defineConfig(
     },
   },
   {
+    // Tests build their pages from markup; the extension itself never does
+    files: ['**/*.test.{ts,tsx}'],
+    rules: { 'no-restricted-syntax': 'off' },
+  },
+  {
     files: ['**/*.{js,mjs}'],
     extends: [js.configs.recommended],
     languageOptions: { ecmaVersion: 2022, globals: globals.node },
