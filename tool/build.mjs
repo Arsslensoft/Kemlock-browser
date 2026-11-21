@@ -3,7 +3,7 @@
 // classic script (content scripts can't be modules), the manifest merged
 // from manifests/base.json and the browser's own, and _locales from
 // locales/. `node tool/build.mjs chrome` builds one browser.
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
@@ -108,6 +108,8 @@ async function buildBrowser(browser) {
   )
   await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   await writeLocales(outDir)
+  // Rendered by tool/icons/render.sh
+  await cp(join(root, 'icons'), join(outDir, 'icons'), { recursive: true })
   // Geist's licence goes with the fonts src/shared/fonts.css bundles
   await mkdir(join(outDir, 'licenses'), { recursive: true })
   await copyFile(
