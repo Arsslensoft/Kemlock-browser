@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node tool/build.mjs",
     "tokens": "node tool/tokens.mjs",
+    "locales": "node tool/locales.mjs",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",

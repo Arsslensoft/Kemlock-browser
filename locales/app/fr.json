@@ -1,0 +1,17 @@
+{
+  "sync_problem_address": "Aucun Vaultwarden ne répond à cette adresse. Vérifiez-la, puis réessayez.",
+  "sync_problem_auth": "Le serveur n’a pas accepté le nom d’utilisateur ou le mot de passe d’application.",
+  "sync_problem_conflict": "Un autre appareil modifiait le fichier en même temps. Kemlock réessaiera bientôt.",
+  "sync_problem_folder": "Ce dossier n’existe pas sur le serveur. Créez-le d’abord, puis réessayez.",
+  "sync_problem_format": "Ce dossier contient un fichier que Kemlock ne peut pas utiliser ici. Choisissez un autre dossier.",
+  "sync_problem_homeMissing": "La note de Kemlock a disparu de votre Vaultwarden : rien n’a été synchronisé. Désactivez la synchronisation, puis réactivez-la.",
+  "sync_problem_insecure": "Utilisez une adresse https://. En http, votre mot de passe circulerait en clair.",
+  "sync_problem_key": "Cette phrase secrète n’ouvre pas le fichier de synchronisation de ce dossier.",
+  "sync_problem_modeChanged": "Un autre appareil a changé la façon dont Vaultwarden garde vos codes : rien n’a été synchronisé.",
+  "sync_problem_network": "Impossible de joindre le serveur. Vérifiez l’adresse et votre connexion.",
+  "sync_problem_networkWeb": "Impossible de joindre le serveur. Dans un navigateur, le serveur doit aussi autoriser ce site (CORS) ; les applications iOS et Android n’en ont pas besoin.",
+  "sync_problem_removals": "Cette synchronisation supprimerait beaucoup d’entrées : elle attend votre accord.",
+  "sync_problem_server": "Le serveur a signalé une erreur. Réessayez plus tard.",
+  "sync_problem_signedOut": "Votre session Vaultwarden a pris fin, comme après un changement de mot de passe. Reconnectez-vous.",
+  "sync_problem_unsupported": "Ce compte Vaultwarden utilise quelque chose que Kemlock ne sait pas encore faire."
+}

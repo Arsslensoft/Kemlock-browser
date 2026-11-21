@@ -3,10 +3,11 @@
 // classic script (content scripts can't be modules), the manifest merged
 // from manifests/base.json and the browser's own, and _locales from
 // locales/. `node tool/build.mjs chrome` builds one browser.
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
+import { languages, toBrowserMessage } from './locales.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const browsers = process.argv.slice(2).length ? process.argv.slice(2) : ['chrome', 'firefox']
@@ -27,14 +28,28 @@ export function mergeManifest(base, extra) {
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 
-/** locales/<lang>.json, flat key to text, as the browser's _locales. */
+/**
+ * The extension's own strings and the app's (tool/locales.mjs), by name,
+ * as the browser's messages. A name may be in only one of them.
+ */
+export function localeMessages(own, app) {
+  const messages = {}
+  for (const [name, text] of [...Object.entries(own), ...Object.entries(app)]) {
+    if (Object.keys(messages).some((taken) => taken.toLowerCase() === name.toLowerCase()))
+      throw new Error(`The message ${name} is defined twice`)
+    messages[name] = toBrowserMessage(text)
+  }
+  return messages
+}
+
+/** locales/<lang>.json and locales/app/<lang>.json as the browser's _locales. */
 async function writeLocales(outDir) {
-  for (const file of (await readdir(join(root, 'locales'))).sort()) {
-    const strings = await readJson(join('locales', file))
-    const messages = Object.fromEntries(
-      Object.entries(strings).map(([key, message]) => [key, { message }]),
+  for (const lang of languages) {
+    const messages = localeMessages(
+      await readJson(join('locales', `${lang}.json`)),
+      await readJson(join('locales', 'app', `${lang}.json`)),
     )
-    const dir = join(outDir, '_locales', file.replace(/\.json$/, ''))
+    const dir = join(outDir, '_locales', lang)
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, 'messages.json'), `${JSON.stringify(messages, null, 2)}\n`)
   }
