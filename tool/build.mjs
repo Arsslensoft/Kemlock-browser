@@ -1,0 +1,101 @@
+// Builds the extension into dist/chrome and dist/firefox (design decision 3):
+// the pages and the background as ES modules, the content script as one
+// classic script (content scripts can't be modules), the manifest merged
+// from manifests/base.json and the browser's own, and _locales from
+// locales/. `node tool/build.mjs chrome` builds one browser.
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { build } from 'vite'
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const browsers = process.argv.slice(2).length ? process.argv.slice(2) : ['chrome', 'firefox']
+
+const readJson = async (path) => JSON.parse(await readFile(join(root, path), 'utf8'))
+
+/** The browser's manifest over the base: objects merge, lists join. */
+export function mergeManifest(base, extra) {
+  const out = { ...base }
+  for (const [key, value] of Object.entries(extra)) {
+    const old = out[key]
+    if (Array.isArray(old) && Array.isArray(value)) out[key] = [...new Set([...old, ...value])]
+    else if (isObject(old) && isObject(value)) out[key] = mergeManifest(old, value)
+    else out[key] = value
+  }
+  return out
+}
+
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/** locales/<lang>.json, flat key to text, as the browser's _locales. */
+async function writeLocales(outDir) {
+  for (const file of (await readdir(join(root, 'locales'))).sort()) {
+    const strings = await readJson(join('locales', file))
+    const messages = Object.fromEntries(
+      Object.entries(strings).map(([key, message]) => [key, { message }]),
+    )
+    const dir = join(outDir, '_locales', file.replace(/\.json$/, ''))
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'messages.json'), `${JSON.stringify(messages, null, 2)}\n`)
+  }
+}
+
+const shared = (browser) => ({
+  root,
+  configFile: false,
+  logLevel: 'warn',
+  define: { __BROWSER__: JSON.stringify(browser) },
+  oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
+})
+
+async function buildBrowser(browser) {
+  const outDir = join(root, 'dist', browser)
+  await rm(outDir, { recursive: true, force: true })
+  const pages = {
+    popup: 'src/popup/index.html',
+    setup: 'src/setup/index.html',
+    menu: 'src/menu/index.html',
+    ...(browser === 'chrome' ? { offscreen: 'src/offscreen/index.html' } : {}),
+  }
+  await build({
+    ...shared(browser),
+    build: {
+      outDir,
+      emptyOutDir: false,
+      target: browser === 'chrome' ? 'chrome119' : 'firefox131',
+      modulePreload: { polyfill: false },
+      rollupOptions: {
+        input: { background: 'src/background/index.ts', ...pages },
+        output: {
+          entryFileNames: (chunk) =>
+            chunk.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js',
+        },
+      },
+    },
+  })
+  await build({
+    ...shared(browser),
+    build: {
+      outDir,
+      emptyOutDir: false,
+      target: browser === 'chrome' ? 'chrome119' : 'firefox131',
+      lib: {
+        entry: 'src/content/index.ts',
+        formats: ['iife'],
+        name: 'kemlockContent',
+        fileName: () => 'content.js',
+      },
+    },
+  })
+  const manifest = mergeManifest(
+    await readJson('manifests/base.json'),
+    await readJson(`manifests/${browser}.json`),
+  )
+  await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+  await writeLocales(outDir)
+  console.log(`dist/${browser}`)
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  for (const browser of browsers) await buildBrowser(browser)
+}
