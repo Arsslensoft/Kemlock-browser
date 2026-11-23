@@ -58,7 +58,11 @@ const settle = () =>
   })
 
 const open = async () => {
-  render(<App />, container)
+  // Rendered inside act so Preact's effects (App's boot, the heading's focus) run now, not on the
+  // next animation frame or its 100 ms fallback timer
+  await act(() => {
+    render(<App />, container)
+  })
   await settle()
 }
 
