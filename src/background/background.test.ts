@@ -580,7 +580,15 @@ describe('the in-page menu', () => {
       await h.send({ kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id }, popup),
     ).toEqual({ ok: false, error: 'noMatch' })
     await h.ok(
-      { kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id, remember: true },
+      {
+        kind: 'fill',
+        tabId: 7,
+        frameId: 0,
+        fieldId: 'u',
+        loginId: login.id,
+        remember: true,
+        picked: true,
+      },
       menuFrame,
     )
     expect(fills(h)).toHaveLength(2)
@@ -588,6 +596,24 @@ describe('the in-page menu', () => {
     expect(((await ask()) as { value: MenuView }).value.match.logins).toEqual([login.id])
     await open('https://other.example/login', loginFields)
     expect(((await ask()) as { value: MenuView }).value.match.logins).toEqual([])
+  })
+
+  it('checks a menu fill that was not picked on the Confirm screen against the frame site', async () => {
+    const [login] = await logins()
+    const url = 'https://id.orbitauth.net/login'
+    await open(url, loginFields)
+    const args = { kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id }
+    // A matched-list click, or a message that claims nothing, may not fill an item the site isn't for
+    expect(await h.send(args, menuFrame)).toEqual({ ok: false, error: 'noMatch' })
+    expect(await h.send({ ...args, picked: false }, menuFrame)).toEqual({
+      ok: false,
+      error: 'noMatch',
+    })
+    // Another page claiming a pick doesn't make one
+    expect(await h.send({ ...args, picked: true }, popup)).toEqual({ ok: false, error: 'noMatch' })
+    expect(fills(h)).toEqual([])
+    await h.ok({ ...args, picked: true }, menuFrame)
+    expect(fills(h)).toHaveLength(2)
   })
 
   it('fills only the frame and field it was opened for', async () => {
@@ -1099,7 +1125,15 @@ describe('what the popup asks besides', () => {
     await report(h, 'https://id.orbitauth.net/login', loginFields)
     await h.ok({ kind: 'openMenu', fieldId: 'u' }, content('https://id.orbitauth.net/login'))
     await h.ok(
-      { kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id, remember: true },
+      {
+        kind: 'fill',
+        tabId: 7,
+        frameId: 0,
+        fieldId: 'u',
+        loginId: login.id,
+        remember: true,
+        picked: true,
+      },
       menuFrame,
     )
     expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual(['id.orbitauth.net'])
@@ -1115,7 +1149,15 @@ describe('what the popup asks besides', () => {
     await report(h, 'https://id.orbitauth.net/login', loginFields)
     await h.ok({ kind: 'openMenu', fieldId: 'u' }, content('https://id.orbitauth.net/login'))
     await h.ok(
-      { kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id, remember: true },
+      {
+        kind: 'fill',
+        tabId: 7,
+        frameId: 0,
+        fieldId: 'u',
+        loginId: login.id,
+        remember: true,
+        picked: true,
+      },
       menuFrame,
     )
     expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual(['id.orbitauth.net'])
