@@ -423,3 +423,11 @@ button:disabled {
     padding: 1.25rem;
   }
 }
+
+.ways {
+  margin-top: 1.25rem;
+}
+
+.ways .actions {
+  margin-top: 0.4rem;
+}
