@@ -91,3 +91,21 @@ export function identifySender(
     origin: frameOrigin(sender, url),
   }
 }
+
+/**
+ * The address a frame is matched by (decision 4): the address the browser reports for it, or, for
+ * a frame with none to read (about:blank, srcdoc), the web origin it inherits. Never a tab's, never
+ * the page's own claim; null when the frame has no web address to match.
+ */
+export function frameAddress(sender: Pick<ContentSender, 'url' | 'origin'>): string | null {
+  try {
+    const url = new URL(sender.url)
+    if (url.protocol === 'https:' || url.protocol === 'http:') return sender.url
+  } catch {
+    // Not an address: the origin, if any, is all there is
+  }
+  if (sender.origin === null) return null
+  return sender.origin.startsWith('https://') || sender.origin.startsWith('http://')
+    ? `${sender.origin}/`
+    : null
+}
