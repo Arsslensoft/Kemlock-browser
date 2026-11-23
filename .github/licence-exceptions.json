@@ -1,0 +1,6 @@
+{
+  "winreg@0.0.12": {
+    "licence": "BSD-2-Clause",
+    "reason": "0.0.12 carries no licence text, only \"license\": \"BSD\"; the same author's later releases declare BSD-2-Clause with its text. Dev-only (web-ext), not shipped."
+  }
+}

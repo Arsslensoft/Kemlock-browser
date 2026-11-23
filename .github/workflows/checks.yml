@@ -1,0 +1,377 @@
+name: Checks
+
+# The checks a change has to pass before it merges and before it is released: lint, types, the
+# tests, the build of both browsers' folders and web-ext's lint of Firefox's, actionlint and
+# ShellCheck, the dependencies it brings in, every commit signed off (DCO), the licences of the
+# packages the zips are built with, and what the change adds to the workflows' and the secrets'
+# risk. (The pull request's title is checked by title.yml.) A pull request and a merge group run
+# them; a push to main runs them through release.yml, which calls this workflow and releases only
+# when they pass (a push is not a trigger here: it would run them twice). They hold no secret, and
+# write nothing, so a fork's pull request runs them as any other does. The main ruleset requires
+# the jobs by name, all but App drift, which a change to the app can fail without any fault of the
+# extension's: keep them.
+
+on:
+  pull_request:
+  merge_group:
+  workflow_call:
+    inputs:
+      app-drift:
+        description: Whether to run the App drift job, which a release does not wait for
+        type: boolean
+        default: true
+    secrets:
+      KEMLOCK_APP_TOKEN:
+        description: A read-only token for the Kemlock app's repository, when it is private
+        required: false
+
+permissions: {}
+
+# A called workflow shares its caller's name, and a group that carried it would wait for the
+# caller's own: this one is its own
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # What the change touches: from where it left main. A push, which release.yml checks, has the
+      # commit before it; a run started by hand has none, and checks every file
+      - name: Find where the change starts
+        id: range
+        env:
+          PULL_REQUEST: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP: ${{ github.event.merge_group.base_sha }}
+          PUSH: ${{ github.event.before }}
+        run: |
+          base="${PULL_REQUEST:-${MERGE_GROUP:-${PUSH}}}"
+          merge=""
+          if [ -n "${base//0/}" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            merge="$(git merge-base "${base}" HEAD || true)"
+          fi
+          echo "base=${merge}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      # eslint, then Prettier's check
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      # Every finding is an annotation on its line, and only an error fails the check. Only the shell
+      # files the change touches are read; with no earlier commit to compare with, every one
+      - name: ShellCheck
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+        run: |
+          failed=0
+          if [ -n "${BASE}" ]; then
+            files="$(git diff --name-only --diff-filter=d "${BASE}" HEAD)"
+          else
+            files="$(git ls-files)"
+          fi
+          while read -r file; do
+            [ -f "${file}" ] || continue
+            [[ "${file}" == *.sh ]] || head -n1 "${file}" | grep -qE '^#!.*\b(ba)?sh\b' || continue
+            out="$(shellcheck -f gcc "${file}" 2>&1)" && continue
+            sed -E 's/^([^:]+):([0-9]+):([0-9]+): (error|warning|note): (.*)$/::\4 file=\1,line=\2,col=\3::\5/; s/^::note /::notice /' <<<"${out}"
+            grep -q ': error: ' <<<"${out}" && failed=1
+          done <<<"${files}"
+          exit "${failed}"
+
+      # The run blocks' shell is left to ShellCheck above for the files, and to review for the rest
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl --fail --retry 3 -sSL -o "${archive}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}" actionlint
+          "${RUNNER_TEMP}/actionlint" -shellcheck= \
+            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}}::{{$err.Message}}\n{{end}}'
+
+  # The tests, without the Kemlock app: the ones that compare the extension's copies with the
+  # app's files skip themselves (tool/app.mjs), so that a change in the app never stops a merge or
+  # a release. App drift runs them with the app's files
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Tests
+        run: npm test
+
+  # The whole suite again, with the Kemlock app's checkout where the tests compare the extension's
+  # copies with it (tool/app.mjs): its fonts, field cases, strings, colours and logo. Not
+  # required by the ruleset, and not run for a release: it says that the app has moved on from the
+  # copies, or that the copies were edited, not that the extension is broken
+  app-drift:
+    name: App drift
+    if: inputs.app-drift != false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # With the read-only secret, the app is read as the token's owner. Without it, only when the
+      # app's repository is public. git must not ask for a password here
+      - name: Can the app be read
+        id: app
+        env:
+          KEMLOCK_APP_TOKEN: ${{ secrets.KEMLOCK_APP_TOKEN }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          url="https://github.com/Arsslensoft/Kemlock.git"
+          if [ -n "${KEMLOCK_APP_TOKEN}" ] || git ls-remote --exit-code "${url}" HEAD >/dev/null 2>&1; then
+            echo "readable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Kemlock app::Its repository is not readable here (no KEMLOCK_APP_TOKEN): nothing to compare with"
+          fi
+
+      # Only what the tests read, a few folders of the app's mobile/
+      - if: steps.app.outputs.readable == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Arsslensoft/Kemlock
+          token: ${{ secrets.KEMLOCK_APP_TOKEN || github.token }}
+          path: kemlock-app
+          persist-credentials: false
+          sparse-checkout: |
+            mobile/assets/brand
+            mobile/assets/fonts
+            mobile/assets/i18n
+            mobile/lib/ui/theme
+            mobile/test/fixtures/autofill
+
+      - if: steps.app.outputs.readable == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - if: steps.app.outputs.readable == 'true'
+        name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      - if: steps.app.outputs.readable == 'true'
+        name: Tests with the app's files
+        env:
+          KEMLOCK_APP: ${{ github.workspace }}/kemlock-app
+        run: npm test
+
+  # Both browsers' folders, and Mozilla's linter over Firefox's (tool/lint-firefox.mjs). The
+  # release itself is built again in the build container (tool/build.sh, Node and Debian pinned by hash), twice, by release.yml
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: web-ext lint on Firefox's folder
+        run: npm run lint:firefox
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  # Known vulnerabilities of high severity or more in what the change adds, and the licences that
+  # GPL-3.0-or-later cannot take in (the Licences job holds the whole tree to a list of its own).
+  # Needs the dependency graph, which a private repository has with GitHub Advanced Security
+  dependencies:
+    name: Dependencies
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          deny-licenses: >-
+            GPL-2.0-only, GPL-2.0, SSPL-1.0, BUSL-1.1, Elastic-2.0, CC-BY-NC-4.0, CC-BY-NC-SA-4.0,
+            CC-BY-ND-4.0, BSD-4-Clause, Apache-1.1
+
+  # Each of the pull request's commits signed off by its author, the Developer Certificate of Origin
+  # (CONTRIBUTING.md). A merge group's commits were its pull requests'
+  dco:
+    name: DCO
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - if: github.event_name == 'pull_request'
+        name: Signed-off-by on every commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/check-dco.sh "$(git merge-base "${BASE}" "${HEAD}")" "${HEAD}"
+
+  # The licence of every package in package-lock.json, the tools that build the zips as well as what
+  # the zips hold, against the list of GPL-3.0-or-later compatible ones, and the fonts' licence
+  # beside the fonts. No account and no secret: the script reads the lockfile
+  licences:
+    name: Licences
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: The packages' licences
+        run: node .github/scripts/check-licences.mjs
+
+  # What the change adds: a workflow finding zizmor does not make on the commit it starts from, a
+  # secret in one of its commits, and a package with a known advisory. What main has already is a
+  # change of its own, and only said here
+  security:
+    name: Security
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: Find where the change starts
+        id: range
+        env:
+          PULL_REQUEST: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP: ${{ github.event.merge_group.base_sha }}
+          PUSH: ${{ github.event.before }}
+        run: |
+          base="${PULL_REQUEST:-${MERGE_GROUP:-${PUSH}}}"
+          merge=""
+          if [ -n "${base//0/}" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            merge="$(git merge-base "${base}" HEAD || true)"
+          fi
+          echo "base=${merge}" >> "$GITHUB_OUTPUT"
+
+      # With no earlier commit, or none that had workflows, every finding is the change's. zizmor
+      # exits 3 when there is nothing for it to read, which is an empty result here. The release
+      # binary is checked against its SHA-256, as the other tools are
+      - name: The workflows (zizmor)
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+          ZIZMOR_VERSION: 1.32.0
+          ZIZMOR_SHA256: bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
+        run: |
+          archive="${RUNNER_TEMP}/zizmor.tar.gz"
+          curl --fail --retry 3 -sSL -o "${archive}" \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}" zizmor
+
+          # zizmor over the workflows in a folder, as JSON in a file
+          scan() {
+            local status=0
+            (cd "$1" && "${RUNNER_TEMP}/zizmor" --offline --no-exit-codes --format json .github) > "$2" || status=$?
+            if [ "${status}" -eq 3 ]; then
+              echo '[]' > "$2"
+            elif [ "${status}" -ne 0 ]; then
+              exit "${status}"
+            fi
+          }
+
+          echo '[]' > "${RUNNER_TEMP}/zizmor-base.json"
+          if [ -n "${BASE}" ] && git cat-file -e "${BASE}:.github/workflows" 2>/dev/null; then
+            mkdir "${RUNNER_TEMP}/base"
+            git archive "${BASE}" .github | tar -x -C "${RUNNER_TEMP}/base"
+            scan "${RUNNER_TEMP}/base" "${RUNNER_TEMP}/zizmor-base.json"
+          fi
+          scan . "${RUNNER_TEMP}/zizmor.json"
+          node .github/scripts/zizmor-new.mjs "${RUNNER_TEMP}/zizmor-base.json" "${RUNNER_TEMP}/zizmor.json"
+
+      - name: Secrets in the change's commits (gitleaks)
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="${RUNNER_TEMP}/gitleaks.tar.gz"
+          curl --fail --retry 3 -sSL -o "${archive}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}" gitleaks
+          "${RUNNER_TEMP}/gitleaks" git --log-opts="${BASE:+${BASE}..}HEAD" --redact --no-banner --exit-code 1 .
+
+      # Blocking only for a change to package-lock.json: an advisory against a package main already
+      # has is fixed on its own. Only what the zips hold is audited
+      - name: The packages against npm's advisories
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+        run: |
+          npm audit --omit=dev --audit-level=high && exit 0
+          if [ -n "${BASE}" ] && ! git diff --quiet "${BASE}" HEAD -- package-lock.json; then
+            exit 1
+          fi
+          echo "::warning title=npm audit::A package main already has is named in an advisory (above): not this change's doing"
+          exit 0
