@@ -1037,13 +1037,13 @@ describe('sync from the pages', () => {
     )
 
   it('signs in, checks the server, and runs Sync now with its problem on the icon', async () => {
-    // Plain http never reaches the core: the message is refused (the setup tab says why before sending)
+    // Plain http is refused by the core before any request, with the problem the setup tab shows
     expect(
       await h.send(
         { kind: 'checkServer', place: 'vaultwarden', server: 'http://vw.example' },
         setup,
       ),
-    ).toEqual({ ok: false, error: 'malformed' })
+    ).toEqual({ ok: true, value: { ok: false, problem: 'insecure' } })
     expect(
       await h.ok({ kind: 'checkServer', place: 'kemlock', server: 'https://k.example' }, setup),
     ).toEqual({

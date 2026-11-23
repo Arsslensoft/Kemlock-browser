@@ -214,12 +214,16 @@ const stepAnswer: Parser<StepAnswer> = (value) => {
 }
 
 const anyText = text(2048, 1)
-/** A server or folder address: https only, since the password goes to it (the setup tab says `insecure` for http). */
+/**
+ * A server or folder address: an http or https URL. Only https is signed in to, since the password goes to it, and the
+ * core answers an http one with the step the setup tab shows (`insecure`), before any request is made.
+ */
 const address: Parser<string> = (value) => {
   const typed = anyText(value)
   if (typed === bad) return bad
   try {
-    return new URL(typed).protocol === 'https:' ? typed : bad
+    const { protocol } = new URL(typed)
+    return protocol === 'https:' || protocol === 'http:' ? typed : bad
   } catch {
     return bad
   }

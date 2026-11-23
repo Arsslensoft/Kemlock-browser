@@ -286,8 +286,16 @@ describe('parsePageMessage', () => {
     expect(parsePageMessage({ kind: 'signInVaultwarden', server: 'https://vw.example' })).toBeNull()
   })
 
-  it('takes https servers and folders only, and no marking of a login as autofilled', () => {
-    for (const server of ['http://k.example', 'ftp://k.example', 'k.example', 'javascript:1']) {
+  it('takes http(s) addresses only, leaving http for the core to refuse, and no marking of a login as autofilled', () => {
+    expect(
+      parsePageMessage({
+        kind: 'signInKemlock',
+        server: 'http://k.example',
+        email: 'a@b.c',
+        password: 'p',
+      }),
+    ).not.toBeNull()
+    for (const server of ['ftp://k.example', 'k.example', 'javascript:1']) {
       expect(parsePageMessage({ kind: 'checkServer', place: 'kemlock', server })).toBeNull()
       expect(
         parsePageMessage({ kind: 'signInKemlock', server, email: 'a@b.c', password: 'p' }),
