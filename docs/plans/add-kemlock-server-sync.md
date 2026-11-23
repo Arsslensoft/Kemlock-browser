@@ -175,15 +175,19 @@ as the owner's process asks.
 ### 1. Groundwork
 
 - [x] 1.1 Ask the owner D1 to D3 and the server changes (answered 23 November 2026).
-- [ ] 1.2 In the app: cut the platform seams of `add-browser-extension` task 2.2, and those of
+- [x] 1.2 In the app: cut the platform seams of `add-browser-extension` task 2.2, and those of
       design 1 (`HandshakeException`, `HttpDate`). Verify: the app's analyzer and its whole test
       suite pass unchanged.
-- [ ] 1.3 Create Kemlock-core (design 6): split the folders out with their history, add its
+- [x] 1.3 Create Kemlock-core (design 6): split the folders out with their history, add its
       pubspec, licence, README and Checks. Verify: its tests pass on the VM and under dart2wasm.
-- [ ] 1.4 In the app: depend on Kemlock-core at the pinned commit, in both lockfiles, with an
+- [x] 1.4 In the app: depend on Kemlock-core at the pinned commit, in both lockfiles, with an
       `export` at each old path, and remove the moved folders. Verify: the app's analyzer and full
       suite pass, `flutter pub get --enforce-lockfile` works for the store and the free build, and
       the free release build still reproduces.
+      Done 23 November 2026 (Kemlock-core 8e0e375, the app at bbd81322): the app's full suite (6,202
+      passed) and the core's (3,294 on the VM, 168 under dart2wasm) pass, and both lockfiles hold. Not
+      yet checked: that the free release build still reproduces. The app's history had been squashed
+      to one commit, so the move carried no history.
 - [ ] 1.5 In the extension: add `core/` over Kemlock-core, and the Dart SDK to the build
       container. Verify: two builds of one tag give the same zips.
 - [ ] 1.6 In the server: the changes of design 5. Verify: the server's contract tests sign in as
