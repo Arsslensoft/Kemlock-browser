@@ -1,4 +1,4 @@
 {
   "extName": "Kemlock",
-  "extDescription": "Your Kemlock codes and logins in the browser, synced with your own Vaultwarden or WebDAV folder."
+  "extDescription": "Your Kemlock codes and logins in the browser, synced with Kemlock Server, a WebDAV folder or your own Vaultwarden."
 }
