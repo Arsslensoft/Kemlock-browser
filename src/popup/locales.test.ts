@@ -64,8 +64,11 @@ describe('the popup’s strings', () => {
       .sort()
     // Names and numbers that read the same in both languages.
     expect(same).toEqual([
+      'popup_backupServices',
       'popup_codes',
       'popup_fieldNote',
+      'popup_idleHours',
+      'popup_idleMinutes',
       'popup_lockAfter1',
       'popup_lockAfter15',
       'popup_lockAfter5',
@@ -75,6 +78,9 @@ describe('the popup’s strings', () => {
       'popup_removalKindCode',
       'popup_removalKindContact',
       'popup_removalKindNote',
+      'popup_secondsShort',
+      'popup_strengthBits',
+      'popup_withCode',
     ])
   })
 })

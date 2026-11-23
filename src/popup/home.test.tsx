@@ -6,6 +6,7 @@ import { ToastProvider } from '../shared/ui/components'
 import { App } from './app'
 import {
   background,
+  backup,
   button,
   change,
   click,
@@ -83,7 +84,7 @@ const world = (over: Partial<World> = {}): World => ({
 })
 
 const names = (root: HTMLElement) =>
-  [...root.querySelectorAll('.list .item .strong')].map((element) => element.textContent)
+  [...root.querySelectorAll('.list .item .name')].map((element) => element.textContent)
 
 beforeEach(() => {
   installChrome()
@@ -110,11 +111,15 @@ describe('the Codes list', () => {
     expect(asked).not.toContain('c2')
   })
 
-  it('shows the tags and the backup codes left, and no control that changes order or tags', async () => {
-    background.reset(unlockedHandlers(world()))
+  it('shows the tags as filters and the backup codes as a page of their own, and no control that changes order or tags', async () => {
+    background.reset(unlockedHandlers(world({ backups: [backup()] })))
     const root = await openPopup()
     expect(text(root)).toContain('Work')
-    expect(text(root)).toContain(message('en', 'popup_backupCodesLeft', ['8']))
+    const link = root.querySelector('button.link-card')
+    expect(link?.textContent).toContain('8 of 10 left · Orbit Cloud')
+    await click(link)
+    expect(root.querySelector('article[aria-label="Orbit Cloud"]')).not.toBeNull()
+    expect(text(root)).toContain(message('en', 'popup_backupCount', ['8', '10']))
     expect(root.querySelectorAll('[draggable="true"]')).toHaveLength(0)
     expect(root.querySelectorAll('input[type="text"], textarea')).toHaveLength(0)
   })
@@ -130,7 +135,7 @@ describe('the Codes list', () => {
     )
     const root = await openPopup()
     expect(root.querySelector('.code.warn')).toBeNull()
-    expect(text(root)).not.toContain('Next 654 321')
+    expect(text(root)).not.toContain('next 654 321')
     const before = background.of('liveCodes').length
 
     remaining = 4_000
@@ -139,7 +144,7 @@ describe('the Codes list', () => {
 
     expect(background.of('liveCodes').length).toBeGreaterThan(before)
     expect(root.querySelector('.code.warn')).not.toBeNull()
-    expect(text(root)).toContain('Next 654 321')
+    expect(text(root)).toContain('next 654 321')
     expect(background.of('nextCodes').flatMap((call) => call.args.ids as string[])).toContain('c1')
   })
 
@@ -180,8 +185,9 @@ describe('the Logins list', () => {
     const root = await openPopup()
     await click(button(root, 'Logins 3'))
     expect(names(root)).toEqual(['Orbit Cloud', 'Linear', 'Docs'])
-    expect(text(root)).toContain('Password health · 2 reused · 1 without its code')
-    expect(root.querySelectorAll('.badge.warn')).toHaveLength(2)
+    expect(text(root)).toContain('Password health')
+    expect(text(root)).toContain('2 reused · 1 without its code')
+    expect(root.querySelectorAll('.item .sub.warn-text')).toHaveLength(3)
     expect(text(root)).toContain('Without its code')
 
     await click(button(root, 'Copy the password of Linear'))
@@ -270,10 +276,10 @@ describe('the site in front', () => {
     await click(button(card, 'Fill code'))
     expect(background.of('fill')[1]?.args).toEqual({ tabId: 7, codeId: 'c1' })
 
-    await click(button(card, 'Show'))
+    await click(button(card, 'Show the password of Orbit Cloud'))
     expect(background.of('showPassword')[0]?.args).toEqual({ id: 'l1' })
     expect(text(card)).toContain('hunter2')
-    await click(button(card, 'Hide'))
+    await click(button(card, 'Hide the password of Orbit Cloud'))
     expect(text(card)).not.toContain('hunter2')
 
     await click(button(card, 'Copy the password of Orbit Cloud'))
