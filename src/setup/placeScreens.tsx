@@ -3,10 +3,21 @@ import { useState } from 'preact/hooks'
 import type { SignInStep, SyncPlace } from '../shared/api'
 import { parseAddress } from './address'
 import type { FlowState } from './flow'
-import { progressOf } from './flow'
 import { t } from './i18n'
+import { Glyph, type GlyphName } from './icons'
 import { ask } from './send'
-import { Actions, Alert, Field, Frame, PasswordField, Status, useBusy, type Dispatch } from './ui'
+import {
+  Actions,
+  Alert,
+  Field,
+  Frame,
+  Note,
+  PasswordField,
+  Status,
+  Tile,
+  useBusy,
+  type Dispatch,
+} from './ui'
 
 interface Props {
   state: FlowState
@@ -19,6 +30,12 @@ const placeNames: Record<SyncPlace, string> = {
   vaultwarden: 'setup_place_vaultwarden',
 }
 
+const placeIcons: Record<SyncPlace, GlyphName> = {
+  kemlock: 'server',
+  webdav: 'folder',
+  vaultwarden: 'shield',
+}
+
 export const placeName = (place: SyncPlace | null): string =>
   t(placeNames[place ?? 'kemlock'] ?? placeNames.kemlock)
 
@@ -26,23 +43,24 @@ export const placeName = (place: SyncPlace | null): string =>
 export function PlaceScreen({ state, dispatch }: Props) {
   const choices: SyncPlace[] = ['kemlock', 'webdav', 'vaultwarden']
   return (
-    <Frame
-      title={t('setup_place_title')}
-      lead={t('setup_place_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_place_title')} lead={t('setup_place_lead')} error={state.error}>
       {state.current ? (
-        <p class="note">
+        <Note>
           {t('setup_place_current', placeName(state.current.place), state.current.server)}
-        </p>
+        </Note>
       ) : null}
       <ul class="choices">
         {choices.map((place) => (
           <li key={place}>
             <button type="button" class="choice" onClick={() => dispatch({ type: 'place', place })}>
-              <span class="choice-title">{placeName(place)}</span>
-              <span class="choice-body">{t(`${placeNames[place]}_body`)}</span>
+              <Tile name={placeIcons[place]} accent={place === 'kemlock'} />
+              <span class="choice-text">
+                <span class="choice-title">{placeName(place)}</span>
+                <span class="choice-body">{t(`${placeNames[place]}_body`)}</span>
+              </span>
+              <span class="choice-go">
+                <Glyph name="chevron" size={18} />
+              </span>
             </button>
           </li>
         ))}
@@ -78,7 +96,6 @@ export function AddressScreen({ state, dispatch }: Props) {
     <Frame
       title={t(folder ? 'setup_address_title_folder' : 'setup_address_title', placeName(place))}
       lead={t(folder ? 'setup_address_lead_folder' : 'setup_address_lead')}
-      progress={progressOf(state)}
       error={state.error}
       hint={state.error?.problem === 'network' && !folder ? t('setup_certificate_hint') : null}
     >
@@ -91,6 +108,7 @@ export function AddressScreen({ state, dispatch }: Props) {
           inputMode="url"
           autoComplete="url"
           placeholder={folder ? 'https://dav.example/kemlock' : 'https://vault.example'}
+          mono
           hint={folder ? undefined : t('setup_address_certificate')}
           error={problem}
           required
@@ -146,14 +164,23 @@ export function AccessScreen({ state, dispatch }: Props) {
     <Frame
       title={t('setup_access_title', parsed.host)}
       lead={t('setup_access_lead', parsed.host)}
-      progress={progressOf(state)}
       error={state.error}
     >
-      <ul class="plain">
-        <li>{t('setup_access_only', parsed.host)}</li>
-        <li>{t('setup_access_nothing')}</li>
-        <li>{t('setup_access_apart')}</li>
+      <ul class="facts">
+        <li>
+          <Tile name="shieldCheck" size={24} accent />
+          <span class="strong">{t('setup_access_only', parsed.host)}</span>
+        </li>
+        <li>
+          <Tile name="check" size={24} />
+          <span>{t('setup_access_nothing', parsed.host)}</span>
+        </li>
+        <li>
+          <Tile name="check" size={24} />
+          <span>{t('setup_access_apart')}</span>
+        </li>
       </ul>
+      <div class="address mono">https://{parsed.host}</div>
       {refused ? <Alert>{t('setup_access_refused', parsed.host)}</Alert> : null}
       {busy ? <Status>{t('setup_access_checking', parsed.host)}</Status> : null}
       <Actions>
@@ -267,7 +294,6 @@ export function FormScreen({ state, dispatch }: Props) {
     <Frame
       title={t(`setup_form_title_${place}`)}
       lead={t(`setup_form_lead_${place}`)}
-      progress={progressOf(state)}
       error={state.error}
       hint={
         state.error?.problem === 'network' && place === 'kemlock'
@@ -317,7 +343,7 @@ export function FormScreen({ state, dispatch }: Props) {
             required
           />
         ) : null}
-        {place === 'vaultwarden' ? <p class="note">{t('setup_logins_stay')}</p> : null}
+        {place === 'vaultwarden' ? <Note status>{t('setup_logins_stay')}</Note> : null}
         {busy ? (
           <Status>
             {t(
@@ -341,14 +367,15 @@ export function FormScreen({ state, dispatch }: Props) {
       </form>
       {place === 'kemlock' ? (
         <div class="ways">
-          <p class="hint">{t('setup_form_or')}</p>
-          <Actions>
+          <p class="or">{t('setup_form_or')}</p>
+          <div class="way-buttons">
             <button
               type="button"
               class="secondary"
               disabled={busy}
               onClick={() => signInWith('sso')}
             >
+              <Glyph name="users" />
               {t('setup_form_sso')}
             </button>
             <button
@@ -357,9 +384,10 @@ export function FormScreen({ state, dispatch }: Props) {
               disabled={busy}
               onClick={() => signInWith('passkey')}
             >
+              <Glyph name="key" />
               {t('setup_form_passkey')}
             </button>
-          </Actions>
+          </div>
         </div>
       ) : null}
     </Frame>

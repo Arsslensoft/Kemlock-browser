@@ -1,7 +1,7 @@
 // The setup tab: first run, "Set up again" (#again), "Sign in again" (#signin) and "Remove Kemlock
 // from this browser" (#remove). The steps are flow.ts's; each screen asks the background.
 import { useEffect, useReducer } from 'preact/hooks'
-import { initialState, reduce, type Mode, type ProblemInfo } from './flow'
+import { initialState, reduce, type FlowState, type Mode, type ProblemInfo } from './flow'
 import { t } from './i18n'
 import { AccessScreen, AddressScreen, FormScreen, PlaceScreen } from './placeScreens'
 import { ask } from './send'
@@ -14,7 +14,7 @@ import {
   PassphraseScreen,
   SecondScreen,
 } from './stepScreens'
-import { Actions, Frame, Status, type Dispatch } from './ui'
+import { Actions, FlowContext, Frame, Status, type Dispatch } from './ui'
 import {
   DoneScreen,
   PasswordScreen,
@@ -65,18 +65,8 @@ function Loading({ error, retry }: { error: ProblemInfo | null; retry: () => voi
   )
 }
 
-export function App() {
-  const [state, dispatch] = useReducer(reduce, initialState)
-
-  useEffect(() => {
-    document.title = t('setup_title')
-    document.documentElement.lang = chrome.i18n.getUILanguage()
-    const start = () => void boot(dispatch, window.location.hash)
-    start()
-    window.addEventListener('hashchange', start)
-    return () => window.removeEventListener('hashchange', start)
-  }, [])
-
+/** The screen of the step the flow is at. */
+function Step({ state, dispatch }: { state: FlowState; dispatch: Dispatch }) {
   const props = { state, dispatch }
   switch (state.screen.name) {
     case 'loading':
@@ -114,4 +104,23 @@ export function App() {
     case 'removed':
       return <RemovedScreen {...props} />
   }
+}
+
+export function App() {
+  const [state, dispatch] = useReducer(reduce, initialState)
+
+  useEffect(() => {
+    document.title = t('setup_title')
+    document.documentElement.lang = chrome.i18n.getUILanguage()
+    const start = () => void boot(dispatch, window.location.hash)
+    start()
+    window.addEventListener('hashchange', start)
+    return () => window.removeEventListener('hashchange', start)
+  }, [])
+
+  return (
+    <FlowContext.Provider value={state}>
+      <Step state={state} dispatch={dispatch} />
+    </FlowContext.Provider>
+  )
 }

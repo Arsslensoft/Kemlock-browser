@@ -1,47 +1,108 @@
-// The small pieces every step is made of: the frame with its heading (focused when a step
-// opens), labelled fields, the error note (a live region) and a busy hook.
+// The small pieces every step is made of: the page with its header and rail, the card's heading (focused when a step
+// opens), labelled fields, the notices (live regions where they report) and a busy hook.
 import type { ComponentChildren } from 'preact'
-import { useEffect, useId, useRef, useState } from 'preact/hooks'
-import type { FlowEvent, ProblemInfo } from './flow'
+import { createContext } from 'preact'
+import { useContext, useEffect, useId, useRef, useState } from 'preact/hooks'
+import { Wordmark } from '../shared/brand/brand'
+import { progressOf, type FlowEvent, type FlowState, type ProblemInfo } from './flow'
 import { problemText, t } from './i18n'
+import { Glyph, type GlyphName } from './icons'
+import { Rail } from './rail'
 
 export type Dispatch = (event: FlowEvent) => void
+
+/** The flow's state, for the page around the card (the rail and the step count). */
+export const FlowContext = createContext<FlowState | null>(null)
+
+/** The browser's own name, as the header shows it. */
+export function browserName(): string {
+  const agent = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  if (/Firefox\//.test(agent)) return 'Firefox'
+  if (/Edg\//.test(agent)) return 'Edge'
+  return 'Chrome'
+}
 
 interface FrameProps {
   title: string
   lead?: string
-  progress?: { step: number; total: number } | null
   error?: ProblemInfo | null
   /** What to show as the error when the message of `error` isn't enough (a hint below it). */
   hint?: string | null
+  /** Something above the heading (the done screen's check). */
+  badge?: ComponentChildren
   children?: ComponentChildren
 }
 
-/** One step: a heading that takes focus when the step opens, the lead, the error, then the form. */
-export function Frame({ title, lead, progress, error, hint, children }: FrameProps) {
+/** One step: the page's header and rail, then the card: a heading that takes focus, the lead, the error, then the form. */
+export function Frame({ title, lead, error, hint, badge, children }: FrameProps) {
   const heading = useRef<HTMLHeadingElement>(null)
   const id = useId()
+  const state = useContext(FlowContext)
+  const progress = state === null ? null : progressOf(state)
   useEffect(() => {
     heading.current?.focus()
   }, [title])
   return (
-    <main class="frame">
-      <header class="brand">
-        <span class="mark" aria-hidden="true" />
-        <span class="name">Kemlock</span>
-        {progress ? (
-          <span class="progress">{t('setup_step_of', progress.step, progress.total)}</span>
-        ) : null}
+    <div class="page">
+      <header class="top">
+        <div class="top-in">
+          <Wordmark height={18} />
+          <span class="browser">{browserName()}</span>
+          <span class="grow" />
+          {progress ? (
+            <span class="progress mono">{t('setup_step_of', progress.step, progress.total)}</span>
+          ) : null}
+        </div>
       </header>
-      <section aria-labelledby={id} class="card">
-        <h1 id={id} ref={heading} tabIndex={-1}>
-          {title}
-        </h1>
-        {lead ? <p class="lead">{lead}</p> : null}
-        <Problem error={error ?? null} hint={hint ?? null} />
-        {children}
-      </section>
-    </main>
+      <main class="layout">
+        <aside class="side">
+          {state === null ? null : <Rail state={state} />}
+          <div class="side-note">
+            <span class="side-title">{t('setup_title')}</span>
+            <p>{t('setup_rail_note')}</p>
+          </div>
+        </aside>
+        <section aria-labelledby={id} class="card">
+          <div class={badge ? 'step with-badge' : 'step'}>
+            {badge}
+            <div class="head">
+              <h1 id={id} ref={heading} tabIndex={-1}>
+                {title}
+              </h1>
+              {lead ? <p class="lead">{lead}</p> : null}
+            </div>
+            <Problem error={error ?? null} hint={hint ?? null} />
+            {children}
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+type Tone = 'danger' | 'warn' | 'info'
+
+const toneIcons: Record<Tone, GlyphName> = { danger: 'info', warn: 'warn', info: 'info' }
+
+/** A notice: an icon and its words, tinted by tone. Reports through `role` (alert or status) when it has one. */
+export function Notice({
+  tone,
+  role,
+  class: className,
+  children,
+}: {
+  tone: Tone
+  role?: 'alert' | 'status'
+  class?: string
+  children?: ComponentChildren
+}) {
+  return (
+    <div class={`notice t-${tone}${className ? ` ${className}` : ''}`} role={role}>
+      <span class="notice-icon">
+        <Glyph name={toneIcons[tone]} />
+      </span>
+      <span class="notice-body">{children}</span>
+    </div>
   )
 }
 
@@ -49,19 +110,34 @@ export function Frame({ title, lead, progress, error, hint, children }: FramePro
 export function Problem({ error, hint }: { error: ProblemInfo | null; hint?: string | null }) {
   if (error === null) return null
   return (
-    <div class="problem" role="alert">
-      <p>{problemText(error.problem, error.message)}</p>
-      {hint ? <p class="hint">{hint}</p> : null}
-    </div>
+    <Notice tone="danger" role="alert" class="problem">
+      <span>{problemText(error.problem, error.message)}</span>
+      {hint ? <span class="hint">{hint}</span> : null}
+    </Notice>
   )
 }
 
-/** An error in this step's own words (not a sync problem). */
-export function Alert({ children }: { children?: ComponentChildren }) {
+/** An error (or, as a warning, a caution) in this step's own words (not a sync problem). */
+export function Alert({
+  tone = 'danger',
+  children,
+}: {
+  tone?: 'danger' | 'warn'
+  children?: ComponentChildren
+}) {
   return (
-    <div class="problem" role="alert">
+    <Notice tone={tone} role="alert">
       {children}
-    </div>
+    </Notice>
+  )
+}
+
+/** A plain note: something to know, not something wrong. */
+export function Note({ children, status }: { children?: ComponentChildren; status?: boolean }) {
+  return (
+    <Notice tone="info" role={status ? 'status' : undefined} class="note">
+      {children}
+    </Notice>
   )
 }
 
@@ -78,6 +154,12 @@ interface FieldProps {
   required?: boolean
   placeholder?: string
   spellcheck?: boolean
+  /** Set in Geist Mono (addresses, codes). */
+  mono?: boolean
+  /** The size of the code styling: the large, spaced digits of a one-time code. */
+  code?: boolean
+  /** What sits at the end of the box (the show/hide button). */
+  trailing?: ComponentChildren
 }
 
 /** A labelled input; its hint and error are tied to it for screen readers. */
@@ -87,24 +169,31 @@ export function Field(props: FieldProps) {
   const errorId = `${id}-error`
   const describedBy =
     [props.hint ? hintId : '', props.error ? errorId : ''].filter(Boolean).join(' ') || undefined
+  const classes = [props.mono || props.code ? 'mono' : '', props.code ? 'code' : '']
+    .filter(Boolean)
+    .join(' ')
   return (
-    <div class="field">
+    <div class="group">
       <label htmlFor={id}>{props.label}</label>
-      <input
-        id={id}
-        // Preact types each input type apart; the value is one of the text-like ones
-        type={(props.type ?? 'text') as 'text'}
-        value={props.value}
-        autoComplete={props.autoComplete ?? 'off'}
-        inputMode={props.inputMode}
-        disabled={props.disabled}
-        required={props.required}
-        placeholder={props.placeholder}
-        spellcheck={props.spellcheck ?? false}
-        aria-describedby={describedBy}
-        aria-invalid={props.error ? 'true' : undefined}
-        onInput={(event) => props.onInput((event.currentTarget as HTMLInputElement).value)}
-      />
+      <div class={props.error ? 'box bad' : 'box'}>
+        <input
+          id={id}
+          class={classes || undefined}
+          // Preact types each input type apart; the value is one of the text-like ones
+          type={(props.type ?? 'text') as 'text'}
+          value={props.value}
+          autoComplete={props.autoComplete ?? 'off'}
+          inputMode={props.inputMode}
+          disabled={props.disabled}
+          required={props.required}
+          placeholder={props.placeholder}
+          spellcheck={props.spellcheck ?? false}
+          aria-describedby={describedBy}
+          aria-invalid={props.error ? 'true' : undefined}
+          onInput={(event) => props.onInput((event.currentTarget as HTMLInputElement).value)}
+        />
+        {props.trailing}
+      </div>
       {props.hint ? (
         <p id={hintId} class="hint">
           {props.hint}
@@ -119,21 +208,25 @@ export function Field(props: FieldProps) {
   )
 }
 
-/** A password field with its own show/hide button. */
-export function PasswordField(props: Omit<FieldProps, 'type'>) {
+/** A password field with its own show/hide button, at the end of the box. */
+export function PasswordField(props: Omit<FieldProps, 'type' | 'trailing'>) {
   const [shown, setShown] = useState(false)
   return (
-    <div class="password">
-      <Field {...props} type={shown ? 'text' : 'password'} />
-      <button
-        type="button"
-        class="link show"
-        aria-pressed={shown}
-        onClick={() => setShown((was) => !was)}
-      >
-        {shown ? t('setup_hide') : t('setup_show')}
-      </button>
-    </div>
+    <Field
+      {...props}
+      type={shown ? 'text' : 'password'}
+      trailing={
+        <button
+          type="button"
+          class="reveal"
+          aria-pressed={shown}
+          disabled={props.disabled}
+          onClick={() => setShown((was) => !was)}
+        >
+          {shown ? t('setup_hide') : t('setup_show')}
+        </button>
+      }
+    />
   )
 }
 
@@ -143,18 +236,18 @@ export function Checkbox(props: {
   onChange: (checked: boolean) => void
   hint?: string
 }) {
-  const id = useId()
   return (
-    <div class="check">
+    <label class="check">
       <input
-        id={id}
         type="checkbox"
         checked={props.checked}
         onChange={(event) => props.onChange((event.currentTarget as HTMLInputElement).checked)}
       />
-      <label htmlFor={id}>{props.label}</label>
-      {props.hint ? <p class="hint">{props.hint}</p> : null}
-    </div>
+      <span class="check-text">
+        <span class="check-label">{props.label}</span>
+        {props.hint ? <span class="hint">{props.hint}</span> : null}
+      </span>
+    </label>
   )
 }
 
@@ -191,11 +284,37 @@ export function Actions({ children }: { children?: ComponentChildren }) {
   return <div class="actions">{children}</div>
 }
 
-/** A status line read out as it changes. */
+/** A status line read out as it changes, with the sync icon turning beside it. */
 export function Status({ children }: { children?: ComponentChildren }) {
   return (
     <p class="status" role="status" aria-live="polite">
+      <span class="spin">
+        <Glyph name="refresh" />
+      </span>
       {children}
     </p>
+  )
+}
+
+/** A leading tile with an icon: the accent one marks the first or main item of a list. */
+export function Tile({
+  name,
+  size = 40,
+  accent,
+  tone,
+}: {
+  name: GlyphName
+  size?: 24 | 36 | 40
+  accent?: boolean
+  tone?: 'danger'
+}) {
+  return (
+    <span class={`tile s${size}${accent ? ' accent' : ''}${tone ? ` t-${tone}` : ''}`}>
+      <Glyph
+        name={name}
+        size={size === 24 ? 14 : size === 36 ? 18 : 20}
+        weight={size === 24 ? 2.2 : 1.8}
+      />
+    </span>
   )
 }
