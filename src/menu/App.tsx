@@ -355,6 +355,8 @@ function Confirm({
 }) {
   const { notice, guarded } = useGuarded(channel)
   const [always, setAlways] = useState(false)
+  // Read at the click: the box's state may not have rendered yet when Fill follows it at once
+  const alwaysBox = useRef<HTMLInputElement>(null)
   const name = chosen.login !== undefined ? loginTitle(chosen.login) : codeTitle(chosen.code!)
   const warn = fromGuard || view.match.lookAlikeOf !== undefined
   return (
@@ -370,6 +372,7 @@ function Confirm({
         <label class="check">
           <input
             type="checkbox"
+            ref={alwaysBox}
             checked={always}
             onChange={(event) => setAlways((event.target as HTMLInputElement).checked)}
           />
@@ -399,7 +402,7 @@ function Confirm({
                 fieldId: init.fieldId,
                 ...(chosen.login !== undefined ? { loginId: chosen.login.id } : {}),
                 ...(chosen.code !== undefined ? { codeId: chosen.code.id } : {}),
-                ...(always && !warn ? { remember: true } : {}),
+                ...((alwaysBox.current?.checked ?? always) && !warn ? { remember: true } : {}),
               })
               channel.close(true)
             })
