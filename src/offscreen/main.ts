@@ -25,16 +25,29 @@ function withTextarea<T>(use: (area: HTMLTextAreaElement) => T): T {
   }
 }
 
-/** The document is never focused, so `navigator.clipboard` refuses: the editing commands work. */
+/**
+ * The document is never focused, so `navigator.clipboard` refuses: the editing commands work.
+ * Copying an empty selection changes nothing (the old text stays), so clearing selects a placeholder
+ * and the copy event swaps what it puts on the clipboard for an empty string: the clipboard ends
+ * empty, not holding a space.
+ */
 function write(text: string): void {
-  // Copying nothing copies nothing: a space is what a cleared clipboard holds here
-  const value = text === '' ? ' ' : text
-  const copied = withTextarea((area) => {
-    area.value = value
-    area.select()
-    return document.execCommand('copy')
-  })
-  if (!copied) throw new Error('copy')
+  const clearing = text === ''
+  const onCopy = (event: ClipboardEvent) => {
+    event.clipboardData?.setData('text/plain', '')
+    event.preventDefault()
+  }
+  if (clearing) document.addEventListener('copy', onCopy, true)
+  try {
+    const copied = withTextarea((area) => {
+      area.value = clearing ? ' ' : text
+      area.select()
+      return document.execCommand('copy')
+    })
+    if (!copied) throw new Error('copy')
+  } finally {
+    if (clearing) document.removeEventListener('copy', onCopy, true)
+  }
 }
 
 function read(): string {

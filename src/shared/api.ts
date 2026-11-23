@@ -478,6 +478,9 @@ export interface PageApi {
     // kept under Recently generated; `remember` is "Always suggest here" on an unknown site.
     newPassword?: string
     remember?: boolean
+    // From the menu only: the person confirmed the address on its Confirm screen (the picker or the
+    // look-alike path), so the item may fill a site it doesn't match
+    picked?: boolean
   }): Promise<void>
 
   addCodeFromLink(args: { otpauth: string; website?: string; linkTo?: string }): Promise<CodeView>

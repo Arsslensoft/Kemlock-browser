@@ -403,6 +403,7 @@ function Confirm({
                 ...(chosen.login !== undefined ? { loginId: chosen.login.id } : {}),
                 ...(chosen.code !== undefined ? { codeId: chosen.code.id } : {}),
                 ...((alwaysBox.current?.checked ?? always) && !warn ? { remember: true } : {}),
+                picked: true,
               })
               channel.close(true)
             })
@@ -644,7 +645,9 @@ function SavePrompt({ channel, init }: AppProps) {
         <button
           type="button"
           class="secondary"
-          onClick={() => void answer(false).catch(() => channel.close(false))}
+          onClick={(event) =>
+            void guarded(pressOf(event), () => answer(false).catch(() => channel.close(false)))
+          }
         >
           {t('menu_not_now')}
         </button>
@@ -661,7 +664,11 @@ function SavePrompt({ channel, init }: AppProps) {
         <button
           type="button"
           class="link"
-          onClick={() => void answer(false, true).catch(() => channel.close(false))}
+          onClick={(event) =>
+            void guarded(pressOf(event), () =>
+              answer(false, true).catch(() => channel.close(false)),
+            )
+          }
         >
           {t('menu_never')}
         </button>

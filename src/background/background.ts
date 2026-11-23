@@ -389,7 +389,9 @@ export class Background {
             ...(message.newPassword === undefined ? {} : { newPassword: message.newPassword }),
             ...(message.remember === undefined ? {} : { remember: message.remember }),
           },
-          fromMenu,
+          // Only the menu's Confirm screen, after the person saw the address, may fill an item the
+          // frame's site doesn't offer; every other fill is checked against the sender's frame
+          fromMenu && message.picked === true,
         )
       },
 

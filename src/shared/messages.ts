@@ -249,6 +249,7 @@ const pageSpecs: PageSpecs = {
     codeId: opt(id),
     newPassword: opt(text(1024, 1)),
     remember: opt(bool),
+    picked: opt(bool),
   },
   addCodeFromLink: { otpauth: req(otpauth), website: opt(text(253, 1)), linkTo: opt(id) },
   addCodeFromTab: { tabId: req(browserId), linkTo: opt(id) },
