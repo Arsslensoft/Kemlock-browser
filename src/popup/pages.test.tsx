@@ -291,7 +291,7 @@ describe('adding a code', () => {
     })
     const root = await openPopup()
     await click(button(root, 'Add a code'))
-    expect(input(root, 'Name').value).toBe('Docs')
+    expect(input(root, 'Name')?.value).toBe('Docs')
     // Nothing is added until the person says so
     expect(background.of('addCodeFromLink')).toHaveLength(0)
 
