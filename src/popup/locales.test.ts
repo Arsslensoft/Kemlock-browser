@@ -72,6 +72,9 @@ describe('the popup’s strings', () => {
       'popup_placeKemlock',
       'popup_placeVaultwarden',
       'popup_placeWebdav',
+      'popup_removalKindCode',
+      'popup_removalKindContact',
+      'popup_removalKindNote',
     ])
   })
 })

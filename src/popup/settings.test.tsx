@@ -217,17 +217,56 @@ describe('the sync card', () => {
     expect(fake.tabsCreated.at(-1)).toBe('chrome-extension://kemlock/src/setup/index.html#signin')
   })
 
-  it('waits for confirmation when a sync would remove many entries', async () => {
+  it('says how many would go and offers Keep, Review and Remove', async () => {
     setUp()
-    status = syncStatus({ problem: 'removals', pendingRemovals: 7 })
-    background.set({ confirmRemovals: (() => syncStatus({ lastSync: Date.now() })) as never })
+    status = syncStatus({
+      problem: 'removals',
+      pendingRemovals: 6,
+      scopeSize: 22,
+      pendingRemovalItems: [
+        { name: 'GitHub', kind: 'code' },
+        { name: 'Bank', kind: 'login' },
+      ],
+    })
+    background.set({
+      confirmRemovals: (() => syncStatus({ lastSync: Date.now() })) as never,
+      keepRemovals: (() => syncStatus({ lastSync: Date.now() })) as never,
+    })
     const root = await openSettings()
     expect(text(root)).toContain(message('en', 'sync_problem_removals'))
-    await click(button(root, 'Sync anyway'))
-    expect(text(root)).toContain(message('en', 'popup_removalsTitle', ['7']))
+    expect(text(root)).toContain('would remove 6 of 22 items')
+
+    // Review lists them by name and kind, and sends nothing
+    expect(text(root)).not.toContain('GitHub')
+    await click(button(root, 'Review'))
+    expect(text(root)).toContain('GitHub')
+    expect(text(root)).toContain('Bank')
+    expect(text(root)).toContain('Login')
+    expect(background.of('keepRemovals')).toHaveLength(0)
     expect(background.of('confirmRemovals')).toHaveLength(0)
-    await click(button(root, 'Sync anyway'))
+
+    // Remove asks first
+    await click(button(root, 'Remove'))
+    expect(text(root)).toContain(message('en', 'popup_removalsTitle', ['6']))
+    expect(background.of('confirmRemovals')).toHaveLength(0)
+    await click(button(root, 'Remove'))
     expect(background.of('confirmRemovals')).toHaveLength(1)
+    expect(background.of('keepRemovals')).toHaveLength(0)
+  })
+
+  it('keeps everything with Keep, at once', async () => {
+    setUp()
+    status = syncStatus({ problem: 'removals', pendingRemovals: 7 })
+    background.set({ keepRemovals: (() => syncStatus({ lastSync: Date.now() })) as never })
+    const root = await openSettings()
+    // With no total, the count stands alone; a sync that can't name them says so
+    expect(text(root)).toContain('would remove 7 items')
+    await click(button(root, 'Review'))
+    expect(text(root)).toContain(message('en', 'popup_removalsNoList'))
+    await click(button(root, 'Keep'))
+    expect(background.of('keepRemovals')).toHaveLength(1)
+    expect(background.of('confirmRemovals')).toHaveLength(0)
+    expect(text(root)).not.toContain('would remove')
   })
 
   it('signs out only after confirming, and keeps nothing of the old sync on screen', async () => {
