@@ -1,0 +1,13 @@
+# LF everywhere, as Prettier checks and as the zip is rebuilt byte for byte
+# (openspec: add-browser-extension).
+* text eol=lf
+# ...but images, fonts and builds as they are: a PNG's signature holds a
+# CRLF that the rule above would rewrite.
+*.png binary
+*.ttf binary
+*.wasm binary
+*.zip binary
+
+# A copy of the app's fixture, compared byte for byte with it
+# (tool/copies.test.mjs): never convert its line endings.
+test/fixtures/** -text
