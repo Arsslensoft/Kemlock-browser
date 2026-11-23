@@ -1,0 +1,52 @@
+# Version updates, a pull request a week for each group below. Security updates are turned on in
+# the repository's settings and use this file too (their pull requests are never grouped).
+# package.json pins exact versions, so an update rewrites the version in it (versioning-strategy:
+# increase). The titles are Conventional Commits that the Title check accepts and that the Release
+# workflow reads: `fix(deps): ...` for a package the zips hold, so that an update of one is a
+# patch release, and `chore(deps-dev): ...` for a development tool, `chore(deps): ...` for an
+# Action. dependabot-auto-merge.yml merges the safe ones.
+#
+# Not here: tool/docker/Containerfile. Dependabot's docker updater reads only files named
+# Dockerfile, so it would find nothing in a Containerfile and report an error each week. Its Debian
+# image and its Node tarball, with the tarball's SHA-256, are bumped by hand together with Node's
+# version in the workflows, tool/build.sh and docs/reproducible-builds.md (CONTRIBUTING.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
