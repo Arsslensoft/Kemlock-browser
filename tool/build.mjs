@@ -195,7 +195,11 @@ async function buildBrowser(browser, coreOut) {
   await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   await writeLocales(outDir)
   // The core: its module and loader, and the files it reads (the Public Suffix List, the word list, the 2FA directory)
-  await cp(coreOut, join(outDir, 'core'), { recursive: true })
+  // The source map stays out: 1.8 MB the browser never reads, and a zip with it is no use to anyone
+  await cp(coreOut, join(outDir, 'core'), {
+    recursive: true,
+    filter: (from) => !from.endsWith('.map'),
+  })
   await cp(join(root, 'core', 'data'), join(outDir, 'core', 'data'), { recursive: true })
   // Rendered by tool/icons/render.sh
   await cp(join(root, 'icons'), join(outDir, 'icons'), { recursive: true })
