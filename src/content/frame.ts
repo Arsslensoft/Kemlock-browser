@@ -7,7 +7,7 @@
 // (src/content/gate.ts), and answers its `check` before it acts on a click or a key.
 
 import type { Geometry } from './dom'
-import { plainAt, plainView, signatureOf, type NotPlain } from './gate'
+import { otherTopLayer, plainAt, plainView, signatureOf, type NotPlain } from './gate'
 import { placeMenu, placePrompt, type Box } from './place'
 
 export type FrameMode = 'menu' | 'save'
@@ -114,6 +114,8 @@ export class MenuFrame {
   private timer: ReturnType<typeof setInterval> | undefined
   private height: number
   private closed = false
+  /** The page's own popovers and dialogs seen open at the last beat, so one opened since is noticed. */
+  private seen = new Set<Element>()
 
   constructor(
     private readonly env: FrameEnv,
@@ -207,7 +209,7 @@ export class MenuFrame {
     const rect = this.env.geometry.rect(this.host)
     const px = typeof x === 'number' ? rect.left + x : rect.left + rect.width / 2
     const py = typeof y === 'number' ? rect.top + y : rect.top + rect.height / 2
-    const plain = plainAt(this.host, px, py, this.env.geometry)
+    const plain = plainAt(this.host, px, py, this.env.geometry, undefined, this.env.ownHosts)
     return plain.ok ? { ok: true } : { ok: false, why: plain.why }
   }
 
@@ -219,13 +221,33 @@ export class MenuFrame {
       return
     }
     this.reposition()
-    const plain = plainView(this.host, this.env.geometry)
+    this.keepLast()
+    const plain = plainView(this.host, this.env.geometry, undefined, this.env.ownHosts)
     const signature = signatureOf(this.env.geometry.rect(this.host))
     this.send(
       plain.ok
         ? { kind: 'state', plain: true, signature }
         : { kind: 'state', plain: false, why: plain.why, signature },
     )
+  }
+
+  /**
+   * Keeps the menu last on the top layer: when the page opens a popover after it, the menu is shown
+   * again, so what the page draws is behind it. (A page's popover still counts as covering it.)
+   */
+  private keepLast(): void {
+    const host = this.host
+    if (typeof host.showPopover !== 'function' || typeof host.hidePopover !== 'function') return
+    const open = new Set(otherTopLayer(host, this.env.ownHosts))
+    const later = [...open].some((other) => !this.seen.has(other))
+    this.seen = open
+    if (!later) return
+    try {
+      host.hidePopover()
+      host.showPopover()
+    } catch {
+      // Not shown as a popover: the z-index still puts it in front
+    }
   }
 
   /** Puts the host where its field is now: under it, or at the top right for the prompt. */

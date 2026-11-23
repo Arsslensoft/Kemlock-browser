@@ -2,7 +2,10 @@
 // only on a menu in plain view"): the host element and every ancestor up to html are shown, opaque,
 // unclipped and unfiltered, the host has a size, lies inside the viewport, and nothing is on top of
 // it at the points the person could press. The menu's own frame adds IntersectionObserver v2 and
-// the half-second delay (src/menu/gate.ts).
+// the half-second delay (src/menu/gate.ts). Both run on every browser, since Firefox has no v2 and
+// its elementsFromPoint skips elements that take no pointer: a page's own popover or modal dialog
+// covers it, and so does a fixed element over the menu that lets clicks through when the menu is not
+// on the top layer, where only another top-layer element can paint over it (coverOver).
 
 import { parentOf, type Geometry } from './dom'
 
@@ -65,14 +68,94 @@ export function onTopAt(host: Element, x: number, y: number, geometry: Geometry)
   return top === host || (top !== undefined && host.contains(top))
 }
 
+const noElements: ReadonlySet<Element> = new Set()
+
+const matches = (element: Element, selector: string): boolean => {
+  try {
+    return element.matches(selector)
+  } catch {
+    return false
+  }
+}
+
+/** Whether the element is on the top layer as a popover that is open or a modal dialog (or fullscreen). */
+export const onTopLayer = (element: Element): boolean =>
+  matches(element, ':popover-open') || matches(element, ':modal')
+
+/** Every element of [root], inside open shadow roots too. */
+function allElements(root: Document | ShadowRoot, out: Element[] = []): Element[] {
+  for (const element of Array.from(root.querySelectorAll('*'))) {
+    out.push(element)
+    if (element.shadowRoot) allElements(element.shadowRoot, out)
+  }
+  return out
+}
+
+/** Whether [other] is part of the menu or a button, or around them: none of the page's doing. */
+const isOurs = (other: Element, host: Element, own: ReadonlySet<Element>): boolean =>
+  other === host || own.has(other) || host.contains(other) || other.contains(host)
+
+/** The other popovers and modal dialogs the page has open on the top layer. */
+export function otherTopLayer(host: Element, own: ReadonlySet<Element> = noElements): Element[] {
+  return allElements(host.ownerDocument).filter(
+    (other) =>
+      !isOurs(other, host, own) &&
+      (other.hasAttribute('popover') ||
+        other.localName === 'dialog' ||
+        other === host.ownerDocument.fullscreenElement) &&
+      onTopLayer(other),
+  )
+}
+
+/**
+ * Whether the page has something over [host] that elementsFromPoint can't see: a popover or modal
+ * dialog of its own; or, when [host] is not on the top layer (no popover support, or it failed to
+ * show), a fixed or absolute element over the menu's box that is shown but takes no pointer, so a
+ * press goes through it to the menu while the person sees what it draws. A host on the top layer
+ * can't be painted over by an ordinary element, so a page's click-through toast layer is no cover.
+ */
+export function coverOver(
+  host: Element,
+  geometry: Geometry,
+  own: ReadonlySet<Element> = noElements,
+): boolean {
+  if (otherTopLayer(host, own).length > 0) return true
+  if (matches(host, ':popover-open')) return false
+  const view = host.ownerDocument.defaultView
+  if (view === null) return false
+  const box = geometry.rect(host)
+  for (const other of allElements(host.ownerDocument)) {
+    if (isOurs(other, host, own)) continue
+    const style = view.getComputedStyle(other)
+    if (style.position !== 'fixed' && style.position !== 'absolute') continue
+    if (style.pointerEvents !== 'none') continue
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse'
+    )
+      continue
+    if (!(Number.parseFloat(style.opacity || '1') > 0)) continue
+    const rect = geometry.rect(other)
+    const across =
+      Math.min(rect.left + rect.width, box.left + box.width) - Math.max(rect.left, box.left)
+    const down =
+      Math.min(rect.top + rect.height, box.top + box.height) - Math.max(rect.top, box.top)
+    if (across > 0 && down > 0) return true
+  }
+  return false
+}
+
 /**
  * Whether [host] is in plain view: shown, opaque, big enough, inside the viewport, and on top at
- * its corners and centre. [needSize] is the smallest it may be (a button has less than a menu).
+ * its corners and centre, with nothing of the page's own over it that lets presses through. [needSize]
+ * is the smallest it may be (a button has less than a menu); [own] are our other hosts.
  */
 export function plainView(
   host: Element,
   geometry: Geometry,
   needSize: { width: number; height: number } = leastSize,
+  own: ReadonlySet<Element> = noElements,
 ): Plain {
   if (!host.isConnected) return { ok: false, why: 'detached' }
   const style = styleVerdict(host)
@@ -90,6 +173,7 @@ export function plainView(
     return { ok: false, why: 'clipped' }
   for (const [x, y] of samplePoints(rect))
     if (!onTopAt(host, x, y, geometry)) return { ok: false, why: 'covered' }
+  if (coverOver(host, geometry, own)) return { ok: false, why: 'covered' }
   return { ok: true }
 }
 
@@ -100,8 +184,9 @@ export function plainAt(
   y: number,
   geometry: Geometry,
   needSize?: { width: number; height: number },
+  own?: ReadonlySet<Element>,
 ): Plain {
-  const plain = plainView(host, geometry, needSize)
+  const plain = plainView(host, geometry, needSize, own)
   if (!plain.ok) return plain
   return onTopAt(host, x, y, geometry) ? plain : { ok: false, why: 'covered' }
 }

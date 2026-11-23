@@ -3,6 +3,7 @@
 // A classic script: the build bundles what it imports into one file.
 import type { Answer, ContentApi } from '../shared/api'
 import { Controller, type Call } from './controller'
+import { originOfUrl } from './frame'
 
 const marker = Symbol.for('kemlock.content')
 
@@ -27,11 +28,9 @@ function start(): void {
     doc,
     call,
     pageUrl: chrome.runtime.getURL('src/menu/index.html'),
-    // Chrome's frame address is a per-session one, but the frame's own origin is the extension's
-    frameOrigin:
-      __BROWSER__ === 'firefox'
-        ? new URL(chrome.runtime.getURL('')).origin
-        : `chrome-extension://${chrome.runtime.id}`,
+    // The frame's own origin is the extension's, built from scheme and host (the URL standard's
+    // origin of a moz-extension address is "null"), the same way the background reads senders
+    frameOrigin: originOfUrl(chrome.runtime.getURL('')),
     label,
     origin: window.origin || location.origin,
     isTop: window === window.top,

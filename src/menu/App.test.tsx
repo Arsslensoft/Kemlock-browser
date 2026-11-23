@@ -138,7 +138,7 @@ describe('the list for a field', () => {
     await vi.waitFor(() => expect(channel.close).toHaveBeenCalledWith(true))
     expect(channel.permit).toHaveBeenCalledTimes(1)
     expect(sent('fill')).toEqual([
-      { kind: 'fill', tabId: 4, frameId: 0, fieldId: 'f1', loginId: 'l2' },
+      { kind: 'fill', tabId: 4, frameId: 0, fieldId: 'f1', loginId: 'l2' }, // no picked: the background checks the site
     ])
   })
 
@@ -223,6 +223,7 @@ describe('an unknown site', () => {
       fieldId: 'f1',
       loginId: 'l1',
       remember: true,
+      picked: true,
     })
   })
 
@@ -278,6 +279,7 @@ describe('the look-alike guard', () => {
     button(en.menu_fill).click()
     await vi.waitFor(() => expect(sent('fill')).toHaveLength(1))
     expect(sent('fill')[0]).not.toHaveProperty('remember')
+    expect(sent('fill')[0]).toMatchObject({ picked: true })
   })
 })
 
@@ -416,6 +418,31 @@ describe('the save prompt', () => {
       save: false,
       never: true,
     })
+  })
+
+  it('lets Not now and Never for this site answer only after the gate, and says why when it refuses', async () => {
+    handlers.pendingSave = (): PendingSave => ({ site: 'harbornotes.app', username: 'sam' })
+    handlers.answerSave = () => undefined
+    channel.permit.mockResolvedValue({ ok: false, why: 'covered' })
+    mount(prompt)
+    await vi.waitFor(() => expect(shown()).toContain(en.menu_save_title))
+    button(en.menu_not_now).click()
+    await vi.waitFor(() => expect(shown()).toContain(en.menu_gate_covered))
+    button(en.menu_never).click()
+    await vi.waitFor(() => expect(channel.permit).toHaveBeenCalledTimes(2))
+    expect(sent('answerSave')).toEqual([])
+    expect(channel.close).not.toHaveBeenCalled()
+  })
+
+  it('answers Not now through the gate', async () => {
+    handlers.pendingSave = (): PendingSave => ({ site: 'harbornotes.app', username: 'sam' })
+    handlers.answerSave = () => undefined
+    mount(prompt)
+    await vi.waitFor(() => expect(shown()).toContain(en.menu_save_title))
+    button(en.menu_not_now).click()
+    await vi.waitFor(() => expect(sent('answerSave')).toHaveLength(1))
+    expect(sent('answerSave')[0]).toEqual({ kind: 'answerSave', tabId: 4, save: false })
+    expect(channel.permit).toHaveBeenCalledTimes(1)
   })
 
   it('closes itself when nothing is pending', async () => {

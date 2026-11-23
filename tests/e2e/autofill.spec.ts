@@ -344,6 +344,8 @@ test.describe('autofill, with access to all sites', () => {
     test('a new-password field with maxlength 16 gets 16 characters', async ({ kemlock }) => {
       const page = await kemlock.visit(hosts.harbor, '/signup-maxlength')
       await pick(kemlock, page, page.locator('#new-password'), /strong password/i)
+      // The click returns before the fill reaches the page
+      await expect(page.locator('#new-password')).toHaveValue(/^.{16}$/)
       const value = await page.locator('#new-password').inputValue()
       expect(value).toHaveLength(16)
       await expect(page.locator('#confirm-password')).toHaveValue(value)

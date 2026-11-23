@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Geometry } from './dom'
-import { onTopAt, plainAt, plainView, samplePoints, signatureOf } from './gate'
+import {
+  coverOver,
+  onTopAt,
+  otherTopLayer,
+  plainAt,
+  plainView,
+  samplePoints,
+  signatureOf,
+} from './gate'
 
 let host: HTMLElement
 let other: HTMLElement
@@ -84,6 +92,132 @@ describe('plainAt', () => {
   it('refuses a click on a menu the page faded', () => {
     host.style.opacity = '0'
     expect(plainAt(host, 250, 200, layout())).toEqual({ ok: false, why: 'faded' })
+  })
+})
+
+describe('what the page draws over the menu, that elementsFromPoint cannot see', () => {
+  const hostBox = { left: 100, top: 100, width: 320, height: 200 }
+  /** The host's box, and [box] for the page's overlay. */
+  function boxes(overlay: Element, box = hostBox): Geometry {
+    return {
+      rect: (element) => (element === overlay ? box : hostBox),
+      elementsAt: () => [host],
+      viewport: () => ({ width: 1280, height: 800 }),
+    }
+  }
+  const decoy = () => {
+    const el = document.createElement('div')
+    el.style.cssText = 'position: fixed; pointer-events: none; opacity: 1'
+    document.body.append(el)
+    return el
+  }
+  /** jsdom has no top layer: the elements marked data-open count as open. */
+  const open = (selector: string, element: Element) =>
+    element.hasAttribute('data-open') && (selector === ':popover-open' || selector === ':modal')
+  let matches: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    matches = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      return open(selector, this)
+    })
+  })
+  afterEach(() => matches.mockRestore())
+
+  it('refuses a menu when the page has a popover open, or a modal dialog', () => {
+    const popover = document.createElement('div')
+    popover.setAttribute('popover', 'manual')
+    document.body.append(popover)
+    expect(plainView(host, layout())).toEqual({ ok: true })
+    popover.setAttribute('data-open', '')
+    expect(otherTopLayer(host)).toEqual([popover])
+    expect(plainView(host, layout())).toEqual({ ok: false, why: 'covered' })
+    popover.remove()
+    const dialog = document.createElement('dialog')
+    dialog.setAttribute('data-open', '')
+    document.body.append(dialog)
+    expect(plainView(host, layout())).toEqual({ ok: false, why: 'covered' })
+    expect(plainAt(host, 250, 200, layout())).toEqual({ ok: false, why: 'covered' })
+  })
+
+  it('does not count our own hosts as the page covering the menu', () => {
+    const badge = document.createElement('div')
+    badge.setAttribute('popover', 'manual')
+    badge.setAttribute('data-open', '')
+    document.body.append(badge)
+    expect(plainView(host, layout())).toEqual({ ok: false, why: 'covered' })
+    expect(plainView(host, layout(), undefined, new Set([badge]))).toEqual({ ok: true })
+    host.setAttribute('data-open', '')
+    expect(plainView(host, layout(), undefined, new Set([badge]))).toEqual({ ok: true })
+  })
+
+  it('refuses a menu with a fixed or absolute element over it that lets presses through', () => {
+    const overlay = decoy()
+    expect(coverOver(host, boxes(overlay))).toBe(true)
+    expect(plainView(host, boxes(overlay))).toEqual({ ok: false, why: 'covered' })
+    overlay.style.position = 'absolute'
+    expect(coverOver(host, boxes(overlay))).toBe(true)
+  })
+
+  it('lets a click-through overlay be over a menu on the top layer, and not one off it', () => {
+    const overlay = decoy()
+    // Off the top layer (no popover support, or showPopover failed): the overlay covers it
+    expect(coverOver(host, boxes(overlay))).toBe(true)
+    expect(plainView(host, boxes(overlay))).toEqual({ ok: false, why: 'covered' })
+    // On the top layer: only another top-layer element can paint over it
+    host.setAttribute('data-open', '')
+    expect(coverOver(host, boxes(overlay))).toBe(false)
+    expect(plainView(host, boxes(overlay))).toEqual({ ok: true })
+    // ...and another popover of the page still does
+    const popover = document.createElement('div')
+    popover.setAttribute('popover', 'manual')
+    popover.setAttribute('data-open', '')
+    document.body.append(popover)
+    expect(coverOver(host, boxes(overlay))).toBe(true)
+  })
+
+  it('lets the menu be when the overlay is elsewhere, static, taking presses, or not shown', () => {
+    const overlay = decoy()
+    expect(coverOver(host, boxes(overlay, { left: 900, top: 500, width: 100, height: 100 }))).toBe(
+      false,
+    )
+    // Touching at an edge is not over
+    expect(coverOver(host, boxes(overlay, { left: 420, top: 100, width: 100, height: 100 }))).toBe(
+      false,
+    )
+    overlay.style.pointerEvents = 'auto'
+    expect(coverOver(host, boxes(overlay))).toBe(false)
+    overlay.style.pointerEvents = 'none'
+    overlay.style.position = 'static'
+    expect(coverOver(host, boxes(overlay))).toBe(false)
+    overlay.style.position = 'fixed'
+    overlay.style.opacity = '0'
+    expect(coverOver(host, boxes(overlay))).toBe(false)
+    overlay.style.opacity = '1'
+    overlay.style.display = 'none'
+    expect(coverOver(host, boxes(overlay))).toBe(false)
+    overlay.style.display = 'block'
+    expect(coverOver(host, boxes(overlay))).toBe(true)
+  })
+
+  it('does not mistake the menu, what is in it, or an ancestor of it for the page', () => {
+    host.style.cssText = 'position: fixed; pointer-events: none'
+    const inside = document.createElement('div')
+    inside.style.cssText = 'position: fixed; pointer-events: none'
+    host.append(inside)
+    document.body.style.cssText = 'position: absolute; pointer-events: none'
+    const geometry: Geometry = { ...layout(), rect: () => hostBox }
+    expect(coverOver(host, geometry)).toBe(false)
+  })
+
+  it('finds an overlay inside an open shadow root', () => {
+    const shadowHost = document.createElement('div')
+    document.body.append(shadowHost)
+    const inner = document.createElement('div')
+    inner.style.cssText = 'position: fixed; pointer-events: none'
+    shadowHost.attachShadow({ mode: 'open' }).append(inner)
+    expect(coverOver(host, boxes(inner))).toBe(true)
   })
 })
 
