@@ -1,7 +1,7 @@
 // How the tests find the extension's own screens: by role and visible English text, never by
 // class. When a screen's wording or markup changes, this is the one file to change. Everything
-// here is a guess from the plan's specs (docs/plans/add-browser-extension/specs) until the screens
-// exist; each helper tries the likeliest roles for its control with `.or`.
+// here follows the real screens (src/setup, src/popup, src/menu); the popup's helpers try the likeliest
+// roles for a control with `.or`.
 import { expect, type Frame, type Locator, type Page } from '@playwright/test'
 
 type Name = string | RegExp
@@ -83,8 +83,8 @@ export async function codeShownIn(row: Locator): Promise<string> {
 /* Setup                                                                                           */
 /* ---------------------------------------------------------------------------------------------- */
 
-/** "A password for this browser", typed twice, then on to the next step. */
-export async function setBrowserPassword(
+/** "A password for this browser" and "Type it again", typed. */
+export async function typeBrowserPassword(
   page: Page,
   password: string,
   again = password,
@@ -92,34 +92,58 @@ export async function setBrowserPassword(
   const boxes = passwordBoxes(page)
   await boxes.nth(0).fill(password)
   await boxes.nth(1).fill(again)
-  await control(page, /continue|next|create/i).click()
 }
 
-/** The place step: where the phone syncs. */
+/** The password step's one button; it stays disabled until the password is strong enough and typed twice alike. */
+export const createVaultButton = (page: Page) => control(page, /^create the vault$/i)
+
+/** "A password for this browser", typed twice, then "Create the vault". */
+export async function setBrowserPassword(
+  page: Page,
+  password: string,
+  again = password,
+): Promise<void> {
+  await typeBrowserPassword(page, password, again)
+  await createVaultButton(page).click()
+}
+
+const placeNames = {
+  'Kemlock Server': /^kemlock server/i,
+  WebDAV: /^webdav folder/i,
+  Vaultwarden: /^vaultwarden/i,
+}
+
+/** The place step ("Where does your phone sync?"): one click on the place's button goes to its address. */
 export async function pickPlace(
   page: Page,
   place: 'Kemlock Server' | 'WebDAV' | 'Vaultwarden',
 ): Promise<void> {
-  await control(page, new RegExp(place, 'i')).click()
-  const next = control(page, /continue|next/i)
-  if (await next.isVisible().catch(() => false)) await next.click()
+  await page.getByRole('button', { name: placeNames[place] }).click()
 }
 
-/** "Connect your sync folder": the folder, its login and the sync passphrase. */
-export async function fillWebdav(
+/** The address step ("Connect your sync folder" for WebDAV): the address, then Continue. */
+export async function enterAddress(page: Page, address: string, folder = false): Promise<void> {
+  await page.getByLabel(folder ? /^folder address/i : /^server address/i).fill(address)
+  await control(page, /^continue$/i).click()
+}
+
+/**
+ * The access step ("Allow access to <host>"): its own button asks for the address's permission.
+ * With the all-sites permission in the test manifest the browser grants it without a prompt.
+ */
+export async function allowAccess(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /^allow access to /i }).click()
+}
+
+/** "Sign in to the folder": the folder's login and the sync passphrase, then Sign in. */
+export async function signInToFolder(
   page: Page,
-  folder: { address: string; username: string; password: string; passphrase: string },
+  login: { username: string; password: string; passphrase: string },
 ): Promise<void> {
-  await box(page, /folder|address|url/i).fill(folder.address)
-  await box(page, /user/i).fill(folder.username)
-  await box(page, /^(app )?password/i).fill(folder.password)
-  await box(page, /passphrase/i).fill(folder.passphrase)
-}
-
-/** The access step names an address and asks for the browser's permission, which the manifest holds already. */
-export async function allowAccessIfAsked(page: Page): Promise<void> {
-  const allow = control(page, /allow|grant|give access/i)
-  if (await allow.isVisible({ timeout: 1500 }).catch(() => false)) await allow.click()
+  await page.getByLabel(/^username/i).fill(login.username)
+  await page.getByLabel(/^password (or app password)/i).fill(login.password)
+  await page.getByLabel(/^sync passphrase/i).fill(login.passphrase)
+  await control(page, /^sign in$/i).click()
 }
 
 /** Picks the option of a select whose text matches. */

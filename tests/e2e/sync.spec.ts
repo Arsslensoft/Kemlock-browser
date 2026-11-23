@@ -15,14 +15,15 @@ import {
 import { expect, ORBIT, PASSWORD, test } from './kemlock'
 import { makeSyncFile, openSyncFile, totpNear } from './otp'
 import {
-  allowAccessIfAsked,
+  allowAccess,
   codeShownIn,
   control,
-  fillWebdav,
+  enterAddress,
   openSection,
   pickPlace,
   row,
   setBrowserPassword,
+  signInToFolder,
 } from './ui'
 
 const PASSPHRASE = personal.passphrase
@@ -39,16 +40,25 @@ test.describe('sync with a WebDAV folder', () => {
     await setBrowserPassword(setup, PASSWORD)
 
     // "After the browser's password, setup asks where the phone syncs"
-    await expect(setup.getByText(/where.*sync|sync.*(phone|where)/i).first()).toBeVisible()
+    await expect(setup.getByRole('heading', { name: /where does your phone sync/i })).toBeVisible()
     await pickPlace(setup, 'WebDAV')
-    await expect(setup.getByText(/connect your sync folder/i)).toBeVisible()
-    await fillWebdav(setup, { address: FOLDER, ...DAV_LOGIN, passphrase: PASSPHRASE })
-    await control(setup, /continue|next|connect|join/i).click()
-    await allowAccessIfAsked(setup)
+    await expect(setup.getByRole('heading', { name: /connect your sync folder/i })).toBeVisible()
+    await enterAddress(setup, FOLDER, true)
+    // Access to the folder's address is asked on its own screen, before anything is sent to it
+    await expect(setup.getByRole('heading', { name: /allow access to/i })).toBeVisible()
+    await allowAccess(setup)
+    await expect(setup.getByRole('heading', { name: /sign in to the folder/i })).toBeVisible()
+    await signInToFolder(setup, { ...DAV_LOGIN, passphrase: PASSPHRASE })
 
-    // The first sync is shown before it runs: three codes and a list of backup codes come
-    await expect(setup.getByText(/3 codes|first sync/i).first()).toBeVisible({ timeout: 60_000 })
-    await control(setup, /sync|continue|start|go on|finish|done/i).click()
+    // The first sync is shown before it runs: what comes to this browser, and what would be removed
+    await expect(setup.getByRole('heading', { name: /the first sync/i })).toBeVisible({
+      timeout: 60_000,
+    })
+    await expect(setup.getByText(/items? comes? to this browser/i)).toBeVisible()
+    await control(setup, /^start syncing$/i).click()
+    await expect(setup.getByRole('heading', { name: /kemlock is ready/i })).toBeVisible({
+      timeout: 60_000,
+    })
 
     await expect.poll(async () => (await kemlock.call('codes')).length, { timeout: 60_000 }).toBe(3)
     expect((await kemlock.call('popup')).state.sync).toMatchObject({ place: 'webdav' })
@@ -265,8 +275,9 @@ test.describe('sync with a WebDAV folder', () => {
     expect(await kemlock.call('codes')).toHaveLength(22)
 
     const popup = await kemlock.popup()
-    await expect(popup.getByText(/would remove 6 of 22/i)).toBeVisible()
-    await expect(control(popup, /review/i)).toBeVisible()
+    await expect(popup.getByText(/would remove many entries/i)).toBeVisible()
+    await control(popup, /^sync anyway$/i).click()
+    await expect(popup.getByText(/would remove 6 entries/i)).toBeVisible()
 
     // Going on with it removes them
     await kemlock.call('confirmRemovals')

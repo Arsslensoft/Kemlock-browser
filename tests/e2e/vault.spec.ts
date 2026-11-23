@@ -3,14 +3,14 @@ import { EXTENSION_ID } from './extension-key'
 import { expect, ORBIT, PASSWORD, test } from './kemlock'
 import {
   chooseOption,
-  control,
   expectLocked,
   lockNow,
   openSection,
   passwordBoxes,
   removeFromBrowser,
-  setBrowserPassword,
+  typeBrowserPassword,
   unlockWith,
+  createVaultButton,
 } from './ui'
 
 const HARBOR_LINK =
@@ -24,15 +24,19 @@ test.describe('the browser vault', () => {
 
   test('setup asks for a password twice and makes the vault', async ({ kemlock }) => {
     const setup = await kemlock.setup()
-    await expect(setup.getByText(/a password for this browser/i)).toBeVisible()
+    await expect(
+      setup.getByRole('heading', { name: /a password for this browser/i }),
+    ).toBeVisible()
 
-    // Two different passwords: setup doesn't continue, and says so
-    await setBrowserPassword(setup, PASSWORD, `${PASSWORD} but different`)
-    await expect(setup.getByText(/(don.t|do not|doesn.t) match|not the same/i)).toBeVisible()
+    // Two different passwords: "Create the vault" stays disabled, and the screen says why
+    await typeBrowserPassword(setup, PASSWORD, `${PASSWORD} but different`)
+    await expect(setup.getByText(/the passwords don.t match/i)).toBeVisible()
+    await expect(createVaultButton(setup)).toBeDisabled()
     expect((await kemlock.call('popup')).state.exists).toBe(false)
 
     await passwordBoxes(setup).nth(1).fill(PASSWORD)
-    await control(setup, /continue|next|create/i).click()
+    await expect(setup.getByText(/the passwords match/i)).toBeVisible()
+    await createVaultButton(setup).click()
     await expect.poll(async () => (await kemlock.call('popup')).state.exists).toBe(true)
   })
 
@@ -90,22 +94,22 @@ test.describe('the browser vault', () => {
     for (const wrong of ['nope 1', 'nope 2', 'nope 3']) {
       await unlockWith(popup, wrong)
       await expect(
-        popup.getByText(/wrong|incorrect|isn.t right|not the right/i).first(),
+        popup.getByText(/wrong|isn.t the password/i).first(),
       ).toBeVisible()
     }
     // The popup is closed and opened again: the count and the time are still there
     await popup.close()
     popup = await kemlock.popup()
-    await expect(popup.getByText(/3 (wrong|incorrect)/i)).toBeVisible()
+    await expect(popup.getByText(/3 wrong tries since the vault last opened/i)).toBeVisible()
     expect((await kemlock.call('popup')).state).toMatchObject({ wrongPasswords: 3 })
 
     await unlockWith(popup, PASSWORD)
     // It says once how many there were...
-    await expect(popup.getByText(/3 (wrong|incorrect)/i)).toBeVisible()
+    await expect(popup.getByText(/wrong tries before this unlock: 3/i)).toBeVisible()
     expect((await kemlock.call('popup')).state).toMatchObject({ unlocked: true, wrongPasswords: 0 })
     // ...and not again
     await popup.reload()
-    await expect(popup.getByText(/3 (wrong|incorrect)/i)).toHaveCount(0)
+    await expect(popup.getByText(/wrong tries before this unlock/i)).toHaveCount(0)
   })
 
   test('the vault stays open when the service worker is stopped', async ({ kemlock }) => {

@@ -1,16 +1,14 @@
 // @vitest-environment jsdom
 // Needs the Preact JSX transform in vitest.config.ts (`oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } }`).
-import { readFileSync } from 'node:fs'
 import { render } from 'preact'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { CodeView, LoginView, MenuView, PendingSave } from '../shared/api'
 import { App, ignoredText } from './App'
 import type { Channel, Init } from './channel'
 import type { Verdict } from './gate'
+import enMessages from '../../locales/parts/content.en.json'
 
-const en = JSON.parse(
-  readFileSync(new URL('../../locales/parts/content.en.json', import.meta.url), 'utf8'),
-) as Record<string, string>
+const en: Record<string, string> = enMessages
 
 /** The browser's getMessage: placeholders filled in the order they first appear. */
 function message(name: string, substitutions: string[] = []): string {

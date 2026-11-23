@@ -14,7 +14,7 @@
 import { EXTENSION_ID } from './extension-key'
 import { expect, PASSWORD, test, type Kemlock } from './kemlock'
 import { totp } from './otp'
-import { control, pickPlace, setBrowserPassword } from './ui'
+import { allowAccess, control, enterAddress, pickPlace, setBrowserPassword } from './ui'
 
 const server = process.env.KEMLOCK_SERVER_URL ?? ''
 const email = process.env.KEMLOCK_SERVER_EMAIL ?? ''
@@ -141,10 +141,8 @@ test.describe('Kemlock Server', () => {
       const setup = await kemlock.setup()
       await setBrowserPassword(setup, PASSWORD)
       await pickPlace(setup, 'Kemlock Server')
-      await setup
-        .getByLabel(/server|address/i)
-        .first()
-        .fill(server)
+      await enterAddress(setup, server)
+      await allowAccess(setup)
       const opened = kemlock.context.waitForEvent('page', {
         predicate: (page) => page.url().includes(new URL(server).host),
         timeout: 30_000,
