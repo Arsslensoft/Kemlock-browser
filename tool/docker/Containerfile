@@ -1,6 +1,9 @@
 # Node, pinned, for building the extension's zips the same way on any
-# machine. Built and run by tool/build.sh.
-FROM debian:bookworm-slim
+# machine. Built and run by tool/build.sh. The Debian image is pinned by its
+# digest (the index of debian:bookworm-slim, every platform) and Node by its
+# SHA-256 below; Dependabot cannot read a Containerfile, so both are bumped by
+# hand (CONTRIBUTING.md).
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 # libatomic1: Node's own binary needs it, and the slim image hasn't it.
 RUN apt-get update \
