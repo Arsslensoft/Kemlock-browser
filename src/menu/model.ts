@@ -47,3 +47,17 @@ export function search<T>(items: T[], query: string, words: (item: T) => string[
 
 export const loginWords = (login: LoginView) => [login.name, login.username, ...login.websites]
 export const codeWords = (code: CodeView) => [code.issuer, code.account, ...code.websites]
+
+/**
+ * The hue of an item's tile (the mockups': a hash of the lower-cased name, so the same name always gets
+ * the same colour, in every menu and every browser).
+ */
+export function tileHue(name: string): number {
+  const text = name.toLowerCase()
+  let hash = 7
+  for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) % 4294967296
+  return hash % 360
+}
+
+/** The letter on an item's tile: the first of its name, in capitals. */
+export const tileLetter = (name: string): string => Array.from(name.trim())[0]?.toUpperCase() ?? '?'

@@ -13,8 +13,9 @@ export interface Size {
   height: number
 }
 
-/** The button's side, in pixels, for a field of height [height]. */
-export const badgeSize = (height: number) => Math.max(14, Math.min(24, Math.round(height - 8)))
+/** The button's side, in pixels, for a field of height [height]: 30 in the mockups' 44, never more than the field has. */
+export const badgeSize = (height: number) =>
+  Math.max(14, Math.min(30, Math.max(18, Math.round(height - 14)), height - 2))
 
 /** The fields narrower than this get no button: it would sit on what the person types. */
 export const narrowestField = 90

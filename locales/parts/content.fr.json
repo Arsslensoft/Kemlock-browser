@@ -23,6 +23,8 @@
   "menu_guard_known": "Votre identifiant",
   "menu_dont_fill": "Ne pas remplir",
   "menu_pick_anyway": "Choisir un identifiant quand même",
+  "menu_guard_chip": "Aucune correspondance",
+  "menu_guard_hint": "Le choisir affiche de nouveau l'adresse et ne remplit qu'après votre confirmation.",
   "menu_locked_title": "Kemlock est verrouillé",
   "menu_password": "Mot de passe",
   "menu_unlock": "Déverrouiller",
