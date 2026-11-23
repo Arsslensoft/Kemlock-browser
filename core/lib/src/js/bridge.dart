@@ -27,10 +27,11 @@ import 'host.dart';
 String _ok(Object? value) => jsonEncode({'ok': true, 'value': value});
 
 String _failed(Object error) {
+  // A CoreFailure's message is ours. Any other error's text can carry what was typed or fetched, so only its type leaves
   final (code, message) = switch (error) {
     CoreFailure(:final code, :final message) => (code, message),
-    http.ClientException() => ('network', error.message),
-    _ => (CoreFailure.failed, '$error'),
+    http.ClientException() => ('network', error.runtimeType.toString()),
+    _ => (CoreFailure.failed, error.runtimeType.toString()),
   };
   return jsonEncode({
     'ok': false,

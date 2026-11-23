@@ -11,6 +11,24 @@ import type { Toolbar } from './toolbar'
 
 export const sessionKey = 'kemlock_session'
 
+/** The IndexedDB database the core keeps the sign-in's device keys in (core/lib/src/js/device_keys.dart). */
+export const deviceKeysDatabase = 'kemlock-device-keys'
+
+/** Deletes the device keys' database; it never fails, and never waits on a connection that stays open. */
+function deleteDeviceKeys(): Promise<void> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve()
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(deviceKeysDatabase)
+      request.onsuccess = () => resolve()
+      request.onerror = () => resolve()
+      request.onblocked = () => resolve()
+    } catch {
+      resolve()
+    }
+  })
+}
+
 export class VaultSession {
   /** Set once, since the auto-lock needs `lock` and this needs the auto-lock. */
   autoLock: AutoLock | undefined
@@ -62,10 +80,13 @@ export class VaultSession {
     }
   }
 
-  /** "Remove Kemlock from this browser": the vault, and everything the extension stored. */
+  /** "Remove Kemlock from this browser": signs out of sync, then the vault, the device keys and everything the extension stored. */
   async removed(): Promise<void> {
     const tabIds = await this.tabs.tabIds()
+    // The server learns this device is gone while the keys to say so are still here; if it can't be reached, it goes on
+    await this.core.signOut().catch(() => undefined)
     await this.core.removeVault()
+    await deleteDeviceKeys()
     await this.autoLock?.locked()
     await this.sync.closed()
     await chrome.alarms.clearAll()

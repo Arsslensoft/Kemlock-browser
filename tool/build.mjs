@@ -139,11 +139,18 @@ const coreLoader = {
     source === 'kemlock-core-wasm' ? { id: '/core/core.mjs', external: true } : null,
 }
 
+/** Whether the build runs on `FakeCore` (src/background/core/fake.ts) in place of the Dart core: `KEMLOCK_FAKE_CORE=1`. */
+export const fakeCore = process.env.KEMLOCK_FAKE_CORE === '1'
+
 const shared = (browser) => ({
   root,
   configFile: false,
   logLevel: 'warn',
-  define: { __BROWSER__: JSON.stringify(browser) },
+  define: {
+    __BROWSER__: JSON.stringify(browser),
+    // true only in a build made with KEMLOCK_FAKE_CORE=1 (the e2e tests'): a release leaves FakeCore out of the bundle
+    __FAKE_CORE__: JSON.stringify(fakeCore),
+  },
   plugins: [coreLoader],
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
 })

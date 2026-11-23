@@ -19,6 +19,13 @@ export interface Handlers {
   page: HandlerMap<PageMessage, PageSender>
 }
 
+/** The kind of an error and nothing it says: the core's detail (the Dart type), else the error's name. */
+function errorKind(error: unknown): string {
+  const detail = (error as { detail?: unknown } | null)?.detail
+  const named = typeof detail === 'string' ? detail : (error as { name?: unknown } | null)?.name
+  return typeof named === 'string' && /^[\w$<>, ?.:-]{1,100}$/.test(named) ? named : 'unknown'
+}
+
 async function run<M extends { kind: string }, S>(
   handlers: HandlerMap<M, S>,
   message: M,
@@ -31,13 +38,10 @@ async function run<M extends { kind: string }, S>(
     return { ok: true, value: await handler(message, sender) }
   } catch (error) {
     const word = errorWord(error)
-    // What the background didn't expect is answered as 'failed'; its console says what it was
+    // What the background didn't expect is answered as 'failed'; its console says what it was, in the
+    // message's kind, the code and the kind of error only: never an error's text, which can carry input
     if (word === 'failed')
-      console.error(
-        `Kemlock: ${String(message.kind)} failed`,
-        error,
-        (error as { detail?: string }).detail ?? '',
-      )
+      console.error(`Kemlock: ${String(message.kind)} failed`, word, errorKind(error))
     return { ok: false, error: word }
   }
 }

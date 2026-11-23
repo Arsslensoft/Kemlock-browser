@@ -101,6 +101,8 @@ export interface LoginInput {
   websites: string[]
   note?: string
   tags?: string[]
+  /** A login saved from "Save to Kemlock?": the app marks it `source: 'autofill'` (a new login only). */
+  fromAutofill?: boolean
 }
 
 export interface BackupCodeView {
@@ -321,18 +323,18 @@ export interface CoreApi {
   ): Promise<{ issuer: string; account: string; existing: CodeView | null }>
   linkCode(codeId: string, loginId: string | null): Promise<void>
 
-  // Added by background: sealed in the vault where the core can, else the background keeps them
-  // for the session only (optional, so a core without them still fits).
-  /** "Always suggest here": the items the person picked on a host, remembered in this browser. */
-  rememberPick?(host: string, itemId: string): Promise<void>
-  picks?(host: string): Promise<string[]>
-  /** The hosts an item was picked on, and forgetting one (without these the background keeps an index in storage.local). */
-  pickedHosts?(itemId: string): Promise<string[]>
-  forgetPick?(host: string, itemId: string): Promise<void>
+  // "Always suggest here": picks sealed in the vault (never synced, deleted with it), so a locked core has none and a page that
+  // writes to storage.local changes nothing. The ids are a login's or a code's.
+  /** Remembers that an item was picked on a host. */
+  rememberPick(host: string, itemId: string): Promise<void>
+  /** The items picked on a host. */
+  picks(host: string): Promise<string[]>
+  /** The hosts an item was picked on. */
+  pickedHosts(itemId: string): Promise<string[]>
+  forgetPick(host: string, itemId: string): Promise<void>
   /** Recently generated passwords (30 days, never synced), newest first. */
   recentPasswords?(): Promise<GeneratedPassword[]>
   addRecentPassword?(password: GeneratedPassword): Promise<void>
-  // End of added by background
 
   // Matching, generating, health
   match(address: string): Promise<SiteMatch>
@@ -366,27 +368,6 @@ export interface CoreApi {
   signInKemlockSso?(input: { server: string; email?: string }): Promise<SignInStep>
   /** A passkey or security key with its PRF, asked in a page of the extension. */
   signInKemlockPasskey?(input: { server: string; email?: string }): Promise<SignInStep>
-
-  // Added by core: the passwords the generator made that no saved login holds, kept in the vault for 30 days (never synced).
-  recentPasswords?(): Promise<GeneratedPassword[]>
-  addRecentPassword?(password: GeneratedPassword): Promise<void>
-
-  // Added by popup
-  /**
-   * The sites a login is filled on beyond its own websites ("Always fill on this site"). Kemlock-core's Login holds no such
-   * field (the app keeps per-app picks only), so the core answers [] and keeps nothing: the background keeps them.
-   */
-  rememberedSites?(loginId: string): Promise<string[]>
-  forgetSite?(loginId: string, host: string): Promise<void>
-
-  // Added by setup
-  /** Reads the server's own answer about itself, before any password: Kemlock's `/kem/v1/config`, Vaultwarden's `/api/config`. */
-  checkServer(
-    place: 'kemlock' | 'vaultwarden',
-    server: string,
-  ): Promise<{ ok: true } | { ok: false; problem: SyncProblem }>
-  /** For the pending second step's security key: the page of the server's own address that asks it, and what it takes. */
-  securityKeyChallenge(): Promise<{ domain: string; path: string; data: string } | null>
 }
 
 export type StepAnswer =
@@ -491,7 +472,7 @@ export interface PageApi {
   nextCodes(args: { ids: string[] }): Promise<LiveCode[]>
   /** Marks the next unused backup code used; `copy({what:'backupCode'})` copies that same code. */
   useBackupCode(args: { serviceId: string }): Promise<void>
-  /** The sites a login was picked for with "Always fill on this site", and forgetting one. */
+  /** The sites a login was picked for with "Always suggest here" (sealed in the vault), and forgetting one. */
   rememberedSites(args: { loginId: string }): Promise<string[]>
   forgetSite(args: { loginId: string; host: string }): Promise<void>
   // End of added by popup
@@ -509,15 +490,6 @@ export interface PageApi {
   saveSettings(args: { settings: Partial<Settings> }): Promise<Settings>
   /** Asks for the all-sites permission (must run from a user gesture in a page). */
   allSitesGranted(): Promise<boolean>
-
-  // Added by popup: what the popup needs and the contract lacked.
-  /** The code each id will show when its current one ends (the popup's "next" in the last 5 seconds). */
-  nextCodes(args: { ids: string[] }): Promise<LiveCode[]>
-  /** Marks the service's next unused backup code used (copy() with what: 'backupCode' copies it first). */
-  useBackupCode(args: { serviceId: string }): Promise<void>
-  /** Hosts remembered for a login with "Always suggest here", in this browser only. */
-  rememberedSites(args: { loginId: string }): Promise<string[]>
-  forgetSite(args: { loginId: string; host: string }): Promise<void>
 
   /** The in-page menu's list for the frame that opened it. */
   menu(args: { tabId: number; frameId: number; fieldId: string }): Promise<MenuView>
@@ -539,10 +511,14 @@ export interface PageApi {
   // Added by setup (end)
 }
 
+/** A login as the in-page menu gets it: no note. */
+export type MenuLogin = Omit<LoginView, 'note'>
+
 export interface MenuView {
   state: VaultState
   match: SiteMatch
-  logins: LoginView[]
+  /** The logins the menu lists: the popup's `LoginView`, without its note. */
+  logins: MenuLogin[]
   codes: CodeView[]
   /** A new-password field: suggestions, a strong password and a passphrase. */
   suggestions?: string[]
@@ -572,10 +548,12 @@ export interface ContentApi {
   }): Promise<{ buttons: boolean }>
   /** A form was sent with these values: maybe offer to save (decision 10). */
   sent(args: { username: string; password: string; newPassword?: string }): Promise<void>
-  // Added by content
-  /** The tab and frame this script is in, which the menu needs to name its field (`menu`). */
+  /**
+   * The tab and frame the browser says this script runs in, so the menu frame it opens can name its field to the background,
+   * which checks the sender (the `menu` request). A content script can't learn its own frame id any other way. The background
+   * answers from the sender it trusts, never from the message.
+   */
   frame(args: Record<string, never>): Promise<{ tabId: number; frameId: number }>
-  // End of added by content
   /** The field's menu was opened by a click in plain view (decision 9). */
   openMenu(args: { fieldId: string }): Promise<void>
 }
@@ -591,17 +569,3 @@ export type ContentRequest = {
 
 /** The wire answer: the result, or an error the page shows in its own words. */
 export type Answer<T> = { ok: true; value: T } | { ok: false; error: string }
-
-/* ----------------------------------------------------------------------------------------------- */
-/* Added by content                                                                                  */
-/* ----------------------------------------------------------------------------------------------- */
-
-// Added by content
-export interface ContentApi {
-  /**
-   * The tab and frame the browser says this script runs in, so the menu frame it opens can name its
-   * field to the background, which checks the sender (the `menu` request). A content script can't learn its
-   * own frame id any other way. The background answers from the sender it trusts, never from the message.
-   */
-  frame(args: object): Promise<{ tabId: number; frameId: number }>
-}

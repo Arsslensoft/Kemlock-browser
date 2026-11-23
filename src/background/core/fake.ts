@@ -927,6 +927,7 @@ export class FakeCore implements CoreApi {
   async checkServer(place: 'kemlock' | 'vaultwarden', server: string): Promise<ServerCheck> {
     this.log('checkServer')
     void place
+    if (server.startsWith('http://')) return { ok: false, problem: 'insecure' }
     return server.startsWith('https://') ? { ok: true } : { ok: false, problem: 'kemlockAddress' }
   }
 

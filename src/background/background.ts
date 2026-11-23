@@ -8,7 +8,7 @@ import type {
   ContentApi,
   CoreApi,
   GeneratedPassword,
-  LoginView,
+  MenuLogin,
   MenuView,
   PageApi,
   PageRequest,
@@ -577,9 +577,10 @@ export class Background {
     const match = await siteMatch(core, frame.address)
     const [allLogins, allCodes] = await Promise.all([core.logins(), core.codes()])
     const offered = match.logins.length + match.codes.length > 0
-    const logins: LoginView[] = offered
-      ? allLogins.filter((login) => match.logins.includes(login.id))
-      : allLogins
+    // The note stays in the vault and the popup: the menu is a page of the site's frame and lists names only
+    const logins: MenuLogin[] = (
+      offered ? allLogins.filter((login) => match.logins.includes(login.id)) : allLogins
+    ).map(({ note: _note, ...rest }) => rest)
     const codes: CodeView[] = offered
       ? allCodes.filter((code) => match.codes.includes(code.id))
       : allCodes
@@ -730,6 +731,7 @@ export class Background {
         username: pending.username,
         password: pending.password,
         websites: [pending.host],
+        fromAutofill: true,
       })
     } else {
       const login = (await core.logins()).find((l) => l.id === offer.updateOf)

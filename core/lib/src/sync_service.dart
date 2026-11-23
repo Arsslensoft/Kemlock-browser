@@ -46,6 +46,19 @@ import 'failure.dart';
 import 'generate.dart' show parseWordList;
 import 'vault_service.dart';
 
+/// Why [address] can't be signed in to before anything is sent, or null when it is an https address: the sync problem's name
+/// (`insecure` for http, [other] for anything else that isn't a URL with a host). The engines check again; this keeps a
+/// password from reaching a client at all.
+String? addressProblem(Object? address, {String other = 'address'}) {
+  if (address is! String) return other;
+  final url = Uri.tryParse(address.trim());
+  if (url == null || !url.hasScheme) return other;
+  if (url.scheme == 'http') return 'insecure';
+  return url.scheme == 'https' && url.host.isNotEmpty ? null : other;
+}
+
+Map<String, Object?> _refused(String problem) => {'step': 'error', 'problem': problem};
+
 /// Where the vault's sync settings and state are kept, as the app keeps them: sealed in the vault.
 const keySyncSettings = 'backmycodes_sync';
 const keySyncState = 'backmycodes_sync_state';
@@ -431,6 +444,8 @@ class SyncService {
 
   Future<Map<String, Object?>> signInKemlock(Map<String, Object?> input) async {
     _vault.requireSession();
+    final refused = addressProblem(input['server']);
+    if (refused != null) return _refused(refused);
     return _guard(() async {
       final pending = await _startKemlock(input['server']! as String, input['email']! as String);
       return _afterKemlock(pending, await pending.signIn.password(pending.email, input['password']! as String));
@@ -440,6 +455,8 @@ class SyncService {
   /// "Continue with SSO": the browser's own sign-in flow on the provider the server names, and then the account's keys.
   Future<Map<String, Object?>> signInKemlockSso(Map<String, Object?> input) async {
     _vault.requireSession();
+    final refused = addressProblem(input['server']);
+    if (refused != null) return _refused(refused);
     return _guard(() async {
       final redirect = _vault.platform.ssoRedirect;
       if (redirect == null) throw const CoreFailure(CoreFailure.unavailable, 'the browser gave no sign-in address');
@@ -451,6 +468,8 @@ class SyncService {
   /// A passkey or security key with its PRF, asked in a page of the extension (design decision 13).
   Future<Map<String, Object?>> signInKemlockPasskey(Map<String, Object?> input) async {
     _vault.requireSession();
+    final refused = addressProblem(input['server']);
+    if (refused != null) return _refused(refused);
     return _guard(() async {
       final asserter = _vault.platform.passkeys;
       if (asserter == null) throw const CoreFailure(CoreFailure.unavailable, 'the browser gave no passkey page');
@@ -625,6 +644,8 @@ class SyncService {
 
   Future<Map<String, Object?>> signInWebdav(Map<String, Object?> input) async {
     _vault.requireSession();
+    final refused = addressProblem(input['folder'], other: 'folder');
+    if (refused != null) return _refused(refused);
     return _guard(() async {
       _dropPending();
       final dav = DavAccount(
@@ -678,6 +699,8 @@ class SyncService {
 
   Future<Map<String, Object?>> signInVaultwarden(Map<String, Object?> input) async {
     _vault.requireSession();
+    final refused = addressProblem(input['server']);
+    if (refused != null) return _refused(refused);
     return _guard(() async {
       _dropPending();
       final client = _vault.platform.clientFor(null);
@@ -769,6 +792,8 @@ class SyncService {
   /// Reads the server's own answer about itself, before any password is asked for (browser-sync spec: "The server is checked
   /// first"): a Kemlock Server's `/kem/v1/config`, a Vaultwarden's `/api/config`. The problem is the sync problem the setup says.
   Future<Map<String, Object?>> checkServer(String place, String server) async {
+    final refused = addressProblem(server);
+    if (refused != null) return {'ok': false, 'problem': refused};
     final client = _vault.platform.clientFor(null);
     try {
       switch (place) {

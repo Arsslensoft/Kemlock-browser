@@ -213,7 +213,17 @@ const stepAnswer: Parser<StepAnswer> = (value) => {
   }
 }
 
-const address = text(2048, 1)
+const anyText = text(2048, 1)
+/** A server or folder address: https only, since the password goes to it (the setup tab says `insecure` for http). */
+const address: Parser<string> = (value) => {
+  const typed = anyText(value)
+  if (typed === bad) return bad
+  try {
+    return new URL(typed).protocol === 'https:' ? typed : bad
+  } catch {
+    return bad
+  }
+}
 const otpauth = text(4096, 1)
 
 /** Each page request's arguments, as a spec. A method with none has `{}`. */
