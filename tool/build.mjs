@@ -4,7 +4,8 @@
 // from manifests/base.json and the browser's own (its version is
 // $KEMLOCK_VERSION when that is set: a release's), and _locales from
 // locales/. `node tool/build.mjs chrome` builds one browser.
-import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
@@ -56,11 +57,31 @@ export function localeMessages(own, app) {
   return messages
 }
 
-/** locales/<lang>.json and locales/app/<lang>.json as the browser's _locales. */
+/**
+ * The extension's own strings of a language: locales/<lang>.json and each part of it in
+ * locales/parts/<part>.<lang>.json (one file per area of the extension), a name in only one of them.
+ */
+export async function ownStrings(lang) {
+  const own = await readJson(join('locales', `${lang}.json`))
+  const partsDir = join(root, 'locales', 'parts')
+  const parts = existsSync(partsDir)
+    ? (await readdir(partsDir)).filter((file) => file.endsWith(`.${lang}.json`)).sort()
+    : []
+  for (const part of parts) {
+    for (const [name, text] of Object.entries(await readJson(join('locales', 'parts', part)))) {
+      if (name in own)
+        throw new Error(`The message ${name} is in locales/parts/${part} and elsewhere`)
+      own[name] = text
+    }
+  }
+  return own
+}
+
+/** The extension's strings and locales/app/<lang>.json as the browser's _locales. */
 async function writeLocales(outDir) {
   for (const lang of languages) {
     const messages = localeMessages(
-      await readJson(join('locales', `${lang}.json`)),
+      await ownStrings(lang),
       await readJson(join('locales', 'app', `${lang}.json`)),
     )
     const dir = join(outDir, '_locales', lang)
