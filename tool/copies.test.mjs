@@ -13,12 +13,16 @@ const copies = [
   { ours: join('test', 'fixtures', 'autofill'), app: join('test', 'fixtures', 'autofill') },
   // The files the core reads: the Public Suffix List, EFF's word list and the 2FA directory
   { ours: join('core', 'data'), app: join('assets', 'data') },
+  // The marks the pages show (src/shared/brand/brand.tsx beside them is the extension's own)
+  { ours: join('src', 'shared', 'brand'), app: join('assets', 'brand'), only: '.svg' },
 ]
 
 describe.skipIf(!hasApp)("the copies of the app's files", () => {
-  for (const { ours, app } of copies) {
+  for (const { ours, app, only } of copies) {
     it(`${ours} holds the app's mobile/${app.replace(/\\/g, '/')}, byte for byte`, async () => {
-      for (const file of await readdir(join(root, ours))) {
+      for (const file of (await readdir(join(root, ours))).filter(
+        (name) => !only || name.endsWith(only),
+      )) {
         const mine = await readFile(join(root, ours, file))
         const theirs = await readFile(join(appMobile, app, file))
         expect(mine.equals(theirs), `${ours}/${file}: copy it again from the app`).toBe(true)
