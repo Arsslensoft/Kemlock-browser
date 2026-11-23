@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { identifySender, originOf } from './senders'
+import { frameAddress, identifySender, originOf } from './senders'
 
 describe('originOf', () => {
   it("gives an extension address's origin, which the URL standard calls null", () => {
@@ -13,6 +13,24 @@ describe('originOf', () => {
     expect(originOf(new URL('https://accounts.orbit-cloud.com:8443/sign-in'))).toBe(
       'https://accounts.orbit-cloud.com:8443',
     )
+  })
+})
+
+describe('frameAddress', () => {
+  it("is the frame's own address, or the web origin an address-less frame inherits", () => {
+    expect(
+      frameAddress({
+        url: 'https://accounts.orbit-cloud.com/sign-in',
+        origin: 'https://x.example',
+      }),
+    ).toBe('https://accounts.orbit-cloud.com/sign-in')
+    expect(frameAddress({ url: 'about:blank', origin: 'https://shop.example' })).toBe(
+      'https://shop.example/',
+    )
+    expect(frameAddress({ url: 'about:blank', origin: null })).toBeNull()
+    expect(frameAddress({ url: 'data:text/html,<input>', origin: null })).toBeNull()
+    expect(frameAddress({ url: 'about:srcdoc', origin: 'chrome-extension://abc' })).toBeNull()
+    expect(frameAddress({ url: 'not a url', origin: null })).toBeNull()
   })
 })
 
