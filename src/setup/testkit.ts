@@ -18,3 +18,20 @@ export function makeGetMessage(
     })
   }
 }
+
+/**
+ * For the jsdom tests: animation frames as zero-delay timers, so Preact's effects (which it schedules on the next frame, with
+ * a 100 ms fallback timer) fire at once, and `cancelAnimationFrame` exists wherever the environment lacks it. `flushFrames`
+ * waits them out, so no timer outlives the test.
+ */
+export function frameStubs(): Record<string, unknown> {
+  return {
+    requestAnimationFrame: (callback: (time: number) => void) =>
+      setTimeout(() => callback(Date.now()), 0),
+    cancelAnimationFrame: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
+  }
+}
+
+export const flushFrames = async (): Promise<void> => {
+  for (let i = 0; i < 3; i++) await new Promise<void>((done) => setTimeout(done, 0))
+}

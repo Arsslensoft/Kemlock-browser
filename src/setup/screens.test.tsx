@@ -7,7 +7,7 @@ import { act } from 'preact/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { ask } from './send'
-import { makeGetMessage } from './testkit'
+import { flushFrames, frameStubs, makeGetMessage } from './testkit'
 
 vi.mock('./send', () => ({ ask: vi.fn() }))
 
@@ -40,15 +40,20 @@ beforeEach(() => {
     tabs: { create: createTab },
     action: { openPopup: vi.fn(() => Promise.resolve()) },
   })
+  for (const [name, value] of Object.entries(frameStubs())) vi.stubGlobal(name, value)
   container = document.createElement('div')
   document.body.appendChild(container)
 })
 
-afterEach(() => {
-  render(null, container)
+afterEach(async () => {
+  vi.useRealTimers()
+  // Unmounted inside act so the effects' cleanups run now, then the pending frames are waited out: no timer outlives the test
+  await act(() => {
+    render(null, container)
+  })
+  await flushFrames()
   container.remove()
   window.history.replaceState(null, '', '#')
-  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -88,7 +93,7 @@ const field = (label: string): HTMLInputElement => {
 
 const radio = (label: string): HTMLInputElement => {
   const found = [...container.querySelectorAll('label.radio')].find((l) =>
-    (l.textContent ?? '').startsWith(label),
+    (l.textContent ?? '').includes(label),
   )
   const input = found?.querySelector('input')
   if (input === null || input === undefined) throw new Error(`no choice "${label}" in: ${text()}`)
@@ -288,7 +293,7 @@ describe('Kemlock Server', () => {
       password: 'pw',
     })
     expect(heading()).toBe('Approve this browser')
-    expect([...container.querySelectorAll('.words li')].map((e) => e.textContent)).toEqual([
+    expect([...container.querySelectorAll('.words .word')].map((e) => e.textContent)).toEqual([
       'maple',
       'river',
       'stone',
@@ -492,7 +497,7 @@ describe('Vaultwarden', () => {
       answer: { step: 'homes', homeId: 'h2' },
     })
     expect(heading()).toBe('The first sync')
-    expect(text()).toContain("Logins aren't synced with Vaultwarden yet")
+    expect(text()).toContain('Vaultwarden keeps them in this browser')
   })
 
   it('asks a sealed home for its passphrase and says when it is wrong', async () => {
