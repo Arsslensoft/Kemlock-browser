@@ -1,15 +1,15 @@
 name: Checks
 
 # The checks a change has to pass before it merges and before it is released: lint, types, the
-# tests, the build of both browsers' folders and web-ext's lint of Firefox's, actionlint and
-# ShellCheck, the dependencies it brings in, every commit signed off (DCO), the licences of the
-# packages the zips are built with, and what the change adds to the workflows' and the secrets'
-# risk. (The pull request's title is checked by title.yml.) A pull request and a merge group run
-# them; a push to main runs them through release.yml, which calls this workflow and releases only
-# when they pass (a push is not a trigger here: it would run them twice). They hold no secret, and
-# write nothing, so a fork's pull request runs them as any other does. The main ruleset requires
-# the jobs by name, all but App drift, which a change to the app can fail without any fault of the
-# extension's: keep them.
+# tests, the build of both browsers' folders and web-ext's lint of Firefox's, the extension's
+# end-to-end tests in a real Chromium, actionlint and ShellCheck, the dependencies it brings in,
+# every commit signed off (DCO), the licences of the packages the zips are built with, and what the
+# change adds to the workflows' and the secrets' risk. (The pull request's title is checked by
+# title.yml.) A pull request and a merge group run them; a push to main runs them through
+# release.yml, which calls this workflow and releases only when they pass (a push is not a trigger
+# here: it would run them twice). They hold no secret, and write nothing, so a fork's pull request
+# runs them as any other does. The main ruleset requires the jobs by name, all but App drift, which
+# a change to the app can fail without any fault of the extension's: keep them.
 
 on:
   pull_request:
@@ -224,6 +224,53 @@ jobs:
           path: dist/
           retention-days: 7
           if-no-files-found: error
+
+  # The built extension in a real Chromium, over local fixture sites and an in-memory WebDAV server
+  # (tests/e2e, playwright.config.ts): setup, the vault, sync, the popup and filling pages. The build
+  # compiles the Dart core, so this job has the Dart SDK too. Chromium runs headed, under xvfb, as a
+  # person would see it: extensions don't run in the old headless mode. The tests that need a real
+  # Kemlock Server or Vaultwarden skip themselves (KEMLOCK_SERVER_URL, VAULTWARDEN_URL)
+  e2e:
+    name: E2E
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        with:
+          sdk: 3.13.5
+
+      - name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      # The browser Playwright's version drives, and the libraries it needs
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end tests
+        run: xvfb-run -a npm run test:e2e
+
+      # The HTML report, and each failed test's trace (open one with `npx playwright show-trace`)
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Known vulnerabilities of high severity or more in what the change adds, and the licences that
   # GPL-3.0-or-later cannot take in (the Licences job holds the whole tree to a list of its own).

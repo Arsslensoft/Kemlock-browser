@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "lint:firefox": "node tool/lint-firefox.mjs"
   },
   "dependencies": {

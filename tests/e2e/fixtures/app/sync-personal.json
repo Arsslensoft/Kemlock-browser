@@ -1,0 +1,82 @@
+{
+  "about": "Copied from kemlock-core test/fixtures/sync/sync.json (files[0], \"personal\"), written by the app. Never edit; copy it again from the app.",
+  "passphrase": "correct horse battery staple",
+  "text": "{\"app\":\"BackMyCodes\",\"kind\":\"sync\",\"version\":1,\"kdf\":{\"salt\":\"AUWbWi/P5revT5sdZRFNNVnzK3UdByyZoQ/dv8KtwFU=\",\"N\":131072,\"r\":8,\"p\":1},\"nonce\":\"AOsdRYOZ31n0UmKE\",\"ct\":\"ZB7/zrTiotkvkafF0BH4+ronggR2f9dz6JSK/eHJlPpoj+qzQ187g+asGBWe1Z+TXoZXTxJvVrvWgZw+MW4DScQtvX7vt1T2QTlwt2z2jVd193+nN+Ilp+sAl/7omeM6lljG0ahYruryPM5HWvYZOD0+CoMLdmG0uhA1cLmQdASgtpDpbzSXGjq5bQPHi0XYh8nhHwZ8AWAp2wRPATOm+j3m7x3MEPc+2p2arSI17MDHayiMcfsJvAxM1qmt4ChZpbD+RChvRvK8ONR016wTVR1lE5PzOIXSEq3u69Emmb2PGyqsRZsTYb7pcnzYMBLc3zvXKINZ0ktE9gCqCSA8d6egMv4lm8xuugTci8sx87Ya8BuSqwGQI77go+N4qQUMPqxZU5EYKJFa4RD2/6C7ftZ9XTUKUxcysUeDN2Wj3JeC6+a0EwNIvwmNkDGb3ZHUUTUKEPshlER0gtALJ3YcySWs7IcIZezhKNz6fb8ZBmtsrfkJoljDeCzCuGL0mTPKG/2nZNeW5NQeC+rgJc2pCrzGzZN7moOBJWAm9bTaI04vRf7w6VPNiVi8Y6w+powDKD+WwgMgrrMm7jXBNm9s2v2PbyUwRsC9V/ULKPfc6af51Vreygep52kFg4mVaQ77Vu8XGZjFzD27jSFjv5qViyCc1RmYepQp2kOtA94dZ26S8VbR+do5DSNqMnQPowWeDBhPiU2fkdrSBQel0Sfecf1Tsgov2A2iS4KqnhlEKoDxriv781lHVA6Ao8AxQ6jwQRgNS1PDsge/qcHWp2V8gpqABvgMqsZLVFoexSycC+du8tNmcz0EYN6mZU5GCbmYlaxJpGc1WhRxjFpA0dubTku3VEzBlXEVbZaEqMo3tkb57FrHtJJxPoKuUHvLmoBeQfEEUJIYKnHlQcv66BfwysD8VQepML7sVRB8ww7rXASLopUFcdWuu2XsCBE9XB+0nZhyAz6HDAZzRpikMHb/kW8Ng4eeSRZsTBH2tS7C4BWOUwweYQpA6CpqQPS8dGJ6vuOM9bYz9mM82PjQuyg7BSAoOLwfcOSPhvxWgIXH203D5wfRE0O0PC1R7LqJ5pydv5yQ4SNy0uvGk+KI1QDLniTwOAjlFhW/b/NeySXSI3iaPJgQTCJb2SgdJFvxpFLpFie03OoEbn+tMbZqlQZtQpc3hswBYrTinJXrMNif3hjuHFmHMhwp9AaV4pyRO6PuExUihNuVpjj98NbbcOYzCLc4wZQIcwgbkDU5dhUcwtsft0dSxukzOBRX2wNISuZPMRzLM57AYxjez1+2+Q3WFm6fdfyVNRcpViSIK2AQocQRan1DDDHA+Uy9BzNu9HcOKOB4JulEHDvFvoVd2/SgI1KRe688cQKMgaE8SuqyQ78=\"}",
+  "decrypted": {
+    "accounts": [
+      {
+        "id": "a1",
+        "issuer": "GitHub",
+        "label": "me@example.com",
+        "secret": "JBSWY3DPEHPK3PXP",
+        "algorithm": "SHA1",
+        "digits": 6,
+        "period": 30,
+        "addedAt": 1700000000000
+      },
+      {
+        "id": "a2",
+        "type": "hotp",
+        "issuer": "Société Générale ✓",
+        "label": "Zoë 🔐",
+        "secret": "GEZDGNBVGY3TQOJQ",
+        "algorithm": "SHA256",
+        "digits": 8,
+        "period": 30,
+        "counter": 42,
+        "pinned": true,
+        "tags": ["bank", "famille"],
+        "order": 3,
+        "note": "Line one\nline \"two\"\ttabbed \\ back",
+        "addedAt": 1700000001000,
+        "updatedAt": 1700000500000,
+        "future": {
+          "nested": [1, "two", null, true]
+        }
+      },
+      {
+        "id": "a3",
+        "type": "steam",
+        "issuer": "Steam",
+        "label": "",
+        "secret": "STEAMSECRET23456",
+        "algorithm": "SHA1",
+        "digits": 6,
+        "period": 30,
+        "noBackupCodes": true,
+        "addedAt": 1700000002000
+      }
+    ],
+    "backupServices": [
+      {
+        "id": "s1",
+        "serviceName": "GitHub",
+        "codes": [
+          {
+            "code": "abcd-1234",
+            "used": false
+          },
+          {
+            "code": "efgh-5678",
+            "used": true,
+            "usedAt": 1700000600000
+          }
+        ],
+        "note": "Printed copy in the drawer",
+        "addedAt": 1700000003000,
+        "updatedAt": 1700000600000
+      }
+    ],
+    "deleted": [
+      {
+        "id": "gone-1",
+        "at": 1700000400000
+      },
+      {
+        "id": "gone-2",
+        "at": 1700000700000,
+        "by": "tablet"
+      }
+    ]
+  }
+}

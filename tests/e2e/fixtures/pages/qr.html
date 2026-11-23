@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Set up two-step sign-in</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Set up two-step sign-in</h1>
+      <p>Scan this code with your authenticator app.</p>
+      <canvas id="qr" aria-label="Setup code"></canvas>
+    </main>
+    <script src="/qr.js"></script>
+    <script>
+      // ?uri= is what the code holds; it defaults to an account the vault doesn't have
+      const uri =
+        new URLSearchParams(location.search).get('uri') ||
+        'otpauth://totp/Harbor%20Notes:alex@harbornotes.app?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Harbor%20Notes'
+      globalThis.kemlockQr.draw(document.getElementById('qr'), uri, 6)
+    </script>
+  </body>
+</html>
