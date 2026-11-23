@@ -701,6 +701,20 @@ export class FakeCore implements CoreApi {
     return this.codeView(disk.codes.find((c) => c.id === code.id)!)
   }
 
+  async previewCode(
+    otpauth: string,
+  ): Promise<{ issuer: string; account: string; existing: CodeView | null }> {
+    this.log('previewCode')
+    const disk = this.need()
+    const parsed = parseOtpauth(otpauth)
+    const held = disk.codes.find((c) => bytesEqual(c.secret, parsed.secret))
+    return {
+      issuer: parsed.issuer,
+      account: parsed.account,
+      existing: held === undefined ? null : this.codeView(held),
+    }
+  }
+
   async readQr(imageDataUrl: string): Promise<string | null> {
     this.log('readQr')
     const prefix = 'data:image/png;kemlock-fake-qr,'

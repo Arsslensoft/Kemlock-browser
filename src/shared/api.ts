@@ -39,6 +39,19 @@ export interface CodeView {
   backupCodesLeft?: number
 }
 
+/** A code found on a page, not yet added. */
+export interface CodePreview {
+  /** The link the QR code holds, to be added as it is or with another name. */
+  otpauth: string
+  /** The name it would have, and its account. */
+  issuer: string
+  account: string
+  /** The page's site, which the code would have as its website. */
+  website?: string
+  /** The code in the vault that has this secret already. */
+  existing?: CodeView
+}
+
 /** A live code: only the digits leave the core. */
 export interface LiveCode {
   id: string
@@ -302,6 +315,10 @@ export interface CoreApi {
   addCode(otpauth: string, website?: string, linkTo?: string): Promise<CodeView>
   /** Decodes a QR code from an image (a PNG data URL, e.g. captureVisibleTab), or null. */
   readQr(imageDataUrl: string): Promise<string | null>
+  /** What a link would add, saving nothing: its name, and the saved code that has its secret already. */
+  previewCode(
+    otpauth: string,
+  ): Promise<{ issuer: string; account: string; existing: CodeView | null }>
   linkCode(codeId: string, loginId: string | null): Promise<void>
 
   // Added by background: sealed in the vault where the core can, else the background keeps them
@@ -463,9 +480,11 @@ export interface PageApi {
     remember?: boolean
   }): Promise<void>
 
-  addCodeFromLink(args: { otpauth: string; linkTo?: string }): Promise<CodeView>
+  addCodeFromLink(args: { otpauth: string; website?: string; linkTo?: string }): Promise<CodeView>
   /** Reads a QR code shown in the tab in front. */
   addCodeFromTab(args: { tabId: number; linkTo?: string }): Promise<CodeView | null>
+  /** Reads a QR code shown in the tab in front and says what it would add, adding nothing; null when it holds no code. */
+  readCodeFromTab(args: { tabId: number }): Promise<CodePreview | null>
   linkCode(args: { codeId: string; loginId: string | null }): Promise<void>
   // Added by popup
   /** The code each id will show once its current one ends (the popup asks in a code's last 5 seconds). */

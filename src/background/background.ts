@@ -3,6 +3,7 @@
 // by their extension origin and a content script only by what the browser reports of its frame
 // (design decision 4); the answers are the router's.
 import type {
+  CodePreview,
   CodeView,
   ContentApi,
   CoreApi,
@@ -93,6 +94,22 @@ export class Background {
     const state = await this.d.core.state()
     if (!state.exists) throw new BackgroundError('noVault')
     if (!state.unlocked) throw new BackgroundError('locked')
+  }
+
+  /** The otpauth:// link of the QR code visible in the tab in front, with the tab's site; null when there is none. */
+  private async codeOnPage(tabId: number): Promise<{ link: string; host: string | null } | null> {
+    const tab = await chrome.tabs.get(tabId).catch(() => undefined)
+    // Only what the person sees in the tab in front is read
+    if (tab === undefined || tab.active !== true) throw new BackgroundError('unknownField')
+    let image: string
+    try {
+      image = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+    } catch {
+      throw new BackgroundError('noPermission')
+    }
+    const link = await this.d.core.readQr(image)
+    if (link === null || !link.toLowerCase().startsWith('otpauth://')) return null
+    return { link, host: tab.url === undefined ? null : hostOf(tab.url) }
   }
 
   /** Kemlock was used: the idle time starts over (at most every few seconds). */
@@ -373,31 +390,35 @@ export class Background {
         )
       },
 
-      addCodeFromLink: async ({ otpauth, linkTo }, sender) => {
+      addCodeFromLink: async ({ otpauth, website, linkTo }, sender) => {
         this.check(sender, pages)
         await this.needOpen()
-        const code = await core.addCode(otpauth, undefined, linkTo)
+        const code = await core.addCode(otpauth, website, linkTo)
         await this.changed()
         return code
       },
       addCodeFromTab: async ({ tabId, linkTo }, sender): Promise<CodeView | null> => {
         this.check(sender, pages)
         await this.needOpen()
-        const tab = await chrome.tabs.get(tabId).catch(() => undefined)
-        // Only what the person sees in the tab in front is read
-        if (tab === undefined || tab.active !== true) throw new BackgroundError('unknownField')
-        let image: string
-        try {
-          image = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
-        } catch {
-          throw new BackgroundError('noPermission')
-        }
-        const link = await core.readQr(image)
-        if (link === null || !link.toLowerCase().startsWith('otpauth://')) return null
-        const host = tab.url === undefined ? null : hostOf(tab.url)
-        const code = await core.addCode(link, host ?? undefined, linkTo)
+        const found = await this.codeOnPage(tabId)
+        if (found === null) return null
+        const code = await core.addCode(found.link, found.host ?? undefined, linkTo)
         await this.changed()
         return code
+      },
+      readCodeFromTab: async ({ tabId }, sender): Promise<CodePreview | null> => {
+        this.check(sender, pages)
+        await this.needOpen()
+        const found = await this.codeOnPage(tabId)
+        if (found === null) return null
+        const preview = await core.previewCode(found.link)
+        return {
+          otpauth: found.link,
+          issuer: preview.issuer,
+          account: preview.account,
+          ...(found.host === null ? {} : { website: found.host }),
+          ...(preview.existing === null ? {} : { existing: preview.existing }),
+        }
       },
       nextCodes: async ({ ids }, sender) => {
         this.check(sender, pages)
