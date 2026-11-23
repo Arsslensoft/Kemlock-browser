@@ -11,6 +11,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const copies = [
   { ours: 'fonts', app: join('assets', 'fonts') },
   { ours: join('test', 'fixtures', 'autofill'), app: join('test', 'fixtures', 'autofill') },
+  // The files the core reads: the Public Suffix List, EFF's word list and the 2FA directory
+  { ours: join('core', 'data'), app: join('assets', 'data') },
 ]
 
 describe.skipIf(!hasApp)("the copies of the app's files", () => {
