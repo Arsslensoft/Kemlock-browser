@@ -30,7 +30,15 @@ async function run<M extends { kind: string }, S>(
   try {
     return { ok: true, value: await handler(message, sender) }
   } catch (error) {
-    return { ok: false, error: errorWord(error) }
+    const word = errorWord(error)
+    // What the background didn't expect is answered as 'failed'; its console says what it was
+    if (word === 'failed')
+      console.error(
+        `Kemlock: ${String(message.kind)} failed`,
+        error,
+        (error as { detail?: string }).detail ?? '',
+      )
+    return { ok: false, error: word }
   }
 }
 

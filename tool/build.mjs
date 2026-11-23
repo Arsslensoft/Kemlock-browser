@@ -102,7 +102,12 @@ export function dartCompileArgs(out) {
 }
 
 function dart(args, cwd) {
-  const run = spawnSync('dart', args, { cwd, stdio: 'inherit' })
+  // On Windows dart is dart.bat, which only a shell starts
+  const run = spawnSync('dart', args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  })
   if (run.error?.code === 'ENOENT')
     throw new Error(
       `The Dart SDK ${dartVersion} is needed to build the core (core/), and dart is not on the PATH. Install it from dart.dev, or build in the container with tool/build.sh.`,
