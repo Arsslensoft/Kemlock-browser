@@ -1,0 +1,6 @@
+{
+  "bgMenuFillLogin": "Fill login",
+  "bgMenuFillCode": "Fill code",
+  "bgMenuNewPassword": "New password",
+  "bgClipboardJustification": "Copies a code or a password to the clipboard and clears it later, while the popup is closed."
+}

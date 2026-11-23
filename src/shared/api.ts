@@ -123,6 +123,9 @@ export interface GeneratorOptions {
   includeNumber?: boolean
   /** A site's rules (maxlength, minlength, pattern, password-rules), when filling a new-password field. */
   siteRules?: string
+  // Added by popup
+  /** Leave out look-alike characters (l, 1, I, O, 0); true when not given. */
+  avoidLookAlikes?: boolean
 }
 
 export interface GeneratedPassword {
@@ -176,6 +179,10 @@ export interface SyncStatus {
   pendingRemovals?: number
   /** Vaultwarden: logins travel through WebDAV only (spec), so the popup says so. */
   loginsNotSynced?: boolean
+  // Added by popup
+  storage?: 'sealed' | 'plain'
+  /** The home's name. */
+  home?: string
 }
 
 export interface VaultState {
@@ -208,6 +215,17 @@ export type SignInStep =
   /** The first sync is shown before it runs (spec). */
   | { step: 'firstSync'; adds: number; removes: number }
   | { step: 'error'; problem: SyncProblem; message?: string }
+
+// Added by setup
+export type ServerCheck = { ok: true } | { ok: false; problem: SyncProblem }
+
+/** The connector page of the last sign-in's security-key step, opened on the server's own address. */
+export interface SecurityKeyChallenge {
+  domain: string
+  path: string
+  data: string
+}
+// End of added by setup
 
 export type SecondMethod = 'authenticator' | 'email' | 'yubikey' | 'securityKey' | 'duo' | 'apiKey'
 
@@ -291,6 +309,19 @@ export interface CoreApi {
   readQr(imageDataUrl: string): Promise<string | null>
   linkCode(codeId: string, loginId: string | null): Promise<void>
 
+  // Added by background: sealed in the vault where the core can, else the background keeps them
+  // for the session only (optional, so a core without them still fits).
+  /** "Always suggest here": the items the person picked on a host, remembered in this browser. */
+  rememberPick?(host: string, itemId: string): Promise<void>
+  picks?(host: string): Promise<string[]>
+  /** The hosts an item was picked on, and forgetting one (without these the background keeps an index in storage.local). */
+  pickedHosts?(itemId: string): Promise<string[]>
+  forgetPick?(host: string, itemId: string): Promise<void>
+  /** Recently generated passwords (30 days, never synced), newest first. */
+  recentPasswords?(): Promise<GeneratedPassword[]>
+  addRecentPassword?(password: GeneratedPassword): Promise<void>
+  // End of added by background
+
   // Matching, generating, health
   match(address: string): Promise<SiteMatch>
   generate(options: GeneratorOptions): Promise<string>
@@ -307,6 +338,12 @@ export interface CoreApi {
   /** The removal guard: go on with the run that would remove many. */
   confirmRemovals(): Promise<SyncStatus>
   signOut(): Promise<void>
+  // Added by setup
+  /** Checks that the address answers as a supported server, before any password is asked. */
+  checkServer(place: 'kemlock' | 'vaultwarden', server: string): Promise<ServerCheck>
+  /** The connector page for the last sign-in's security-key step, or null. */
+  securityKeyChallenge(): Promise<SecurityKeyChallenge | null>
+  // End of added by setup
 
   settings(): Promise<Settings>
   saveSettings(settings: Partial<Settings>): Promise<Settings>
@@ -376,18 +413,35 @@ export interface PageApi {
     fieldId?: string
     loginId?: string
     codeId?: string
+    // Added by background: a suggested password fills the field and its confirmation, and is
+    // kept under Recently generated; `remember` is "Always suggest here" on an unknown site.
+    newPassword?: string
+    remember?: boolean
   }): Promise<void>
 
   addCodeFromLink(args: { otpauth: string; linkTo?: string }): Promise<CodeView>
   /** Reads a QR code shown in the tab in front. */
   addCodeFromTab(args: { tabId: number; linkTo?: string }): Promise<CodeView | null>
   linkCode(args: { codeId: string; loginId: string | null }): Promise<void>
+  // Added by popup
+  /** The code each id will show once its current one ends (the popup asks in a code's last 5 seconds). */
+  nextCodes(args: { ids: string[] }): Promise<LiveCode[]>
+  /** Marks the next unused backup code used; `copy({what:'backupCode'})` copies that same code. */
+  useBackupCode(args: { serviceId: string }): Promise<void>
+  /** The sites a login was picked for with "Always fill on this site", and forgetting one. */
+  rememberedSites(args: { loginId: string }): Promise<string[]>
+  forgetSite(args: { loginId: string; host: string }): Promise<void>
+  // End of added by popup
 
   syncStatus(): Promise<SyncStatus | null>
   signInKemlock(args: KemlockSignIn): Promise<SignInStep>
   signInWebdav(args: WebdavSignIn): Promise<SignInStep>
   signInVaultwarden(args: VaultwardenSignIn): Promise<SignInStep>
   answerStep(args: { answer: StepAnswer }): Promise<SignInStep>
+  // Added by setup
+  checkServer(args: { place: 'kemlock' | 'vaultwarden'; server: string }): Promise<ServerCheck>
+  securityKeyChallenge(): Promise<SecurityKeyChallenge | null>
+  // End of added by setup
   syncNow(): Promise<SyncStatus>
   confirmRemovals(): Promise<SyncStatus>
   signOut(): Promise<void>
@@ -412,6 +466,8 @@ export interface MenuView {
   /** A new-password field: suggestions, a strong password and a passphrase. */
   suggestions?: string[]
   field: { kind: 'username' | 'password' | 'newPassword' | 'code' }
+  /** Added by background: sync's session ended (an SSO-only account has no password to type here), so point to setup. */
+  signInAgain?: boolean
 }
 
 export interface PendingSave {
@@ -425,10 +481,20 @@ export interface PendingSave {
 export interface ContentApi {
   /** The fields this frame found (decision 7); the answer says whether to show buttons. */
   fields(args: {
-    fields: { id: string; kind: 'username' | 'password' | 'newPassword' | 'code'; boxes?: number }[]
+    fields: {
+      id: string
+      kind: 'username' | 'password' | 'newPassword' | 'code'
+      boxes?: number
+      /** Added by background: the field's site rules (maxlength, minlength, passwordrules). */
+      rules?: string
+    }[]
   }): Promise<{ buttons: boolean }>
   /** A form was sent with these values: maybe offer to save (decision 10). */
   sent(args: { username: string; password: string; newPassword?: string }): Promise<void>
+  // Added by content
+  /** The tab and frame this script is in, which the menu needs to name its field (`menu`). */
+  frame(args: Record<string, never>): Promise<{ tabId: number; frameId: number }>
+  // End of added by content
   /** The field's menu was opened by a click in plain view (decision 9). */
   openMenu(args: { fieldId: string }): Promise<void>
 }

@@ -1,16 +1,14 @@
 // The background's one entry for messages: who sent it, whether that
 // sender may send it, then its handler (design decision 4).
+import type { Answer } from '../shared/api'
 import {
   parseContentMessage,
   parsePageMessage,
   type ContentMessage,
   type PageMessage,
 } from '../shared/messages'
+import { errorWord } from './errors'
 import { identifySender, type ContentSender, type Identity, type PageSender } from './senders'
-
-export type Answer =
-  | { ok: true; value?: unknown }
-  | { ok: false; error: 'refused' | 'malformed' | 'unsupported' | 'failed' }
 
 type HandlerMap<M extends { kind: string }, S> = {
   [K in M['kind']]?: (message: Extract<M, { kind: K }>, sender: S) => unknown
@@ -25,15 +23,28 @@ async function run<M extends { kind: string }, S>(
   handlers: HandlerMap<M, S>,
   message: M,
   sender: S,
-): Promise<Answer> {
+): Promise<Answer<unknown>> {
   const handler = handlers[message.kind as M['kind']] as
     ((message: M, sender: S) => unknown) | undefined
   if (handler === undefined) return { ok: false, error: 'unsupported' }
   try {
     return { ok: true, value: await handler(message, sender) }
-  } catch {
-    return { ok: false, error: 'failed' }
+  } catch (error) {
+    return { ok: false, error: errorWord(error) }
   }
+}
+
+/**
+ * Messages that go from one extension page to another and are not the background's: the setup tab's
+ * relay of a security key's answer, which setup listens for itself. The background neither answers
+ * nor counts them as refused.
+ */
+const forOtherPages: ReadonlySet<unknown> = new Set(['securityKeyResult'])
+
+export function isForOtherPages(raw: unknown): boolean {
+  return (
+    typeof raw === 'object' && raw !== null && forOtherPages.has((raw as { kind?: unknown }).kind)
+  )
 }
 
 /**
@@ -45,7 +56,7 @@ export async function route(
   chromeSender: chrome.runtime.MessageSender,
   self: Identity,
   handlers: Handlers,
-): Promise<Answer> {
+): Promise<Answer<unknown>> {
   const sender = identifySender(chromeSender, self)
   if (sender === null) return { ok: false, error: 'refused' }
   if (sender.from === 'content') {
