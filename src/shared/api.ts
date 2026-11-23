@@ -359,8 +359,8 @@ export interface CoreApi {
    * The sites a login is filled on beyond its own websites ("Always fill on this site"). Kemlock-core's Login holds no such
    * field (the app keeps per-app picks only), so the core answers [] and keeps nothing: the background keeps them.
    */
-  rememberedSites(loginId: string): Promise<string[]>
-  forgetSite(loginId: string, host: string): Promise<void>
+  rememberedSites?(loginId: string): Promise<string[]>
+  forgetSite?(loginId: string, host: string): Promise<void>
 
   // Added by setup
   /** Reads the server's own answer about itself, before any password: Kemlock's `/kem/v1/config`, Vaultwarden's `/api/config`. */
