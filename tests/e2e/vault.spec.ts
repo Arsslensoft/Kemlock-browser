@@ -24,9 +24,7 @@ test.describe('the browser vault', () => {
 
   test('setup asks for a password twice and makes the vault', async ({ kemlock }) => {
     const setup = await kemlock.setup()
-    await expect(
-      setup.getByRole('heading', { name: /a password for this browser/i }),
-    ).toBeVisible()
+    await expect(setup.getByRole('heading', { name: /a password for this browser/i })).toBeVisible()
 
     // Two different passwords: "Create the vault" stays disabled, and the screen says why
     await typeBrowserPassword(setup, PASSWORD, `${PASSWORD} but different`)
@@ -93,9 +91,7 @@ test.describe('the browser vault', () => {
 
     for (const wrong of ['nope 1', 'nope 2', 'nope 3']) {
       await unlockWith(popup, wrong)
-      await expect(
-        popup.getByText(/wrong|isn.t the password/i).first(),
-      ).toBeVisible()
+      await expect(popup.getByText(/wrong|isn.t the password/i).first()).toBeVisible()
     }
     // The popup is closed and opened again: the count and the time are still there
     await popup.close()
