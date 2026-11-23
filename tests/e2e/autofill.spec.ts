@@ -6,10 +6,16 @@ import { expect, GATE_MS, menuItem, ORBIT, test, type Kemlock } from './kemlock'
 import { hosts } from './hosts'
 import { totpNear } from './otp'
 import { control, toggle } from './ui'
-import type { Frame, Page } from '@playwright/test'
+import type { Frame, Locator, Page } from '@playwright/test'
 
 const email = (page: Page | Frame) => page.getByLabel('Email')
 const password = (page: Page | Frame) => page.getByLabel('Password', { exact: true })
+
+/** Waits out the click gate's half second, then clicks: a normal click after the menu has been open that long counts. */
+async function gatedClick(menu: Frame, target: Locator): Promise<void> {
+  await menu.page().waitForTimeout(GATE_MS)
+  await target.click()
+}
 
 /** Opens the field's menu, waits out the click gate, and picks the item. */
 async function pick(
@@ -19,8 +25,7 @@ async function pick(
   item: string | RegExp = ORBIT.name,
 ) {
   const menu = await kemlock.openMenu(page, field)
-  await page.waitForTimeout(GATE_MS)
-  await menuItem(menu, item).click()
+  await gatedClick(menu, menuItem(menu, item))
   return menu
 }
 
@@ -182,14 +187,12 @@ test.describe('autofill, with access to all sites', () => {
       const page = await kemlock.visit(hosts.orbitAuth, '/signin')
       let menu = await kemlock.openMenu(page, email(page))
       await expect(menu.getByText(UNKNOWN_SITE).first()).toBeVisible()
-      await page.waitForTimeout(GATE_MS)
-      await menuItem(menu, ORBIT.name).click()
+      await gatedClick(menu, menuItem(menu, ORBIT.name))
       // The address it would fill (the site's registrable domain) is shown before anything is filled
       await expect(menu.getByText(/orbitauth\.net/i).first()).toBeVisible()
       await expect(email(page)).toHaveValue('')
       await toggle(menu, /always suggest here/i).check()
-      await page.waitForTimeout(GATE_MS)
-      await control(menu, /^(fill|confirm|yes|continue)/i).click()
+      await gatedClick(menu, control(menu, /^(fill|confirm|yes|continue)/i))
       await expect(email(page)).toHaveValue(ORBIT.username)
 
       // From then on it is offered by name there
@@ -225,12 +228,10 @@ test.describe('autofill, with access to all sites', () => {
       const menu = await kemlock.openMenu(page, email(page))
       // The guard first: "Pick a login anyway", then the login, then the address it fills
       await control(menu, /pick a login anyway/i).click()
-      await page.waitForTimeout(GATE_MS)
       await menuItem(menu, ORBIT.name).click()
       await expect(email(page)).toHaveValue('')
       await expect(menu.getByText(/orbit-c1oud\.com/).first()).toBeVisible()
-      await page.waitForTimeout(GATE_MS)
-      await control(menu, /^(fill|confirm|yes|continue)/i).click()
+      await gatedClick(menu, control(menu, /^(fill|confirm|yes|continue)/i))
       await expect(email(page)).toHaveValue(ORBIT.username)
     })
 
@@ -287,6 +288,8 @@ test.describe('autofill, with access to all sites', () => {
     test('a code fills, and a recovery field never gets one', async ({ kemlock }) => {
       const page = await kemlock.visit(hosts.orbit, '/code')
       await pick(kemlock, page, page.locator('#otp'))
+      // The fill goes through the background: it lands a moment after the click
+      await expect(page.locator('#otp')).toHaveValue(/^\d{6}$/)
       expect(totpNear(ORBIT.secret)).toContain(await page.locator('#otp').inputValue())
       await expect(page.locator('#recovery')).toHaveValue('')
     })
@@ -294,6 +297,9 @@ test.describe('autofill, with access to all sites', () => {
     test('a row of six boxes is one code, one digit in each', async ({ kemlock }) => {
       const page = await kemlock.visit(hosts.orbit, '/boxes')
       await pick(kemlock, page, page.getByLabel('Digit 1'))
+      // The fill goes through the background: wait for the last box before reading them all
+      for (const n of [1, 2, 3, 4, 5, 6])
+        await expect(page.getByLabel(`Digit ${n}`)).toHaveValue(/^\d$/)
       const digits = await Promise.all(
         [1, 2, 3, 4, 5, 6].map((n) => page.getByLabel(`Digit ${n}`).inputValue()),
       )
@@ -315,8 +321,7 @@ test.describe('autofill, with access to all sites', () => {
       const menu = await kemlock.menu(page, 15_000)
       await expect(menuItem(menu, ORBIT.name)).toBeVisible()
       await expect(page.locator('#otp')).toHaveValue('')
-      await page.waitForTimeout(GATE_MS)
-      await menuItem(menu, ORBIT.name).click()
+      await gatedClick(menu, menuItem(menu, ORBIT.name))
       // The fill goes through the background: it lands a moment after the click
       await expect(page.locator('#otp')).toHaveValue(/^\d{6}$/)
       expect(totpNear(ORBIT.secret)).toContain(await page.locator('#otp').inputValue())
@@ -329,6 +334,8 @@ test.describe('autofill, with access to all sites', () => {
     }) => {
       const page = await kemlock.visit(hosts.harbor, '/signup')
       await pick(kemlock, page, page.locator('#new-password'), /strong password/i)
+      // The fill goes through the background: it lands a moment after the click
+      await expect(page.locator('#new-password')).toHaveValue(/^.{14,}$/)
       const first = await page.locator('#new-password').inputValue()
       expect(first.length).toBeGreaterThanOrEqual(14)
       await expect(page.locator('#confirm-password')).toHaveValue(first)
@@ -364,8 +371,7 @@ test.describe('autofill, with access to all sites', () => {
       const prompt = await kemlock.frameWithText(page, /save to kemlock\?/i)
       await expect(prompt.getByText(/harbornotes\.app/i).first()).toBeVisible()
       await expect(prompt.getByText(/alex@harbornotes\.app/i).first()).toBeVisible()
-      await page.waitForTimeout(GATE_MS)
-      await control(prompt, /^save$/i).click()
+      await gatedClick(prompt, control(prompt, /^save$/i))
 
       await expect
         .poll(
@@ -422,8 +428,7 @@ test.describe('autofill, with access to all sites', () => {
       await page.waitForURL(/\/welcome$/)
 
       const prompt = await kemlock.frameWithText(page, /update in kemlock\?/i)
-      await page.waitForTimeout(GATE_MS)
-      await control(prompt, /^update$/i).click()
+      await gatedClick(prompt, control(prompt, /^update$/i))
       await expect
         .poll(async () => kemlock.call('showPassword', { id: login.id }))
         .toBe('Harbor-new-67890?')
