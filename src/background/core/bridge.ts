@@ -75,6 +75,7 @@ export const methods = [
   'answerStep',
   'syncNow',
   'confirmRemovals',
+  'keepRemovals',
   'signOut',
   'settings',
   'saveSettings',

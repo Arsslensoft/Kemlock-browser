@@ -52,6 +52,7 @@ class CoreService {
     'answerStep',
     'syncNow',
     'confirmRemovals',
+    'keepRemovals',
     'signOut',
     'settings',
     'saveSettings',
@@ -186,6 +187,8 @@ class CoreService {
         return sync.syncNow();
       case 'confirmRemovals':
         return sync.confirmRemovals();
+      case 'keepRemovals':
+        return sync.keepRemovals();
       case 'signOut':
         await sync.signOut();
         return null;

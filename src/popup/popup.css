@@ -392,3 +392,28 @@ input[type='range'] {
 .recent-item {
   align-items: flex-start;
 }
+
+.removal-guard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.removal-guard p {
+  margin: 0;
+}
+
+.removal-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.removal-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}

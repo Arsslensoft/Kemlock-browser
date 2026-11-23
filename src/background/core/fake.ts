@@ -18,6 +18,7 @@ import type {
   LoginView,
   Settings,
   SignInStep,
+  RemovalItem,
   SecurityKeyChallenge,
   ServerCheck,
   SiteMatch,
@@ -385,6 +386,15 @@ export class FakeCore implements CoreApi {
   private step: { place: SyncPlace; server: string; account?: string; at: string } | null = null
   /** Set it to make the next syncs stop with this problem, as a sync that can't go on does. */
   syncProblem: string | undefined
+  /**
+   * A run the removal guard stops: `syncNow` ends with `problem: 'removals'` and these numbers until the person answers
+   * `confirmRemovals` (the removals go) or `keepRemovals` (everything stays); each is logged and clears the stop.
+   */
+  guard: { count: number; scope: number; items?: RemovalItem[] } | undefined
+  /** What the last answer to the guard was, for tests. */
+  guardAnswer: 'remove' | 'keep' | undefined
+  /** Sign-ins by SSO or passkey end as this when set (a step the fake would otherwise finish with `done`). */
+  waysStep: SignInStep | undefined
   /** Calls made, by name, for the tests. */
   readonly calls: string[] = []
 
@@ -882,6 +892,18 @@ export class FakeCore implements CoreApi {
     return this.joined('kemlock', input.server, input.email)
   }
 
+  async signInKemlockSso(input: { server: string; email?: string }): Promise<SignInStep> {
+    this.log('signInKemlockSso')
+    this.need()
+    return this.waysStep ?? this.joined('kemlock', input.server, input.email ?? 'sso@kemlock.example')
+  }
+
+  async signInKemlockPasskey(input: { server: string; email?: string }): Promise<SignInStep> {
+    this.log('signInKemlockPasskey')
+    this.need()
+    return this.waysStep ?? this.joined('kemlock', input.server, input.email ?? 'key@kemlock.example')
+  }
+
   async signInWebdav(input: WebdavSignIn): Promise<SignInStep> {
     this.log('signInWebdav')
     this.need()
@@ -944,10 +966,26 @@ export class FakeCore implements CoreApi {
     this.log('syncNow')
     const disk = this.need()
     if (disk.sync === null) throw new FakeError('notSignedIn')
-    if (this.syncProblem !== undefined) {
+    if (this.guard !== undefined) {
+      const { count, scope, items } = this.guard
+      disk.sync = {
+        ...disk.sync,
+        running: false,
+        problem: 'removals',
+        pendingRemovals: count,
+        scopeSize: scope,
+        ...(items === undefined ? {} : { pendingRemovalItems: items }),
+      }
+    } else if (this.syncProblem !== undefined) {
       disk.sync = { ...disk.sync, running: false, problem: this.syncProblem }
     } else {
-      const { problem: _problem, ...rest } = disk.sync
+      const {
+        problem: _problem,
+        pendingRemovals: _count,
+        scopeSize: _scope,
+        pendingRemovalItems: _items,
+        ...rest
+      } = disk.sync
       disk.sync = { ...rest, running: false, lastSync: this.now() }
     }
     return structuredClone(disk.sync)
@@ -955,6 +993,15 @@ export class FakeCore implements CoreApi {
 
   async confirmRemovals(): Promise<SyncStatus> {
     this.log('confirmRemovals')
+    this.guard = undefined
+    this.guardAnswer = 'remove'
+    return this.syncNow()
+  }
+
+  async keepRemovals(): Promise<SyncStatus> {
+    this.log('keepRemovals')
+    this.guard = undefined
+    this.guardAnswer = 'keep'
     return this.syncNow()
   }
 
