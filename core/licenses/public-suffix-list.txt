@@ -1,0 +1,17 @@
+The Public Suffix List
+======================
+
+Kemlock ships a copy of the Public Suffix List in core/data/public_suffix_list.dat, as it is
+published, and the extension reads it to tell which part of a web address a site owns.
+
+The list is licensed under the Mozilla Public License, version 2.0 (MPL-2.0), as its own header
+says: this Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a
+copy of the MPL was not distributed with this file, you can obtain one at
+https://mozilla.org/MPL/2.0/.
+
+The list's source form is the file itself, and it is available from the Public Suffix List's
+project, https://publicsuffix.org/list/public_suffix_list.dat (the project's page is
+https://publicsuffix.org, and its repository is https://github.com/publicsuffix/list). The copy
+in this extension carries the version and commit in its header.
+
+Copyright: The Public Suffix List authors (https://publicsuffix.org).

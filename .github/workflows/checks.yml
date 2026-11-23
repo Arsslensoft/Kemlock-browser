@@ -348,8 +348,9 @@ jobs:
         run: bash .github/scripts/check-dco.sh "$(git merge-base "${BASE}" "${HEAD}")" "${HEAD}"
 
   # The licence of every package in package-lock.json, the tools that build the zips as well as what
-  # the zips hold, against the list of GPL-3.0-or-later compatible ones, and the fonts' licence
-  # beside the fonts. No account and no secret: the script reads the lockfile
+  # the zips hold, and of every Dart package of the core (core/pubspec.lock, which the zips hold
+  # compiled), against the list of GPL-3.0-or-later compatible ones, and the fonts' licence beside the
+  # fonts. No account and no secret: the scripts read the lockfiles and the packages' licence files
   licences:
     name: Licences
     runs-on: ubuntu-24.04
@@ -366,6 +367,17 @@ jobs:
 
       - name: The packages' licences
         run: node .github/scripts/check-licences.mjs
+
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        with:
+          sdk: 3.13.5
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
+      - name: The core's Dart packages' licences
+        run: node .github/scripts/check-pub-licences.mjs
 
   # What the change adds: a workflow finding zizmor does not make on the commit it starts from, a
   # secret in one of its commits, and a package with a known advisory. What main has already is a

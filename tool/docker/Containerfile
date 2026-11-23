@@ -26,6 +26,7 @@ RUN curl -fsSL https://storage.googleapis.com/dart-archive/channels/stable/relea
  && rm /tmp/dart.zip
 
 ENV PATH=/opt/node/bin:/opt/dart-sdk/bin:$PATH \
+    DART_SDK=/opt/dart-sdk \
     PUB_CACHE=/root/.pub-cache \
     DART_SUPPRESS_ANALYTICS=true \
     DART_DISABLE_TELEMETRY=true \
