@@ -60,6 +60,7 @@ export const methods = [
   'backupCodes',
   'useBackupCode',
   'addCode',
+  'previewCode',
   'readQr',
   'linkCode',
   'match',

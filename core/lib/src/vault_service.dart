@@ -397,6 +397,23 @@ class VaultService {
     return liveCode(next, nowMs);
   }
 
+  /// What a code link would add, saving nothing: the name it would have, and the saved account that has its secret already (or null).
+  Map<String, Object?> previewCode(String link) {
+    requireSession();
+    final parsed = parseOtpUri(link);
+    if (parsed == null || !isValidSecret(normalizeSecret(parsed.secret))) {
+      throw const CoreFailure(CoreFailure.notAnOtpauth, 'not a code link');
+    }
+    Map<String, Object?>? existing;
+    for (final (i, held) in _lists.accounts.indexed) {
+      if (held.issuer == parsed.issuer && held.secret == parsed.secret) {
+        existing = _codeView(held, i);
+        break;
+      }
+    }
+    return {'issuer': serviceOf(parsed), 'account': parsed.label, 'existing': existing};
+  }
+
   Future<Map<String, Object?>> addCode(String link, String? website, String? linkTo) async {
     requireSession();
     final parsed = parseOtpUri(link);

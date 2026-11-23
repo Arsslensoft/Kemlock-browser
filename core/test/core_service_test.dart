@@ -233,6 +233,19 @@ void main() {
       await expectLater(core.call('addCode', [link, null, null]), failure(CoreFailure.duplicate));
     });
 
+    test('a link is previewed without being saved, and names the code that has its secret already', () async {
+      final fresh = await object(core, 'previewCode', [link]);
+      expect(fresh['issuer'], 'Orbit');
+      expect(fresh['existing'], isNull);
+      expect(await list(core, 'codes'), isEmpty);
+
+      final added = await object(core, 'addCode', [link, null, null]);
+      final held = await object(core, 'previewCode', [link]);
+      expect((held['existing']! as Map<String, Object?>)['id'], added['id']);
+      expect(jsonEncode(held), isNot(contains('JBSWY3DPEHPK3PXP')));
+      await expectLater(core.call('previewCode', ['hello']), failure(CoreFailure.notAnOtpauth));
+    });
+
     test('a counter code counts when it is asked for its next', () async {
       final added = await object(core, 'addCode', ['otpauth://hotp/Orbit:sam?secret=JBSWY3DPEHPK3PXP&issuer=Orbit&counter=4', null, null]);
       final first = await object(core, 'nextHotp', [added['id']]);

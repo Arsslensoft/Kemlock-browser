@@ -1,5 +1,6 @@
 // The browser-popup spec: the site in front, live codes, search, copying, the generator, health,
 // settings, "Add a code" and the toolbar icon. The popup is opened as a tab (see Kemlock.popup).
+import type { Page } from '@playwright/test'
 import { expect, ORBIT, test, type Kemlock } from './kemlock'
 import { hosts } from './hosts'
 import { totp, totpNear } from './otp'
@@ -93,13 +94,16 @@ test.describe('the popup', () => {
     await kemlock.seedOrbit()
     const popup = await kemlock.popup()
     await row(popup, ORBIT.name).getByRole('button', { name: /copy/i }).first().click()
-    expect(totpNear(ORBIT.secret)).toContain(await kemlock.clipboard())
+    // Copying is the background's work: the clipboard is read until it holds what was copied
+    await expect
+      .poll(async () => totpNear(ORBIT.secret).includes(await kemlock.clipboard()))
+      .toBe(true)
 
     await popup.bringToFront()
     await openSection(popup, 'Logins')
     // "Clicking a login copies its password"
     await row(popup, ORBIT.name).getByText(ORBIT.name).first().click()
-    expect(await kemlock.clipboard()).toBe(ORBIT.password)
+    await expect.poll(() => kemlock.clipboard()).toBe(ORBIT.password)
   })
 
   test("the generator makes the app's passwords and remembers its length", async ({ kemlock }) => {
@@ -182,6 +186,8 @@ test.describe('the popup', () => {
     await openSection(popup, 'Settings')
     await expect(toggle(popup, /offer to save/i)).not.toBeChecked()
     for (const section of ['Codes', 'Logins', 'Generator', 'Settings'] as const) {
+      // Generator and Settings are pages over Home; the lists are on Home itself
+      await popup.reload()
       await openSection(popup, section)
       await expect(popup.getByText(/premium|upgrade|subscribe/i)).toHaveCount(0)
     }
@@ -189,6 +195,13 @@ test.describe('the popup', () => {
 
   test.describe('Add a code', () => {
     const qr = (uri?: string) => `/qr${uri ? `?uri=${encodeURIComponent(uri)}` : ''}`
+
+    // "Add a code" reads what the tab in front shows. The popup is a tab here, so the site is put in
+    // front again, as it is behind the toolbar's popup, before the popup is asked.
+    const addACode = async (popup: Page, site: Page) => {
+      await site.bringToFront()
+      await control(popup, /add a code/i).click()
+    }
 
     test('a pasted link adds the code', async ({ kemlock }) => {
       const popup = await kemlock.popup()
@@ -202,6 +215,8 @@ test.describe('the popup', () => {
       await expect
         .poll(async () => (await kemlock.call('codes')).map((c) => c.issuer))
         .toContain('Orbit')
+      // The code is added, and listed once the person is done
+      await control(popup, /^done$/i).click()
       await expect(row(popup, 'Orbit').first()).toBeVisible()
     })
 
@@ -210,7 +225,7 @@ test.describe('the popup', () => {
     }) => {
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await control(popup, /add a code/i).click()
+      await addACode(popup, site)
       await expect(popup.getByText('Harbor Notes').first()).toBeVisible({ timeout: 20_000 })
       await control(popup, /^add$/i).click()
       await expect.poll(async () => (await kemlock.call('codes')).length).toBe(1)
@@ -222,7 +237,7 @@ test.describe('the popup', () => {
     test('a QR code that holds only an address adds nothing', async ({ kemlock }) => {
       const site = await kemlock.visit(hosts.harbor, qr('https://example.com/not-a-code'))
       const popup = await kemlock.popup(site)
-      await control(popup, /add a code/i).click()
+      await addACode(popup, site)
       await expect(
         popup.getByText(/no code (was )?found|couldn.t find a code/i).first(),
       ).toBeVisible({ timeout: 20_000 })
@@ -236,7 +251,7 @@ test.describe('the popup', () => {
       })
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await control(popup, /add a code/i).click()
+      await addACode(popup, site)
       await expect(popup.getByText(/already/i).first()).toBeVisible({ timeout: 20_000 })
       await expect(popup.getByText('Harbor Notes').first()).toBeVisible()
       expect(await kemlock.call('codes')).toHaveLength(1)
@@ -254,7 +269,7 @@ test.describe('the popup', () => {
       })
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await control(popup, /add a code/i).click()
+      await addACode(popup, site)
       await expect(popup.getByText(/link to the harbor notes login/i).first()).toBeVisible({
         timeout: 20_000,
       })

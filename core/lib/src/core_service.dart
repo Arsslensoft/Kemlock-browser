@@ -37,6 +37,7 @@ class CoreService {
     'backupCodes',
     'useBackupCode',
     'addCode',
+    'previewCode',
     'readQr',
     'linkCode',
     'match',
@@ -145,6 +146,8 @@ class CoreService {
         return vault.useBackupCode(_string(args, 0));
       case 'addCode':
         return vault.addCode(_string(args, 0), _optionalString(args, 1), _optionalString(args, 2));
+      case 'previewCode':
+        return vault.previewCode(_string(args, 0));
       case 'readQr':
         return vault.readQr(_string(args, 0));
       case 'linkCode':
