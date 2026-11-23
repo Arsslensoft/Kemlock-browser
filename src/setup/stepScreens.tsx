@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { SecondMethod, SignInStep, StepAnswer } from '../shared/api'
 import type { FlowState } from './flow'
-import { progressOf } from './flow'
 import { t, tCount } from './i18n'
 import { placeName } from './placeScreens'
 import { ask } from './send'
@@ -15,8 +14,10 @@ import {
   Checkbox,
   Field,
   Frame,
+  Note,
   PasswordField,
   Status,
+  Tile,
   useBusy,
   type Dispatch,
 } from './ui'
@@ -124,15 +125,10 @@ export function SecondScreen({ state, dispatch }: Props) {
   const label = method === null ? '' : t(`setup_method_${method}`)
 
   return (
-    <Frame
-      title={t('setup_second_title')}
-      lead={t('setup_second_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_second_title')} lead={t('setup_second_lead')} error={state.error}>
       {duoOnly ? <Alert>{t('setup_second_duo')}</Alert> : null}
       {unsupported.length > 0 && !duoOnly ? (
-        <p class="note">{t('setup_second_unsupported', unsupported.map(methodName).join(', '))}</p>
+        <Note>{t('setup_second_unsupported', unsupported.map(methodName).join(', '))}</Note>
       ) : null}
       {key.kind === 'unavailable' ? <Alert>{t('setup_key_unavailable')}</Alert> : null}
       <form onSubmit={submit} noValidate>
@@ -140,7 +136,7 @@ export function SecondScreen({ state, dispatch }: Props) {
           <fieldset class="methods">
             <legend>{t('setup_second_methods')}</legend>
             {offered.map((candidate) => (
-              <label key={candidate} class="radio">
+              <label key={candidate} class={candidate === method ? 'radio picked' : 'radio'}>
                 <input
                   type="radio"
                   name="method"
@@ -149,7 +145,14 @@ export function SecondScreen({ state, dispatch }: Props) {
                   disabled={busy || key.kind === 'asking'}
                   onChange={() => pick(candidate)}
                 />
-                <span>{t(`setup_method_${candidate}`)}</span>
+                <span class="radio-text">
+                  <span class="radio-name">{t(`setup_method_${candidate}`)}</span>
+                  <span class="radio-hint">
+                    {candidate === 'securityKey'
+                      ? t('setup_key_lead')
+                      : t(`setup_method_${candidate}_hint`)}
+                  </span>
+                </span>
               </label>
             ))}
           </fieldset>
@@ -165,7 +168,7 @@ export function SecondScreen({ state, dispatch }: Props) {
         ) : method !== null ? (
           <>
             {method === 'email' ? (
-              <p class="note" role="status" aria-live="polite">
+              <p class="hint" role="status" aria-live="polite">
                 {sent ? t('setup_second_email_sent') : t('setup_second_email_send')}
               </p>
             ) : null}
@@ -175,12 +178,29 @@ export function SecondScreen({ state, dispatch }: Props) {
               onInput={setCode}
               type={method === 'apiKey' ? 'password' : 'text'}
               inputMode={method === 'authenticator' || method === 'email' ? 'numeric' : 'text'}
+              placeholder={
+                method === 'authenticator' ? '000 000' : method === 'email' ? '000000' : undefined
+              }
+              code={method === 'authenticator' || method === 'email'}
+              mono={method === 'yubikey'}
               autoComplete={method === 'apiKey' || method === 'yubikey' ? 'off' : 'one-time-code'}
               hint={t(`setup_method_${method}_hint`)}
               disabled={busy}
               required
             />
           </>
+        ) : null}
+        {method === 'email' ? (
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="secondary small"
+              disabled={busy}
+              onClick={() => pick('email')}
+            >
+              {sent ? t('setup_second_email_again') : t('setup_second_email_button')}
+            </button>
+          </div>
         ) : null}
         {method !== null && method !== 'apiKey' ? (
           <Checkbox
@@ -195,11 +215,6 @@ export function SecondScreen({ state, dispatch }: Props) {
           {method !== null && method !== 'securityKey' ? (
             <button type="submit" class="primary" disabled={busy || code.trim() === ''}>
               {t('setup_second_button')}
-            </button>
-          ) : null}
-          {method === 'email' ? (
-            <button type="button" class="secondary" disabled={busy} onClick={() => pick('email')}>
-              {sent ? t('setup_second_email_again') : t('setup_second_email_button')}
             </button>
           ) : null}
           <button
@@ -234,35 +249,48 @@ function SecurityKeyPanel(props: {
   const { keyState } = props
   if (keyState.kind === 'other')
     return (
-      <div class="note" role="alert">
-        <p>{t('setup_key_other', keyState.address)}</p>
-        <Actions>
-          <button type="button" class="primary" onClick={() => props.onAddress(keyState.address)}>
-            {t('setup_key_use_address')}
-          </button>
-        </Actions>
+      <div class="panel" role="alert">
+        <Tile name="key" accent />
+        <div class="panel-body">
+          <span class="panel-text">{t('setup_key_other', keyState.address)}</span>
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="primary small"
+              onClick={() => props.onAddress(keyState.address)}
+            >
+              {t('setup_key_use_address')}
+            </button>
+          </div>
+        </div>
       </div>
     )
   if (keyState.kind === 'asking')
     return (
-      <div class="note">
-        <Status>{t('setup_key_asking')}</Status>
-        <Actions>
-          <button type="button" class="secondary" onClick={props.onCancel}>
-            {t('setup_key_cancel')}
-          </button>
-        </Actions>
+      <div class="panel">
+        <Tile name="key" accent />
+        <div class="panel-body">
+          <Status>{t('setup_key_asking')}</Status>
+          <div class="inline-actions">
+            <button type="button" class="secondary small" onClick={props.onCancel}>
+              {t('setup_key_cancel')}
+            </button>
+          </div>
+        </div>
       </div>
     )
   return (
-    <div class="note">
-      <p>{t('setup_key_lead')}</p>
-      {keyState.kind === 'closed' ? <Alert>{t('setup_key_closed')}</Alert> : null}
-      <Actions>
-        <button type="button" class="primary" disabled={props.busy} onClick={props.onUse}>
-          {t('setup_key_button')}
-        </button>
-      </Actions>
+    <div class="panel">
+      <Tile name="key" accent />
+      <div class="panel-body">
+        <span class="panel-text">{t('setup_key_lead')}</span>
+        {keyState.kind === 'closed' ? <Alert>{t('setup_key_closed')}</Alert> : null}
+        <div class="inline-actions">
+          <button type="button" class="secondary small" disabled={props.busy} onClick={props.onUse}>
+            {t('setup_key_button')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -297,18 +325,26 @@ export function ApprovalScreen({ state, dispatch }: Props) {
   }, [requestId, dispatch])
 
   return (
-    <Frame
-      title={t('setup_approval_title')}
-      lead={t('setup_approval_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
-      <ol class="words" aria-label={t('setup_approval_words')}>
-        {phrase.map((word, i) => (
-          <li key={`${i}-${word}`}>{word}</li>
-        ))}
-      </ol>
-      <p class="hint">{t('setup_approval_check')}</p>
+    <Frame title={t('setup_approval_title')} lead={t('setup_approval_lead')} error={state.error}>
+      <div class="words-block">
+        <span id="words-label" class="legend">
+          {t('setup_approval_words')}
+        </span>
+        <ol class="words" aria-labelledby="words-label">
+          {phrase.map((word, i) => (
+            <li key={`${i}-${word}`}>
+              <span class="n mono" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span class="word mono">{word}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div class="panel slim">
+        <Tile name="phone" size={36} />
+        <span class="panel-text">{t('setup_approval_check')}</span>
+      </div>
       <Status>{t('setup_approval_waiting')}</Status>
       <Actions>
         <button type="button" class="secondary" onClick={() => dispatch({ type: 'back' })}>
@@ -332,12 +368,7 @@ export function MasterPasswordScreen({ state, dispatch }: Props) {
     })
   }
   return (
-    <Frame
-      title={t('setup_master_title')}
-      lead={t('setup_master_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_master_title')} lead={t('setup_master_lead')} error={state.error}>
       <form onSubmit={submit} noValidate>
         <PasswordField
           label={t('setup_form_master')}
@@ -382,17 +413,15 @@ export function HomesScreen({ state, dispatch }: Props) {
   }
 
   return (
-    <Frame
-      title={t('setup_homes_title')}
-      lead={t('setup_homes_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_homes_title')} lead={t('setup_homes_lead')} error={state.error}>
       <form onSubmit={submit} noValidate>
         <fieldset class="methods">
-          <legend>{t('setup_homes_legend')}</legend>
+          <legend class="sr-only">{t('setup_homes_legend')}</legend>
           {homes.map((candidate) => (
-            <label key={candidate.id} class="radio">
+            <label
+              key={candidate.id}
+              class={candidate.id === chosen ? 'radio home picked' : 'radio home'}
+            >
               <input
                 type="radio"
                 name="home"
@@ -401,19 +430,32 @@ export function HomesScreen({ state, dispatch }: Props) {
                 disabled={busy}
                 onChange={() => setChosen(candidate.id)}
               />
-              <span>
+              <Tile name="folder" size={36} />
+              <span class="radio-text">
+                <span class="radio-name">{candidate.name}</span>
+                <span class="radio-hint">
+                  {t(
+                    'setup_home_line',
+                    candidate.name,
+                    t(candidate.storage === 'sealed' ? 'setup_home_sealed' : 'setup_home_plain'),
+                    tCount('setup_items', candidate.items),
+                  )}
+                </span>
+              </span>
+              <span class={candidate.storage === 'sealed' ? 'chip' : 'chip warn'}>
                 {t(
-                  'setup_home_line',
-                  candidate.name,
-                  t(candidate.storage === 'sealed' ? 'setup_home_sealed' : 'setup_home_plain'),
-                  tCount('setup_items', candidate.items),
+                  candidate.storage === 'sealed'
+                    ? 'setup_home_chip_sealed'
+                    : 'setup_home_chip_plain',
                 )}
               </span>
             </label>
           ))}
         </fieldset>
-        {home?.storage === 'sealed' ? <p class="note">{t('setup_home_sealed_note')}</p> : null}
-        {home?.storage === 'plain' ? <Alert>{t('setup_home_plain_warning')}</Alert> : null}
+        {home?.storage === 'sealed' ? <p class="hint">{t('setup_home_sealed_note')}</p> : null}
+        {home?.storage === 'plain' ? (
+          <Alert tone="warn">{t('setup_home_plain_warning')}</Alert>
+        ) : null}
         {busy ? <Status>{t('setup_second_busy')}</Status> : null}
         <Actions>
           <button type="submit" class="primary" disabled={busy || home === undefined}>
@@ -436,12 +478,7 @@ export function HomesScreen({ state, dispatch }: Props) {
 /** The account holds no Kemlock home: it has to be made on the phone first. */
 export function NoHomeScreen({ state, dispatch }: Props) {
   return (
-    <Frame
-      title={t('setup_nohome_title')}
-      lead={t('setup_nohome_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_nohome_title')} lead={t('setup_nohome_lead')} error={state.error}>
       <Actions>
         <button type="button" class="primary" onClick={() => dispatch({ type: 'back' })}>
           {t('setup_nohome_again')}
@@ -472,7 +509,6 @@ export function PassphraseScreen({ state, dispatch }: Props) {
     <Frame
       title={t(webdav ? 'setup_passphrase_title_folder' : 'setup_passphrase_title_home')}
       lead={t(webdav ? 'setup_passphrase_lead_folder' : 'setup_passphrase_lead_home')}
-      progress={progressOf(state)}
       error={state.error}
       hint={wrong ? t('setup_passphrase_nothing_stored') : null}
     >
@@ -524,20 +560,27 @@ export function FirstSyncScreen({ state, dispatch }: Props) {
     <Frame
       title={t('setup_first_title')}
       lead={t('setup_first_lead', placeName(state.place))}
-      progress={progressOf(state)}
       error={state.error}
     >
       <ul class="counts">
         <li>
-          <strong>{adds}</strong> {tCount('setup_first_adds', adds)}
+          <Tile name="arrowDown" accent />
+          <span class="count-text">
+            <strong class="mono">{adds}</strong>
+            <span>{tCount('setup_first_adds', adds)}</span>
+          </span>
         </li>
-        <li class={removes > 0 ? 'warn' : undefined}>
-          <strong>{removes}</strong> {tCount('setup_first_removes', removes)}
+        <li>
+          <Tile name="arrowUp" accent />
+          <span class="count-text">
+            <strong class="mono">{removes}</strong>
+            <span>{tCount('setup_first_removes', removes)}</span>
+          </span>
         </li>
       </ul>
-      {removes > 0 ? <Alert>{t('setup_first_removes_warning')}</Alert> : null}
-      {state.place === 'vaultwarden' ? <p class="note">{t('setup_logins_stay')}</p> : null}
-      <p class="hint">{t('setup_first_nothing')}</p>
+      {removes > 0 ? <Alert tone="warn">{t('setup_first_removes_warning')}</Alert> : null}
+      {state.place === 'vaultwarden' ? <Note status>{t('setup_logins_stay')}</Note> : null}
+      {removes === 0 ? <p class="hint">{t('setup_first_nothing')}</p> : null}
       {busy ? <Status>{t('setup_first_busy')}</Status> : null}
       <Actions>
         <button type="button" class="primary" disabled={busy} onClick={() => go(true)}>

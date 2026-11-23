@@ -3,11 +3,21 @@
 import { useState } from 'preact/hooks'
 import type { SyncStatus } from '../shared/api'
 import type { FlowState } from './flow'
-import { progressOf } from './flow'
 import { t } from './i18n'
+import { Glyph } from './icons'
 import { ask } from './send'
 import { canMakeVault, checks, passwordScore, passwordStrength } from './strength'
-import { Actions, Alert, Frame, PasswordField, Status, useBusy, type Dispatch } from './ui'
+import {
+  Actions,
+  Alert,
+  Frame,
+  Note,
+  PasswordField,
+  Status,
+  Tile,
+  useBusy,
+  type Dispatch,
+} from './ui'
 
 interface Props {
   state: FlowState
@@ -22,18 +32,22 @@ function Strength({ password }: { password: string }) {
   const { passed } = passwordScore(password)
   return (
     <div class="strength">
-      <div class="bars" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((bar) => (
-          <span key={bar} class={bar < bars ? `bar on level-${level}` : 'bar'} />
-        ))}
+      <div class="meter">
+        <div class="bars" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((bar) => (
+            <span key={bar} class={bar < bars ? `bar on level-${level}` : 'bar'} />
+          ))}
+        </div>
+        <p class={`level-name level-${level}`} role="status" aria-live="polite">
+          {password === '' ? '' : t(`setup_strength_${levels[level]}`)}
+        </p>
       </div>
-      <p class="level-name" role="status" aria-live="polite">
-        {password === '' ? '' : t(`setup_strength_${levels[level]}`)}
-      </p>
       <ul class="checks">
         {checks.map((check, i) => (
           <li key={check} class={passed[i] ? 'met' : undefined}>
-            <span aria-hidden="true">{passed[i] ? '✓' : '○'}</span>
+            <span class="tick" aria-hidden="true">
+              <Glyph name="check" size={10} weight={3} />
+            </span>
             <span>{t(`setup_check_${check}`)}</span>
             <span class="sr-only">{passed[i] ? t('setup_check_met') : t('setup_check_unmet')}</span>
           </li>
@@ -62,32 +76,33 @@ export function PasswordScreen({ state, dispatch }: Props) {
   }
 
   return (
-    <Frame
-      title={t('setup_password_title')}
-      lead={t('setup_password_lead')}
-      progress={progressOf(state)}
-      error={state.error}
-    >
+    <Frame title={t('setup_password_title')} lead={t('setup_password_lead')} error={state.error}>
       <form onSubmit={submit} noValidate>
-        <PasswordField
-          label={t('setup_password_field')}
-          value={password}
-          onInput={setPassword}
-          autoComplete="new-password"
-          disabled={busy}
-          required
-        />
-        <Strength password={password} />
-        <PasswordField
-          label={t('setup_password_confirm')}
-          value={confirm}
-          onInput={setConfirm}
-          autoComplete="new-password"
-          disabled={busy}
-          required
-          error={mismatch ? t('setup_password_mismatch') : null}
-        />
-        {confirm !== '' && !mismatch ? <Status>{t('setup_password_match')}</Status> : null}
+        <div class="stack">
+          <PasswordField
+            label={t('setup_password_field')}
+            value={password}
+            onInput={setPassword}
+            autoComplete="new-password"
+            disabled={busy}
+            required
+          />
+          <Strength password={password} />
+          <PasswordField
+            label={t('setup_password_confirm')}
+            value={confirm}
+            onInput={setConfirm}
+            autoComplete="new-password"
+            disabled={busy}
+            required
+            error={mismatch ? t('setup_password_mismatch') : null}
+          />
+          {confirm !== '' && !mismatch ? (
+            <p class="match" role="status" aria-live="polite">
+              {t('setup_password_match')}
+            </p>
+          ) : null}
+        </div>
         <p class="hint">{t('setup_password_forgot')}</p>
         <p class="hint">{t('setup_password_footnote')}</p>
         {busy ? <Status>{t('setup_password_sealing')}</Status> : null}
@@ -150,11 +165,23 @@ export function RemoveScreen({ state, dispatch }: Props) {
     })
   return (
     <Frame title={t('setup_remove_title')} lead={t('setup_remove_lead')} error={state.error}>
-      <ul class="plain">
-        <li>{t('setup_remove_deletes')}</li>
-        <li>{t('setup_remove_forgets')}</li>
-        <li>{t('setup_remove_keeps')}</li>
-        <li>{t('setup_remove_recover')}</li>
+      <ul class="facts">
+        <li>
+          <Tile name="trash" size={24} tone="danger" />
+          <span class="strong">{t('setup_remove_deletes')}</span>
+        </li>
+        <li>
+          <Tile name="trash" size={24} tone="danger" />
+          <span class="strong">{t('setup_remove_forgets')}</span>
+        </li>
+        <li>
+          <Tile name="shieldCheck" size={24} />
+          <span>{t('setup_remove_keeps')}</span>
+        </li>
+        <li>
+          <Tile name="shieldCheck" size={24} />
+          <span>{t('setup_remove_recover')}</span>
+        </li>
       </ul>
       <Actions>
         <button type="button" class="danger" disabled={busy} onClick={remove}>
@@ -191,9 +218,9 @@ function Summary({ status }: { status: SyncStatus }) {
   return (
     <dl class="summary">
       <dt>{t('setup_done_place')}</dt>
-      <dd>{t(places[status.place] ?? 'setup_place_kemlock')}</dd>
+      <dd class="strong">{t(places[status.place] ?? 'setup_place_kemlock')}</dd>
       <dt>{t('setup_done_server')}</dt>
-      <dd>{status.server}</dd>
+      <dd class="mono">{status.server}</dd>
       {status.account ? (
         <>
           <dt>{t('setup_done_account')}</dt>
@@ -229,15 +256,22 @@ export function DoneScreen({ state }: Props) {
     <Frame
       title={status ? t('setup_done_title') : t('setup_done_title_alone')}
       lead={status ? t('setup_done_lead') : t('setup_done_lead_alone')}
+      badge={
+        <span class="ready">
+          <Glyph name="check" size={26} weight={2.4} />
+        </span>
+      }
     >
       {status ? <Summary status={status} /> : null}
-      {loginsStay ? <p class="note">{t('setup_logins_stay')}</p> : null}
-      <h2>{t('setup_next_title')}</h2>
-      <ol class="next">
-        <li>{t('setup_next_pin')}</li>
-        <li>{t('setup_next_open')}</li>
-        {status ? <li>{t('setup_next_sync')}</li> : null}
-      </ol>
+      {loginsStay ? <Note status>{t('setup_logins_stay')}</Note> : null}
+      <div class="next-block">
+        <h2>{t('setup_next_title')}</h2>
+        <ol class="next">
+          <li>{t('setup_next_pin')}</li>
+          <li>{t('setup_next_open')}</li>
+          {status ? <li>{t('setup_next_sync')}</li> : null}
+        </ol>
+      </div>
       <Actions>
         <button type="button" class="primary" onClick={open}>
           {t('setup_next_button')}
