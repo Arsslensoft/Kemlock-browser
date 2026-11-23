@@ -1,0 +1,44 @@
+name: Feature request
+description: Something the extension could do that it does not
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. The extension follows the Kemlock app: a feature that the app has
+        and the extension lacks is the easiest to take on.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today, or other ways to solve it
+    validations:
+      required: false
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser it is for
+      multiple: true
+      options:
+        - Chrome
+        - Edge
+        - Firefox
+        - Firefox for Android
+    validations:
+      required: false

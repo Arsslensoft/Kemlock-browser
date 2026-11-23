@@ -5,3 +5,5 @@ playwright-report/
 package-lock.json
 test/fixtures/
 fonts/
+# The Contributor Covenant, as its authors wrote it
+CODE_OF_CONDUCT.md

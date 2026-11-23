@@ -26,7 +26,14 @@ the generator or copy the file again, and commit that here.
 ## Checks
 
 `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`, from the repository
-root.
+root. On GitHub, `.github/workflows/checks.yml` runs them as the jobs Lint, Test and Build,
+with Dependencies, DCO, Licences (`node .github/scripts/check-licences.mjs`) and Security
+beside them, and App drift (the tests again, with the app's files; not required). The pull
+request's title is checked by `title.yml`. `release.yml` calls `checks.yml` on every push to
+`main` and, when it passes, builds the commit twice, tags it and releases the next version from the
+Conventional Commits (nothing is committed for a release: the version is the tag's,
+`KEMLOCK_VERSION`, see `tool/build.sh`). `codeql.yml` and `scorecard.yml` scan the code and the
+workflows. A coding agent never signs off a commit (DCO): leave that to the person.
 
 ## Commits
 

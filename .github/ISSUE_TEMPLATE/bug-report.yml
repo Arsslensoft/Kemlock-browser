@@ -1,0 +1,76 @@
+name: Bug report
+description: Something in the extension does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report this. Do not paste a vault, a password, a code or a
+        sync address. A security problem goes to a private report instead (SECURITY.md).
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Edge
+        - Firefox
+        - Firefox for Android
+        - Another Chromium browser
+    validations:
+      required: true
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser version
+      description: From the browser's About page.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kemlock extension version
+      description: From the extensions page, or the release you installed.
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sync
+    attributes:
+      label: What the vault syncs with
+      options:
+        - Vaultwarden
+        - WebDAV
+        - Not set up yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, one step a line, and the site if it matters.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Any message from the extension, and the console's if you know how to open it.
+    validations:
+      required: true
