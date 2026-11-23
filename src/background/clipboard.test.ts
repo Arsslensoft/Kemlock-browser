@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clipboardAlarm, ClipboardManager, offscreenBackend } from './clipboard'
 import { installChromeMock, type ChromeMock } from './test/chrome-mock'
-import { MemoryClipboard, start, useClock } from './test/harness'
+import { MemoryClipboard, start, until, useClock } from './test/harness'
 
 let mock: ChromeMock
 beforeEach(() => {
@@ -23,6 +23,7 @@ describe('ClipboardManager', () => {
     await vi.advanceTimersByTimeAsync(29_000)
     expect(backend.text).toBe('482913')
     await vi.advanceTimersByTimeAsync(1_500)
+    await until(() => backend.text === '')
     expect(backend.text).toBe('')
     expect(mock.alarms.has(clipboardAlarm)).toBe(false)
   })
@@ -61,6 +62,7 @@ describe('ClipboardManager', () => {
     await vi.advanceTimersByTimeAsync(6_000)
     expect(backend.text).toBe('second')
     await vi.advanceTimersByTimeAsync(5_000)
+    await until(() => backend.text === '')
     expect(backend.text).toBe('')
   })
 
@@ -72,6 +74,7 @@ describe('ClipboardManager', () => {
     const manager = new ClipboardManager(backend)
     await manager.copy('x', 10)
     await vi.advanceTimersByTimeAsync(11_000)
+    await until(() => !mock.session.has('kemlock_clipboard'))
     expect(backend.text).toBe('x')
   })
 })

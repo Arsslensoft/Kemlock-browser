@@ -18,6 +18,7 @@ import {
   report,
   setup,
   start,
+  until,
   useClock,
   type Harness,
 } from './test/harness'
@@ -303,6 +304,7 @@ describe('copying', () => {
     await h.ok({ kind: 'copy', what: 'code', id: code.id })
     expect(h.clipboard.text).toMatch(/^\d{6}$/)
     await vi.advanceTimersByTimeAsync(31_000)
+    await until(() => h.clipboard.text === '')
     expect(h.clipboard.text).toBe('')
   })
 
@@ -887,6 +889,7 @@ describe('saving logins', () => {
   it('asks soon on a page that does not go on, such as a form that vanished', async () => {
     await sent({ username: 'sam', password: 'Harbor-Pass-2026' })
     await vi.advanceTimersByTimeAsync(3000)
+    await until(() => promptsOn().length > 0)
     expect(promptsOn()).toHaveLength(1)
   })
 

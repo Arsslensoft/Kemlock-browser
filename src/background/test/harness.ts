@@ -9,6 +9,10 @@ import { route } from '../router'
 import type { Identity } from '../senders'
 import { installChromeMock, type ChromeMock } from './chrome-mock'
 
+// The real timer, kept before a test fakes it: SHA-256 through crypto.subtle finishes off the main
+// thread, so no amount of fake time or microtask flushing makes it finish.
+const realSetTimeout = globalThis.setTimeout
+
 export const self: Identity = { id: 'kemlockid', origins: ['chrome-extension://kemlockid'] }
 export const start = 1_800_000_000_000
 
@@ -80,6 +84,20 @@ export interface HarnessOptions {
 export function useClock(): void {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   vi.setSystemTime(start)
+}
+
+/**
+ * Waits, in real time, until something that hangs on a digest (the clipboard's compare, the list of
+ * sites never to save for) has happened; fake timers run as it waits. Gives up after `ms`, and the
+ * test's own assertion then fails with its own message.
+ */
+export async function until(check: () => unknown, ms = 2000): Promise<void> {
+  const end = performance.now() + ms
+  for (;;) {
+    await vi.advanceTimersByTimeAsync(0)
+    if (check() || performance.now() > end) return
+    await new Promise((resolve) => realSetTimeout(resolve, 2))
+  }
 }
 
 export async function harness(options: HarnessOptions = {}): Promise<Harness> {
