@@ -1,4 +1,5 @@
-// Kemlock's button inside a field (spec "The button opens a menu the page can't read"): a small
+// Kemlock's button inside a field (spec "The button opens a menu the page can't read"; the mockups' Parts: the
+// favicon mark, 30px in a 44px field, faint until it is pointed at): a small
 // button in a closed shadow root, fixed in the viewport over the field's right edge, which the
 // controller moves as the page scrolls, resizes and changes. The page can't reach inside it, and a
 // press counts only when it is a person's (`isTrusted`) on a button in plain view (decision 9).
@@ -37,35 +38,56 @@ button {
   justify-content: center;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  background: #1f6feb;
+  border-radius: 27%;
+  background: transparent;
+  opacity: 0.7;
   cursor: pointer;
 }
-button:hover, button:focus-visible { background: #1559c7; }
+button:hover, button:focus-visible {
+  opacity: 1;
+  background: #eef3fd;
+  box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.35);
+}
 button:focus-visible { outline: 2px solid #5aa9ff; outline-offset: 1px; }
-svg { width: 62%; height: 62%; display: block; }
+svg { width: 60%; height: 60%; display: block; }
 `
 
 const svgNs = 'http://www.w3.org/2000/svg'
 
+function node(doc: Document, name: string, attributes: Record<string, string>): SVGElement {
+  const element = doc.createElementNS(svgNs, name)
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value)
+  return element
+}
+
+/** The Kemlock mark the mockups put in a field: the gunmetal tile and the azure keyhole K (the favicon, src/shared/brand). */
 function glyph(doc: Document): SVGElement {
-  const svg = doc.createElementNS(svgNs, 'svg')
-  svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('aria-hidden', 'true')
-  const shackle = doc.createElementNS(svgNs, 'path')
-  shackle.setAttribute('d', 'M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5')
-  shackle.setAttribute('fill', 'none')
-  shackle.setAttribute('stroke', '#ffffff')
-  shackle.setAttribute('stroke-width', '2.4')
-  shackle.setAttribute('stroke-linecap', 'round')
-  const body = doc.createElementNS(svgNs, 'rect')
-  body.setAttribute('x', '5')
-  body.setAttribute('y', '10')
-  body.setAttribute('width', '14')
-  body.setAttribute('height', '10.5')
-  body.setAttribute('rx', '2.4')
-  body.setAttribute('fill', '#ffffff')
-  svg.append(shackle, body)
+  const svg = node(doc, 'svg', { viewBox: '0 0 100 100', 'aria-hidden': 'true' })
+  // The favicon's steel tile in flat bands: a gradient in the page's own layers makes the browser report the
+  // menu frame visible about 200ms late, and the click gate counts from that report
+  const tile = node(doc, 'rect', { width: '100', height: '100', rx: '22.5', fill: '#1e2126' })
+  const sheen = node(doc, 'path', {
+    d: 'M0 50V22.5A22.5 22.5 0 0 1 22.5 0h55A22.5 22.5 0 0 1 100 22.5V50z',
+    fill: '#3b4048',
+  })
+  const seam = node(doc, 'rect', { y: '47', width: '100', height: '6', fill: '#15181c' })
+  const mark = node(doc, 'g', { transform: 'translate(-2 0)' })
+  mark.append(
+    node(doc, 'path', {
+      fill: '#5AA9FF',
+      'fill-rule': 'evenodd',
+      d: 'M28 20h9a4 4 0 0 1 4 4v52a4 4 0 0 1-4 4h-9a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4z',
+    }),
+    node(doc, 'path', {
+      d: 'M72 26L48 50l24 24',
+      fill: 'none',
+      stroke: '#5AA9FF',
+      'stroke-width': '16',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+    }),
+  )
+  svg.append(tile, sheen, seam, mark)
   return svg
 }
 

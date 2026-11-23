@@ -1,4 +1,22 @@
-/* The menu's look: the app's tokens (src/shared/tokens.css), in a card the frame shows whole. */
+/* The menu's look: the app's tokens (src/shared/tokens.css), in a card the frame shows whole. The mockups
+   (MenuStates, Picker, Guard, SavePrompt, UpdatePrompt) are the source: 18px card, 56px tiles, 44px controls.
+   The colours the tokens lack are added here, light and dark by the system's theme like the tokens. */
+
+:root {
+  /* The sunken panel inside the card (the mockups' --sunken: lighter than the app's in light) */
+  --menu-sunken: #f4f4f1;
+  --menu-warn-line: rgba(180, 83, 9, 0.3);
+  /* Softer than the app's shadow: the frame holds only the gutter around the card for it */
+  --menu-shadow: 0 4px 16px rgba(12, 13, 16, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --menu-sunken: #060607;
+    --menu-warn-line: rgba(255, 162, 76, 0.35);
+    --menu-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+}
 
 html,
 body {
@@ -8,20 +26,45 @@ body {
   font-size: 13px;
   line-height: 1.4;
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The gutter holds the card's shadow; src/content/frame.ts's `gutter` is this padding */
+body {
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+button,
+input {
+  font-family: inherit;
 }
 
 .card {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: 6px;
+  padding: 8px;
   background: var(--paper);
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: 18px;
+  box-shadow: var(--menu-shadow);
   /* Not the frame's own height: the frame is sized to the card, so a card held to it never grows (frame.ts keeps the same 420 as its tallest) */
   max-height: 420px;
+  /* As tall as a list of one tile, so a menu that loads one has no resize to wait out (the click gate restarts on a resize) */
+  min-height: 100px;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+.card.prompt {
+  gap: 8px;
+}
+
+.card:has(.lead.warn) {
+  border-color: var(--menu-warn-line);
 }
 
 p,
@@ -30,8 +73,44 @@ dd {
   margin: 0;
 }
 
-.lead {
+/* The header: the wordmark, and a chip when the screen has something to say about the site */
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 2px;
+}
+
+.prompt .head {
+  padding-bottom: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warning);
+  font-size: 11.5px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.lead {
+  padding: 4px 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.prompt .lead {
+  padding-top: 2px;
+  font-size: 15px;
+  letter-spacing: -0.15px;
 }
 
 .lead.warn {
@@ -43,46 +122,80 @@ dd {
   color: var(--text-secondary);
 }
 
+p.muted {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.prompt p.muted {
+  padding: 0 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .detail {
   display: block;
   font-size: 12px;
-  word-break: break-all;
+  font-weight: 400;
 }
 
 .notice {
-  padding: 6px 8px;
-  border-radius: 8px;
+  margin: 0 4px;
+  padding: 8px 10px;
+  border-radius: 12px;
   background: var(--warn-soft);
   color: var(--warning);
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
+.hint {
+  margin: 0 10px 6px;
+  color: var(--faint);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* Tiles: one login, code or suggestion each */
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 260px;
+  max-height: 280px;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
 }
 
 .row {
-  all: unset;
+  appearance: none;
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 7px 8px;
-  border-radius: 8px;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
 
 .row:hover {
-  background: var(--hover);
+  box-shadow: inset 0 0 0 100px var(--hover);
 }
 
+/* The row the arrows are on, or the first one when the menu opens: the mockups' selected tile */
 .row:focus-visible {
-  background: var(--focus);
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
+  outline: none;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--primary);
 }
 
 .row[aria-disabled='true'] {
@@ -90,59 +203,160 @@ dd {
   opacity: 0.6;
 }
 
+.tile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  /* Each name has its own hue (a hash of its name, model.ts's tileHue) */
+  background: hsla(var(--hue), 70%, 62%, 0.16);
+  color: hsl(var(--hue), 80%, 74%);
+}
+
+@media (prefers-color-scheme: light) {
+  .tile {
+    background: hsla(var(--hue), 70%, 45%, 0.14);
+    color: hsl(var(--hue), 75%, 33%);
+  }
+}
+
+.words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .name {
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.row .detail {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* Text boxes: the mockups' field */
+.field {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 0 4px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 15px;
+  background: var(--paper);
+}
+
+.field:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 4px var(--focus);
 }
 
 .search {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  background: var(--background);
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
-  font: inherit;
+  font-size: 14px;
 }
 
+.search:focus,
 .search:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: -1px;
+  outline: none;
+}
+
+.search::placeholder {
+  color: var(--faint);
+}
+
+.search::-webkit-search-cancel-button {
+  display: none;
+}
+
+.unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.unlock .notice {
+  margin: 0 8px;
+  padding: 0;
+  background: transparent;
 }
 
 .footer {
   display: flex;
-  justify-content: flex-start;
+  margin: 2px 4px 0;
+  padding-top: 4px;
   border-top: 1px solid var(--divider);
-  padding-top: 6px;
+}
+
+.prompt .footer {
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+.link,
+.primary,
+.secondary {
+  appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.link:hover,
+.primary:hover,
+.secondary:hover {
+  box-shadow: inset 0 0 0 100px var(--hover);
 }
 
 .link {
-  all: unset;
-  cursor: pointer;
+  background: transparent;
   color: var(--accent-text);
-  font-size: 12px;
 }
 
-.link:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.prompt .link {
+  font-size: 13px;
 }
 
 .buttons {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  padding: 4px;
 }
 
-.primary,
-.secondary {
-  all: unset;
-  box-sizing: border-box;
-  padding: 7px 12px;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
+.prompt .buttons {
+  padding: 0 4px;
+}
+
+.buttons > * {
+  flex: 1;
+  min-width: 0;
 }
 
 .primary {
@@ -151,14 +365,18 @@ dd {
 }
 
 .secondary {
+  background: transparent;
+  color: var(--text);
   border: 1px solid var(--line-2);
 }
 
 .primary:disabled {
   opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }
 
+.link:focus-visible,
 .primary:focus-visible,
 .secondary:focus-visible {
   outline: 2px solid var(--primary);
@@ -167,15 +385,56 @@ dd {
 
 .check {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+.check input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.address {
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.address strong {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* What a card tells as pairs: the look-alike's two addresses, the prompt's site, username and vault */
 .addresses,
 .facts {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 2px 10px;
+  /* The labels as wide as the longest (French has "Votre identifiant"), the values the rest */
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: var(--menu-sunken);
+  font-size: 13px;
 }
 
 .addresses dt,
@@ -183,19 +442,20 @@ dd {
   color: var(--text-secondary);
 }
 
+.facts dd {
+  overflow-wrap: anywhere;
+}
+
 .mono {
   font-family: 'Geist Mono', ui-monospace, monospace;
-  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 mark {
+  padding: 0 2px;
+  border-radius: 4px;
   background: var(--danger-soft);
   color: var(--error);
-  font-weight: 700;
-  text-decoration: underline;
-  border-radius: 2px;
-}
-
-.address strong {
-  word-break: break-all;
+  font-weight: 600;
 }

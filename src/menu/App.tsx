@@ -5,6 +5,7 @@
 import type { ComponentChildren } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { CodeView, LoginView, MenuView, PageApi, PendingSave } from '../shared/api'
+import { Wordmark } from '../shared/brand/brand'
 import { ask } from './ask'
 import type { Channel, Init } from './channel'
 import { markDifference, type Part } from './diff'
@@ -17,6 +18,8 @@ import {
   matchedCodes,
   matchedLogins,
   search,
+  tileHue,
+  tileLetter,
   wantsCode,
   type Screen,
 } from './model'
@@ -119,9 +122,16 @@ function onKeys(channel: Channel) {
 export function App({ channel, init }: AppProps) {
   const ref = useSize(channel)
   return (
-    <div class="card" ref={ref} onKeyDown={onKeys(channel)}>
+    <div
+      class={init.mode === 'save' ? 'card prompt' : 'card'}
+      ref={ref}
+      onKeyDown={onKeys(channel)}
+    >
       {init.mode === 'save' ? (
-        <SavePrompt channel={channel} init={init} />
+        <>
+          <Header />
+          <SavePrompt channel={channel} init={init} />
+        </>
       ) : (
         <MenuScreen channel={channel} init={init} />
       )}
@@ -151,15 +161,22 @@ function MenuScreen({ channel, init }: AppProps) {
   }, [init])
   useEffect(load, [load])
 
-  if (loaded.status === 'loading') return <p class="muted">{t('menu_loading')}</p>
-  if (loaded.status === 'failed') return <p class="muted">{t('menu_failed')}</p>
+  const shell = (body: ComponentChildren, chip?: ComponentChildren) => (
+    <>
+      <Header chip={chip} />
+      {body}
+    </>
+  )
+  if (loaded.status === 'loading') return shell(<p class="muted">{t('menu_loading')}</p>)
+  if (loaded.status === 'failed') return shell(<p class="muted">{t('menu_failed')}</p>)
   const { view } = loaded
-  if (!view.state.exists) return <p class="muted">{t('menu_no_vault')}</p>
-  if (!view.state.unlocked) return <Unlock wrong={view.state.wrongPasswords} onUnlocked={load} />
+  if (!view.state.exists) return shell(<p class="muted">{t('menu_no_vault')}</p>)
+  if (!view.state.unlocked)
+    return shell(<Unlock wrong={view.state.wrongPasswords} onUnlocked={load} />)
   if (view.field.kind === 'newPassword')
-    return <Suggestions channel={channel} init={init} view={view} />
+    return shell(<Suggestions channel={channel} init={init} view={view} />)
   if (screen === 'guard')
-    return (
+    return shell(
       <Guard
         channel={channel}
         view={view}
@@ -167,11 +184,48 @@ function MenuScreen({ channel, init }: AppProps) {
           setFromGuard(true)
           setScreen('picker')
         }}
-      />
+      />,
+      <span class="chip">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        </svg>
+        {t('menu_guard_chip')}
+      </span>,
     )
   if (screen === 'picker')
-    return <Picker channel={channel} init={init} view={view} fromGuard={fromGuard} />
-  return <List channel={channel} init={init} view={view} />
+    return shell(<Picker channel={channel} init={init} view={view} fromGuard={fromGuard} />)
+  return shell(<List channel={channel} init={init} view={view} />)
+}
+
+/** The wordmark every card starts with. */
+function Header({ chip }: { chip?: ComponentChildren }) {
+  return (
+    <div class="head">
+      <Wordmark height={14} />
+      {chip}
+    </div>
+  )
+}
+
+/** The letter tile of an item, in the hue its name gives. Decorative: the row's words name it. */
+function Tile({ name }: { name: string }) {
+  return (
+    <span class="tile" aria-hidden="true" style={{ '--hue': String(tileHue(name)) } as never}>
+      {tileLetter(name)}
+    </span>
+  )
 }
 
 function Rows({ children }: { children: ComponentChildren }) {
@@ -181,6 +235,8 @@ function Rows({ children }: { children: ComponentChildren }) {
 function Row(props: {
   title: string
   detail?: string
+  /** The detail is a secret or an address: shown in the monospace face. */
+  mono?: boolean
   disabled?: boolean
   onClick: (event: MouseEvent) => void
 }) {
@@ -195,10 +251,13 @@ function Row(props: {
         props.onClick(event)
       }}
     >
-      <span class="name">{props.title}</span>
-      {props.detail !== undefined && props.detail !== '' ? (
-        <span class="detail">{props.detail}</span>
-      ) : null}
+      <Tile name={props.title} />
+      <span class="words">
+        <span class="name">{props.title}</span>
+        {props.detail !== undefined && props.detail !== '' ? (
+          <span class={props.mono === true ? 'detail mono' : 'detail'}>{props.detail}</span>
+        ) : null}
+      </span>
     </button>
   )
 }
@@ -306,15 +365,17 @@ function Picker({
   return (
     <>
       {knowsNothing(view) && !fromGuard ? <p class="lead">{t('menu_unknown_site')}</p> : null}
-      <input
-        type="search"
-        class="search"
-        aria-label={t('menu_search')}
-        placeholder={t('menu_search')}
-        value={query}
-        onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
-        autoComplete="off"
-      />
+      <div class="field">
+        <input
+          type="search"
+          class="search"
+          aria-label={t('menu_search')}
+          placeholder={t('menu_search')}
+          value={query}
+          onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
+          autoComplete="off"
+        />
+      </div>
       {nothing ? <p class="muted">{t('menu_picker_none')}</p> : null}
       <Rows>
         {code
@@ -366,7 +427,9 @@ function Confirm({
         <span class="muted">{t('menu_confirm_address')}</span> <strong>{view.match.site}</strong>
       </p>
       {warn ? (
-        <p class="notice">{t('menu_confirm_lookalike', view.match.lookAlikeOf ?? '')}</p>
+        <p class="notice" role="alert">
+          {t('menu_confirm_lookalike', view.match.lookAlikeOf ?? '')}
+        </p>
       ) : null}
       {!warn ? (
         <label class="check">
@@ -443,7 +506,9 @@ function Guard({
   useEffect(() => dont.current?.focus(), [])
   return (
     <>
-      <p class="lead warn">{t('menu_guard_title', known)}</p>
+      <p class="lead warn" role="heading" aria-level={2}>
+        {t('menu_guard_title', known)}
+      </p>
       <p class="muted">{t('menu_guard_text')}</p>
       <dl class="addresses">
         <dt>{t('menu_guard_page')}</dt>
@@ -463,6 +528,7 @@ function Guard({
           {t('menu_dont_fill')}
         </button>
       </div>
+      <p class="hint">{t('menu_guard_hint')}</p>
     </>
   )
 }
@@ -503,16 +569,18 @@ function Unlock({ wrong, onUnlocked }: { wrong: number; onUnlocked: () => void }
       }}
     >
       <p class="lead">{t('menu_locked_title')}</p>
-      <input
-        ref={input}
-        type="password"
-        class="search"
-        aria-label={t('menu_password')}
-        placeholder={t('menu_password')}
-        value={password}
-        autoComplete="off"
-        onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
-      />
+      <div class="field">
+        <input
+          ref={input}
+          type="password"
+          class="search"
+          aria-label={t('menu_password')}
+          placeholder={t('menu_password')}
+          value={password}
+          autoComplete="off"
+          onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
+        />
+      </div>
       {failed ? (
         <p class="notice" role="alert">
           {tries > 1 ? t('menu_wrong_count', tries) : t('menu_wrong')}
@@ -576,11 +644,13 @@ function Suggestions({ channel, init, view }: AppProps & { view: MenuView }) {
           <Row
             title={t('menu_suggest_strong')}
             detail={values.strong}
+            mono
             onClick={(event) => void use(pressOf(event), values.strong)}
           />
           <Row
             title={t('menu_suggest_phrase')}
             detail={values.phrase}
+            mono
             onClick={(event) => void use(pressOf(event), values.phrase)}
           />
         </Rows>
@@ -629,7 +699,7 @@ function SavePrompt({ channel, init }: AppProps) {
       <p class="lead">{update ? t('menu_update_title') : t('menu_save_title')}</p>
       <dl class="facts">
         <dt>{t('menu_save_site')}</dt>
-        <dd>{pending.site}</dd>
+        <dd class="mono">{pending.site}</dd>
         <dt>{t('menu_save_user')}</dt>
         <dd>{pending.username}</dd>
         <dt>{t('menu_save_vault')}</dt>

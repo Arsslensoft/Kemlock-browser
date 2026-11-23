@@ -23,6 +23,8 @@
   "menu_guard_known": "Your login",
   "menu_dont_fill": "Don't fill",
   "menu_pick_anyway": "Pick a login anyway",
+  "menu_guard_chip": "No match",
+  "menu_guard_hint": "Picking one shows the address again and fills only after you confirm it.",
   "menu_locked_title": "Kemlock is locked",
   "menu_password": "Password",
   "menu_unlock": "Unlock",

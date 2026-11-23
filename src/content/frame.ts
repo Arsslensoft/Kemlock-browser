@@ -54,8 +54,14 @@ export interface FrameOptions {
   onClose: (refocus: boolean) => void
 }
 
-const width = { menu: 320, save: 340 }
-const firstHeight = { menu: 160, save: 170 }
+/**
+ * The card's width, and the height it has before it reports its own. The frame is bigger than the card by
+ * [gutter] on every side, for the card's shadow: the menu page's body has the same padding (menu.css).
+ */
+const width = { menu: 340, save: 320 }
+const firstHeight = { menu: 100, save: 190 }
+const gutter = 16
+/** The card's tallest: the same as its max-height in src/menu/menu.css */
 const tallest = 420
 const beatMs = 150
 
@@ -253,16 +259,36 @@ export class MenuFrame {
   /** Puts the host where its field is now: under it, or at the top right for the prompt. */
   reposition(): void {
     const viewport = this.env.geometry.viewport()
-    const size = { width: width[this.options.mode], height: this.height }
+    // The host is the card and its gutter, which has to lie inside the viewport as a whole (src/content/gate.ts)
+    const size = { width: width[this.options.mode] + 2 * gutter, height: this.height + 2 * gutter }
     let box: Box
-    if (this.options.mode === 'save') box = placePrompt(size, viewport)
-    else {
+    if (this.options.mode === 'save') {
+      // The card, not the gutter, sits 16px from the corner
+      const placed = placePrompt(size, viewport)
+      box = {
+        ...placed,
+        left: Math.min(placed.left + gutter, viewport.width - placed.width),
+        top: Math.max(0, placed.top - gutter),
+      }
+    } else {
       const anchor = this.options.anchor()
       if (anchor === null) {
         this.close(false)
         return
       }
-      box = placeMenu(anchor, size, viewport)
+      // The card, not the gutter, lines up with the field and keeps its distance from it: below the field
+      // the host starts [gutter] higher, above it [gutter] lower, which is the field grown sideways and
+      // shrunk up and down by the gutter
+      box = placeMenu(
+        {
+          left: anchor.left - gutter,
+          top: anchor.top + gutter,
+          width: anchor.width,
+          height: anchor.height - 2 * gutter,
+        },
+        size,
+        viewport,
+      )
     }
     const style = this.host.style
     style.setProperty('--kemlock-left', `${box.left}px`)
