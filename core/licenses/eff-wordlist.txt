@@ -1,0 +1,12 @@
+The EFF's large word list for passphrases
+=========================================
+
+Kemlock ships a copy of the Electronic Frontier Foundation's large word list in
+core/data/eff_large_wordlist.txt, as it is published, and the extension makes passphrases from it.
+
+The list is by the Electronic Frontier Foundation (https://www.eff.org/dice), and is licensed under
+the Creative Commons Attribution 3.0 United States licence (CC BY 3.0 US):
+https://creativecommons.org/licenses/by/3.0/us/
+
+Copyright: Electronic Frontier Foundation (https://www.eff.org/dice). The list is used as it is, with
+no change to its words.

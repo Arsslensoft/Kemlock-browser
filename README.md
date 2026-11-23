@@ -273,3 +273,13 @@ commit is signed off ([DCO](CONTRIBUTING.md#signing-off-dco)), and the
 Kemlock for browsers is free software under the
 [GNU General Public License v3.0 or later](LICENSE). The Geist fonts in `fonts/` are under the
 SIL Open Font License ([fonts/OFL.txt](fonts/OFL.txt)).
+
+The zips carry the licences of what is compiled or copied into them, in `licenses/`: Geist's
+(`Geist-OFL.txt`); the Dart SDK's (`dart-sdk.txt`, its runtime is in the compiled core); the licence files of every Dart package the core is compiled from, kemlock_core,
+cryptography, zxing2, http, web and what they need (`licenses/dart/<package>/`, copied from the
+packages by `tool/build.mjs`, which fails when one has none); and the notices of the data the core
+reads: the Public Suffix List (MPL-2.0, `public-suffix-list.txt`), the EFF's large word list
+(CC BY 3.0 US, `eff-wordlist.txt`) and the 2FA directory of 2fa.directory (MIT,
+`2fa-directory.txt`). The Licences check holds the npm packages
+(`.github/scripts/check-licences.mjs`) and the Dart packages
+(`.github/scripts/check-pub-licences.mjs`) to GPL-3.0-or-later compatible licences.
