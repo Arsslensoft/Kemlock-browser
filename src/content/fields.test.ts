@@ -34,10 +34,7 @@ interface FieldCase {
 
 const cases = (
   JSON.parse(
-    readFileSync(
-      new URL('../../../mobile/test/fixtures/autofill/fields.json', import.meta.url),
-      'utf8',
-    ),
+    readFileSync(new URL('../../test/fixtures/autofill/fields.json', import.meta.url), 'utf8'),
   ) as { cases: FieldCase[] }
 ).cases
 

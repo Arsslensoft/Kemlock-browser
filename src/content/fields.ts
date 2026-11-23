@@ -1,7 +1,7 @@
 // Which fields of a frame want a one-time code, and which are a sign-in,
 // sign-up or change-password form's (design decision 7): the rules of the
 // Android app's FieldFinder.kt, ported to the fields a web page has, and
-// held to the same cases (mobile/test/fixtures/autofill/fields.json). The
+// held to the same cases (test/fixtures/autofill/fields.json, the app's). The
 // rules read descriptions only; src/content/dom.ts builds them from the page.
 //
 // What Android alone has is left out: apps' autofill hints, Chrome's own

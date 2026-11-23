@@ -112,10 +112,7 @@ async function buildBrowser(browser) {
   await cp(join(root, 'icons'), join(outDir, 'icons'), { recursive: true })
   // Geist's licence goes with the fonts src/shared/fonts.css bundles
   await mkdir(join(outDir, 'licenses'), { recursive: true })
-  await copyFile(
-    join(root, '..', 'mobile', 'assets', 'fonts', 'OFL.txt'),
-    join(outDir, 'licenses', 'Geist-OFL.txt'),
-  )
+  await copyFile(join(root, 'fonts', 'OFL.txt'), join(outDir, 'licenses', 'Geist-OFL.txt'))
   console.log(`dist/${browser}`)
 }
 

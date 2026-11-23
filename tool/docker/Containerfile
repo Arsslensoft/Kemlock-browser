@@ -1,0 +1,21 @@
+# Node, pinned, for building the extension's zips the same way on any
+# machine. Built and run by tool/build.sh.
+FROM debian:bookworm-slim
+
+# libatomic1: Node's own binary needs it, and the slim image hasn't it.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates xz-utils libatomic1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Node 26.13.0 (LTS), checked against nodejs.org's published SHA-256.
+RUN curl -fsSL https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-x64.tar.xz -o /tmp/node.tar.xz \
+ && echo "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997  /tmp/node.tar.xz" | sha256sum -c - \
+ && mkdir /opt/node && tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1 \
+ && rm /tmp/node.tar.xz
+
+ENV PATH=/opt/node/bin:$PATH \
+    npm_config_update_notifier=false \
+    npm_config_fund=false \
+    npm_config_audit=false
+
+WORKDIR /w

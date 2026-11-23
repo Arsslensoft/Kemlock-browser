@@ -1,12 +1,13 @@
-/* Geist and Geist Mono, the app's own fonts from mobile/assets/fonts, under the
-   SIL Open Font License, which the build copies to licenses/Geist-OFL.txt. */
+/* Geist and Geist Mono, the app's own fonts, copied into fonts/ from the app's
+   mobile/assets/fonts, under the SIL Open Font License, which the build copies
+   to licenses/Geist-OFL.txt. */
 
 @font-face {
   font-family: 'Geist';
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/Geist-Regular.ttf') format('truetype');
+  src: url('../../fonts/Geist-Regular.ttf') format('truetype');
 }
 
 @font-face {
@@ -14,7 +15,7 @@
   font-style: normal;
   font-weight: 500;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/Geist-Medium.ttf') format('truetype');
+  src: url('../../fonts/Geist-Medium.ttf') format('truetype');
 }
 
 @font-face {
@@ -22,7 +23,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/Geist-SemiBold.ttf') format('truetype');
+  src: url('../../fonts/Geist-SemiBold.ttf') format('truetype');
 }
 
 @font-face {
@@ -30,7 +31,7 @@
   font-style: normal;
   font-weight: 700;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/Geist-Bold.ttf') format('truetype');
+  src: url('../../fonts/Geist-Bold.ttf') format('truetype');
 }
 
 @font-face {
@@ -38,7 +39,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/GeistMono-Regular.ttf') format('truetype');
+  src: url('../../fonts/GeistMono-Regular.ttf') format('truetype');
 }
 
 @font-face {
@@ -46,7 +47,7 @@
   font-style: normal;
   font-weight: 500;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/GeistMono-Medium.ttf') format('truetype');
+  src: url('../../fonts/GeistMono-Medium.ttf') format('truetype');
 }
 
 @font-face {
@@ -54,7 +55,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/GeistMono-SemiBold.ttf') format('truetype');
+  src: url('../../fonts/GeistMono-SemiBold.ttf') format('truetype');
 }
 
 @font-face {
@@ -62,5 +63,5 @@
   font-style: normal;
   font-weight: 700;
   font-display: block;
-  src: url('../../../mobile/assets/fonts/GeistMono-Bold.ttf') format('truetype');
+  src: url('../../fonts/GeistMono-Bold.ttf') format('truetype');
 }
