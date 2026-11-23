@@ -8,8 +8,11 @@
   </defs>
   <g mask="url(#gap)">
     <rect width="100" height="100" rx="30" fill="#8A9099"/>
-    <path fill-rule="evenodd" fill="#FFFFFF" d="M26 20h9a4 4 0 0 1 4 4v52a4 4 0 0 1-4 4h-9a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4zM32.836 48.963 33.8 57h-6.6l.964-8.037a4.6 4.6 0 1 1 4.672 0z"/>
-    <path d="M70 26 46 50l24 24" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- The keyhole K of mobile/assets/brand, 2 left of its 100-unit tile as the logo has it. -->
+    <g transform="translate(-2 0)" fill="#FFFFFF">
+      <path fill-rule="evenodd" d="M28 20h9a4 4 0 0 1 4 4v52a4 4 0 0 1-4 4h-9a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4zM29.2 57H35.8L34.836 48.963A4.6 4.6 0 1 0 30.164 48.963Z"/>
+      <path d="M72 26L48 50l24 24" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
   </g>
   <rect x="54" y="54" width="46" height="46" rx="14" fill="#50555D"/>
   <g transform="translate(62 62) scale(1.25)" fill="none" stroke="#FFFFFF" stroke-width="3"

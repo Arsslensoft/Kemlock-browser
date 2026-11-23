@@ -27,8 +27,8 @@ describe('icons', () => {
     for (const size of [16, 32, 48, 128]) expect(files).toContain(`kemlock-${size}.png`)
   })
 
-  it("draw the keyhole K of the app's brand.svg", async () => {
-    const brand = await readFile(join(root, '..', 'mobile', 'tool', 'icons', 'brand.svg'), 'utf8')
+  it("draw the keyhole K of the app's logo", async () => {
+    const brand = await readFile(join(root, '..', 'mobile', 'assets', 'brand', 'kemlock-mark-dark.svg'), 'utf8')
     const shapes = [...brand.matchAll(/ d="([^"]+)"/g)].map((m) => m[1])
     expect(shapes).toHaveLength(2)
     for (const state of ['locked', 'unlocked', 'sync-stopped']) {

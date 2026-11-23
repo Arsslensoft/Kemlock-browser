@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Renders the extension's icons into extension/icons:
 #
-#   kemlock-{16,32,48,128}.png  the extension's icon, from mobile/tool/icons/brand.svg.
+#   kemlock-{16,32,48,128}.png  the extension's icon, from the logo masters in
+#                               mobile/assets/brand (the favicon at 16 and 32, the
+#                               small icon at 48, the icon at 128).
 #                               The 128 is drawn at 96 pixels with the transparent
 #                               edge the Chrome Web Store asks for.
 #   locked-*.png                toolbar: the vault is locked (grey)
@@ -18,7 +20,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 extension="$(cd "$here/../.." && pwd)"
-brand="$(cd "$extension/../mobile/tool/icons" && pwd)"
+brand="$(cd "$extension/../mobile/assets/brand" && pwd)"
 mkdir -p "$extension/icons"
 
 # Git Bash would rewrite the container paths below as Windows paths.
@@ -26,11 +28,11 @@ export MSYS_NO_PATHCONV=1
 docker run --rm -v "$here:/icons:ro" -v "$brand:/brand:ro" -v "$extension/icons:/out" fedora:44 bash -c '
   set -e
   dnf install -y -q librsvg2-tools >/dev/null
-  for size in 16 32 48; do
-    rsvg-convert -w $size -h $size /brand/brand.svg -o /out/kemlock-$size.png
-  done
+  rsvg-convert -w 16 -h 16 /brand/kemlock-favicon.svg -o /out/kemlock-16.png
+  rsvg-convert -w 32 -h 32 /brand/kemlock-favicon.svg -o /out/kemlock-32.png
+  rsvg-convert -w 48 -h 48 /brand/kemlock-icon-small.svg -o /out/kemlock-48.png
   rsvg-convert -w 96 -h 96 --page-width 128 --page-height 128 --left 16 --top 16 \
-    /brand/brand.svg -o /out/kemlock-128.png
+    /brand/kemlock-icon.svg -o /out/kemlock-128.png
   for state in locked unlocked sync-stopped; do
     for size in 16 24 32; do
       rsvg-convert -w $size -h $size /icons/$state.svg -o /out/$state-$size.png
