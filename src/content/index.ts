@@ -27,6 +27,11 @@ function start(): void {
     doc,
     call,
     pageUrl: chrome.runtime.getURL('src/menu/index.html'),
+    // Chrome's frame address is a per-session one, but the frame's own origin is the extension's
+    frameOrigin:
+      __BROWSER__ === 'firefox'
+        ? new URL(chrome.runtime.getURL('')).origin
+        : `chrome-extension://${chrome.runtime.id}`,
     label,
     origin: window.origin || location.origin,
     isTop: window === window.top,

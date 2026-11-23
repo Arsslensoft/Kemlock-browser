@@ -41,6 +41,11 @@ export interface Deps {
   call: Call
   /** `chrome.runtime.getURL('src/menu/index.html')`. */
   pageUrl: string
+  /**
+   * The origin the menu frame really has. Chrome serves the frame from a per-session address
+   * (`use_dynamic_url`), whose origin is not the frame's: the port goes to this one. Defaults to the page address's.
+   */
+  frameOrigin?: string
   /** The button's accessible name. */
   label: string
   /** This frame's origin as the browser has it (`window.origin`): a fill meant for another is refused. */
@@ -66,6 +71,8 @@ export class Controller {
   private readonly deps: Deps
   private readonly doc: Document
   private readonly geometry: Geometry
+  /** The page's geometry as it is, our own hosts included: what the view of the menu and buttons is judged on. */
+  private readonly raw: Geometry
   private readonly nameOf = fieldNames()
   private readonly ownHosts = new Set<Element>()
   private readonly badges = new Map<string, Badge>()
@@ -89,6 +96,7 @@ export class Controller {
     this.doc = deps.doc
     const own = deps.geometry ?? pageGeometry(deps.doc)
     // The menu and the buttons sit over the page; they don't cover a field for the fill's test
+    this.raw = own
     this.geometry = {
       rect: (element) => own.rect(element),
       elementsAt: (x, y) => own.elementsAt(x, y).filter((element) => !this.ownHosts.has(element)),
@@ -216,7 +224,7 @@ export class Controller {
     const badge = this.badges.get(id)
     if (badge === undefined) return
     const small = { width: 8, height: 8 }
-    const plain = plainAt(badge.host, event.clientX, event.clientY, this.geometry, small)
+    const plain = plainAt(badge.host, event.clientX, event.clientY, this.raw, small)
     if (!plain.ok) return
     void this.openMenu(id, 'click')
   }
@@ -256,8 +264,9 @@ export class Controller {
       const frame: MenuFrame = new MenuFrame(
         {
           doc: this.doc,
-          geometry: this.geometry,
+          geometry: this.raw,
           pageUrl: this.deps.pageUrl,
+          ...(this.deps.frameOrigin !== undefined ? { frameOrigin: this.deps.frameOrigin } : {}),
           ownHosts: this.ownHosts,
         },
         {
