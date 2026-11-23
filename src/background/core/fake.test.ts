@@ -289,7 +289,7 @@ describe('the pretend sync', () => {
     expect(await core.checkServer('kemlock', 'https://k.example')).toEqual({ ok: true })
     expect(await core.checkServer('vaultwarden', 'http://k.example')).toEqual({
       ok: false,
-      problem: 'kemlockAddress',
+      problem: 'insecure',
     })
   })
 

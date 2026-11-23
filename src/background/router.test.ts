@@ -295,6 +295,35 @@ describe('answers', () => {
   })
 })
 
+describe('the log', () => {
+  it('names the kind, the code and the error type, never the text of an error', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const h = handlers()
+    const popup = page('/src/popup/index.html')
+    h.page.unlock = () => {
+      throw Object.assign(new Error('failed'), {
+        name: 'KemlockError',
+        detail: 'secret=JBSWY3DP typed',
+      })
+    }
+    await route({ kind: 'unlock', password: 'hunter2' }, popup, self, h)
+    h.page.unlock = () => {
+      throw new Error('password hunter2 is wrong')
+    }
+    await route({ kind: 'unlock', password: 'hunter2' }, popup, self, h)
+    h.page.unlock = () => {
+      throw Object.assign(new Error('failed'), { name: 'KemlockError', detail: 'JSObject' })
+    }
+    await route({ kind: 'unlock', password: 'hunter2' }, popup, self, h)
+    const text = JSON.stringify(log.mock.calls)
+    log.mockRestore()
+    expect(text).not.toContain('hunter2')
+    expect(text).not.toContain('JBSWY3DP')
+    expect(text).toContain('JSObject')
+    expect(text).toContain('Kemlock: unlock failed')
+  })
+})
+
 describe('messages for other pages', () => {
   it('are left alone: the setup tab hears the security key relay itself', () => {
     expect(isForOtherPages({ kind: 'securityKeyResult', data: 'x', remember: true })).toBe(true)

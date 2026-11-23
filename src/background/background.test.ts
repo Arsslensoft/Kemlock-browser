@@ -10,6 +10,7 @@ import type {
 } from '../shared/api'
 import { idleAlarm } from './autolock'
 import { codeFor, decodeBase32 } from './core/fake'
+import { siteMatch } from './site'
 import {
   content,
   harness,
@@ -149,6 +150,38 @@ describe('the vault', () => {
       ok: false,
       error: 'noVault',
     })
+  })
+
+  it('signs out first, and deletes the device keys database, when it is removed', async () => {
+    const order: string[] = []
+    const signOut = vi.spyOn(h.core, 'signOut').mockImplementation(async () => {
+      order.push('signOut')
+      throw new Error('the server is out of reach')
+    })
+    const remove = h.core.removeVault.bind(h.core)
+    vi.spyOn(h.core, 'removeVault').mockImplementation(async () => {
+      order.push('removeVault')
+      return remove()
+    })
+    const deleted: string[] = []
+    vi.stubGlobal('indexedDB', {
+      deleteDatabase: (name: string) => {
+        order.push('deleteDatabase')
+        deleted.push(name)
+        const request: { onsuccess?: () => void } = {}
+        queueMicrotask(() => request.onsuccess?.())
+        return request
+      },
+    })
+    try {
+      await h.ok({ kind: 'removeVault' })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(signOut).toHaveBeenCalledOnce()
+    expect(order).toEqual(['signOut', 'removeVault', 'deleteDatabase'])
+    expect(deleted).toEqual(['kemlock-device-keys'])
+    expect((await h.core.state()).exists).toBe(false)
   })
 
   it('refuses a vault password where a vault already is', async () => {
@@ -865,7 +898,10 @@ describe('saving logins', () => {
     await report(h, url, loginFields)
     await sent({ username: 'sam', password: 'Harbor-Pass-2026' })
     expect(await pending()).toEqual({ site: 'harbornotes.app', username: 'sam' })
+    const save = vi.spyOn(h.core, 'saveLogin')
     await h.ok({ kind: 'answerSave', tabId: 7, save: true })
+    // A login saved from the prompt is marked as the app marks one AutoFill saved
+    expect(save).toHaveBeenCalledWith(null, expect.objectContaining({ fromAutofill: true }))
     const saved = (await logins()).find((l) => l.username === 'sam')
     expect(saved).toMatchObject({ websites: ['harbornotes.app'], name: 'harbornotes.app' })
     expect(await pending()).toBeNull()
@@ -975,12 +1011,13 @@ describe('sync from the pages', () => {
     )
 
   it('signs in, checks the server, and runs Sync now with its problem on the icon', async () => {
+    // Plain http never reaches the core: the message is refused (the setup tab says why before sending)
     expect(
-      await h.ok({ kind: 'checkServer', place: 'vaultwarden', server: 'http://vw.example' }, setup),
-    ).toEqual({
-      ok: false,
-      problem: 'kemlockAddress',
-    })
+      await h.send(
+        { kind: 'checkServer', place: 'vaultwarden', server: 'http://vw.example' },
+        setup,
+      ),
+    ).toEqual({ ok: false, error: 'malformed' })
     expect(
       await h.ok({ kind: 'checkServer', place: 'kemlock', server: 'https://k.example' }, setup),
     ).toEqual({
@@ -1107,22 +1144,35 @@ describe('what the popup asks besides', () => {
     expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual([])
   })
 
-  it('keeps its own index of picks when the core has no way to', async () => {
+  it('trusts no pick a page writes into storage.local, and keeps none there itself', async () => {
     const [login] = await logins()
-    const core = h.core as unknown as Record<string, unknown>
-    for (const name of ['rememberPick', 'picks', 'pickedHosts', 'forgetPick'])
-      core[name] = undefined
+    const evil = 'https://evil.example/login'
+    const before = await siteMatch(h.core, evil)
+    // A compromised page's content script may write storage.local; the picks are not read from it
+    h.mock.local.set('kemlock_picks', { 'evil.example': [login.id] })
+    expect(await siteMatch(h.core, evil)).toEqual(before)
+    expect((await siteMatch(h.core, evil)).logins).not.toContain(login.id)
+    expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual([])
+    // A pick made by the person goes to the core, and to nothing a page can read
+    h.mock.local.clear()
     await report(h, 'https://id.orbitauth.net/login', loginFields)
     await h.ok({ kind: 'openMenu', fieldId: 'u' }, content('https://id.orbitauth.net/login'))
     await h.ok(
       { kind: 'fill', tabId: 7, frameId: 0, fieldId: 'u', loginId: login.id, remember: true },
       menuFrame,
     )
+    expect(h.mock.local.has('kemlock_picks')).toBe(false)
     expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual(['id.orbitauth.net'])
-    await h.ok({ kind: 'fill', tabId: 7, loginId: login.id })
-    expect(fills(h)).toHaveLength(4)
-    await h.ok({ kind: 'forgetSite', loginId: login.id, host: 'id.orbitauth.net' })
-    expect(await h.ok({ kind: 'rememberedSites', loginId: login.id })).toEqual([])
+  })
+
+  it('has no picks while the vault is locked', async () => {
+    const [login] = await logins()
+    await h.ok({ kind: 'lock' })
+    await expect(h.core.picks('id.orbitauth.net')).rejects.toThrow()
+    expect(await h.send({ kind: 'rememberedSites', loginId: login.id })).toEqual({
+      ok: false,
+      error: 'locked',
+    })
   })
 
   it('answers locked to each of them while the vault is locked', async () => {

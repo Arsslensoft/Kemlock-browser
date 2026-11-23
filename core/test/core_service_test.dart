@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:kemlock_extension_core/src/core_service.dart';
 import 'package:kemlock_extension_core/src/failure.dart';
 import 'package:kemlock_extension_core/src/storage_area.dart';
+import 'package:kemlock_extension_core/src/vault_service.dart' show comparableSecret;
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -273,6 +274,56 @@ void main() {
     });
   });
 
+  group('picks ("Always suggest here")', () {
+    late MemoryArea area;
+    late CoreService core;
+
+    setUp(() async {
+      area = MemoryArea();
+      core = await startCore(area);
+      await core.call('createVault', [password]);
+    });
+
+    test('are remembered per host, listed both ways, and forgotten', () async {
+      await core.call('rememberPick', ['bank.example', 'login-1']);
+      await core.call('rememberPick', ['bank.example', 'login-1']);
+      await core.call('rememberPick', ['bank.example', 'login-2']);
+      await core.call('rememberPick', ['id.bank.example', 'login-1']);
+      expect(await core.call('picks', ['bank.example']), ['login-1', 'login-2']);
+      expect(await core.call('picks', ['other.example']), isEmpty);
+      expect(await core.call('pickedHosts', ['login-1']), ['bank.example', 'id.bank.example']);
+      await core.call('forgetPick', ['bank.example', 'login-1']);
+      expect(await core.call('picks', ['bank.example']), ['login-2']);
+      await core.call('forgetPick', ['bank.example', 'login-2']);
+      expect(await core.call('pickedHosts', ['login-2']), isEmpty);
+    });
+
+    test('are sealed in the vault: nothing of them is in the clear, and they come back with it', () async {
+      await core.call('rememberPick', ['evil-check.example', 'login-secret-id']);
+      final stored = area.values.entries.map((e) => '${e.key}=${e.value}').join('\n');
+      expect(stored, isNot(contains('evil-check.example')));
+      expect(stored, isNot(contains('login-secret-id')));
+      expect(area.values.keys.where((key) => key.contains('picks')), isNotEmpty);
+      final again = await startCore(MemoryArea(area.values));
+      await again.call('unlock', [password]);
+      expect(await again.call('picks', ['evil-check.example']), ['login-secret-id']);
+    });
+
+    test('do not exist while the vault is locked, and are deleted with it', () async {
+      await core.call('rememberPick', ['bank.example', 'login-1']);
+      await core.call('lock');
+      await expectLater(core.call('picks', ['bank.example']), failure(CoreFailure.locked));
+      await expectLater(core.call('rememberPick', ['bank.example', 'x']), failure(CoreFailure.locked));
+      await expectLater(core.call('pickedHosts', ['login-1']), failure(CoreFailure.locked));
+      await expectLater(core.call('forgetPick', ['bank.example', 'login-1']), failure(CoreFailure.locked));
+      await core.call('unlock', [password]);
+      await core.call('removeVault');
+      expect(area.values.keys.where((key) => key.contains('picks')), isEmpty);
+      await core.call('createVault', [password]);
+      expect(await core.call('picks', ['bank.example']), isEmpty);
+    });
+  });
+
   group('the rest', () {
     late CoreService core;
 
@@ -327,7 +378,79 @@ void main() {
       expect(await core.call('syncStatus'), isNull);
       expect((await object(core, 'state')).containsKey('sync'), isFalse);
       await expectLater(core.call('syncNow'), failure(CoreFailure.invalid));
-      expect(await core.call('rememberedSites', ['x']), isEmpty);
+    });
+
+    test('keeps the passwords it generated newest first, and drops one a saved login holds', () async {
+      for (final (i, value) in ['one', 'two', 'three'].indexed) {
+        await core.call('addRecentPassword', [
+          {'value': value, 'at': 1700000000000 + i},
+        ]);
+      }
+      expect((await list(core, 'recentPasswords')).map((p) => p['value']), ['three', 'two', 'one']);
+      await core.call('saveLogin', [
+        null,
+        {
+          'name': 'Orbit',
+          'username': 'sam',
+          'password': 'two',
+          'websites': ['orbit-cloud.com'],
+        },
+      ]);
+      expect((await list(core, 'recentPasswords')).map((p) => p['value']), ['three', 'one']);
+      // And it stays dropped when the vault opens again
+      await core.call('lock');
+      await core.call('unlock', [password]);
+      expect((await list(core, 'recentPasswords')).map((p) => p['value']), ['three', 'one']);
+    });
+
+    test("marks a login saved from the prompt as AutoFill's, and no other", () async {
+      await core.call('saveLogin', [
+        null,
+        {
+          'name': 'Harbor',
+          'username': 'sam',
+          'password': 'p4ss',
+          'websites': ['harbor.app'],
+          'fromAutofill': true,
+        },
+      ]);
+      await core.call('saveLogin', [
+        null,
+        {
+          'name': 'Orbit',
+          'username': 'sam',
+          'password': 'p4ss',
+          'websites': ['orbit.app'],
+        },
+      ]);
+      final sources = {for (final login in core.vault.lists.logins) login.name: login.source};
+      expect(sources, {'Harbor': 'autofill', 'Orbit': null});
+    });
+
+    test("compares a code's secret without case, spaces or padding", () async {
+      await core.call('addCode', [link]);
+      const same = 'otpauth://totp/Orbit:sam@orbit.test?secret=jbswy3dpehpk3pxp&issuer=Orbit';
+      await expectLater(core.call('addCode', [same]), failure(CoreFailure.duplicate));
+      expect((await object(core, 'previewCode', [same]))['existing'], isNotNull);
+      expect(await list(core, 'codes'), hasLength(1));
+      // A saved secret that carries padding (as another app wrote it) is the same one
+      expect(comparableSecret('jbsw y3dp-ehpk 3pxp===='), comparableSecret('JBSWY3DPEHPK3PXP'));
+    });
+
+    test('refuses a server or a folder that is not https, before anything is sent', () async {
+      expect(await object(core, 'checkServer', ['kemlock', 'http://k.example']), {'ok': false, 'problem': 'insecure'});
+      expect(await object(core, 'checkServer', ['vaultwarden', 'http://vw.example']), {'ok': false, 'problem': 'insecure'});
+      expect(await object(core, 'checkServer', ['kemlock', 'ftp://k.example']), containsPair('ok', false));
+      final signIns = {
+        'signInKemlock': {'server': 'http://k.example', 'email': 'a@b.c', 'password': 'p'},
+        'signInKemlockSso': {'server': 'http://k.example'},
+        'signInKemlockPasskey': {'server': 'http://k.example'},
+        'signInVaultwarden': {'server': 'http://vw.example', 'email': 'a@b.c', 'password': 'p'},
+        'signInWebdav': {'folder': 'http://dav.example/k', 'username': 'u', 'password': 'p'},
+      };
+      for (final MapEntry(:key, :value) in signIns.entries) {
+        expect(await object(core, key, [value]), {'step': 'error', 'problem': 'insecure'}, reason: key);
+      }
     });
 
     test('a method it does not have is refused', () async {

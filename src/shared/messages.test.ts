@@ -286,6 +286,32 @@ describe('parsePageMessage', () => {
     expect(parsePageMessage({ kind: 'signInVaultwarden', server: 'https://vw.example' })).toBeNull()
   })
 
+  it('takes https servers and folders only, and no marking of a login as autofilled', () => {
+    for (const server of ['http://k.example', 'ftp://k.example', 'k.example', 'javascript:1']) {
+      expect(parsePageMessage({ kind: 'checkServer', place: 'kemlock', server })).toBeNull()
+      expect(
+        parsePageMessage({ kind: 'signInKemlock', server, email: 'a@b.c', password: 'p' }),
+      ).toBeNull()
+      expect(
+        parsePageMessage({ kind: 'signInVaultwarden', server, email: 'a@b.c', password: 'p' }),
+      ).toBeNull()
+      expect(
+        parsePageMessage({ kind: 'signInWebdav', folder: server, username: 'u', password: 'p' }),
+      ).toBeNull()
+    }
+    expect(
+      parsePageMessage({
+        kind: 'saveLogin',
+        id: null,
+        input: { name: 'n', username: 'u', password: 'p', websites: [], fromAutofill: true },
+      }),
+    ).toEqual({
+      kind: 'saveLogin',
+      id: null,
+      input: { name: 'n', username: 'u', password: 'p', websites: [] },
+    })
+  })
+
   it('refuses what is malformed or out of bounds', () => {
     for (const raw of [
       undefined,
