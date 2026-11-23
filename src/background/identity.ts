@@ -29,3 +29,15 @@ export async function browserAuth(url: string): Promise<string> {
   if (redirected === undefined || redirected === '') throw new BackgroundError('cancelled')
   return redirected
 }
+
+/**
+ * The id a Kemlock Server's admin lists in `KEMLOCK_BROWSER_EXTENSION_IDS` for this extension: the first label of the redirect
+ * address's host (`<id>.chromiumapp.org`, or Firefox's `<hash>.extensions.allizom.org`).
+ */
+export function browserExtensionId(): string {
+  try {
+    return new URL(browserRedirectUrl()).hostname.split('.')[0] ?? ''
+  } catch {
+    return ''
+  }
+}

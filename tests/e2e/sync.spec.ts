@@ -247,7 +247,10 @@ test.describe('sync with a WebDAV folder', () => {
     expect(logins.find((l) => l.name === 'Larkspur Mail')).toMatchObject({ previousPasswords: 2 })
   })
 
-  test('a sync that would remove 6 of 22 items stops and waits', async ({ kemlock, site }) => {
+  test('a sync that would remove 6 of 22 items stops, and Keep and Remove answer it', async ({
+    kemlock,
+    site,
+  }) => {
     const passphrase = 'sync passphrase three'
     const accounts = Array.from({ length: 22 }, (_, i) => ({
       id: `c${String(i + 1).padStart(2, '0')}`,
@@ -266,32 +269,59 @@ test.describe('sync with a WebDAV folder', () => {
 
     // Another device deletes six of them
     const gone = accounts.slice(0, 6)
-    phoneWrites(
-      site.dav,
-      {
-        accounts: accounts.slice(6),
-        backupServices: [],
-        deleted: gone.map((a) => ({ id: a.id, at: Date.now() + 1000 })),
-      },
-      passphrase,
-    )
+    const otherDeletes = () =>
+      phoneWrites(
+        site.dav,
+        {
+          accounts: accounts.slice(6),
+          backupServices: [],
+          deleted: gone.map((a) => ({ id: a.id, at: Date.now() + 1000 })),
+        },
+        passphrase,
+      )
+    otherDeletes()
     const writes = site.dav.writes().length
     const status = await kemlock.call('syncNow')
-    expect(status).toMatchObject({ problem: 'removals', pendingRemovals: 6 })
+    expect(status).toMatchObject({ problem: 'removals', pendingRemovals: 6, scopeSize: 22 })
+    expect(status.pendingRemovalItems).toEqual(gone.map((a) => ({ name: a.issuer, kind: 'code' })))
     // Nothing was written, and nothing was removed
     expect(site.dav.writes()).toHaveLength(writes)
     expect(await kemlock.call('codes')).toHaveLength(22)
 
-    // The sync card of the popup's settings says so, and offers to go on
+    // The sync card of the popup's settings says how many, lists them on Review, and offers Keep and Remove
     const popup = await kemlock.popup()
     await openSection(popup, 'Settings')
     await expect(popup.getByText(/would remove many entries/i)).toBeVisible()
-    await control(popup, /^sync anyway$/i).click()
-    await expect(popup.getByText(/would remove 6 entries/i)).toBeVisible()
+    await expect(popup.getByText(/would remove 6 of 22 items/i)).toBeVisible()
+    await control(popup, /^review$/i).click()
+    for (const a of gone) await expect(popup.getByText(a.issuer, { exact: true })).toBeVisible()
+    expect(site.dav.writes()).toHaveLength(writes)
 
-    // Going on with it removes them
-    await kemlock.call('confirmRemovals')
+    // Keep: one run with no deletion either way. The file holds all 22 and none of the deletions
+    await control(popup, /^keep$/i).click()
+    await expect(popup.getByText(/would remove/i)).toHaveCount(0)
+    expect(await kemlock.call('codes')).toHaveLength(22)
+    const kept = readFolder(site.dav, passphrase)
+    expect((kept.accounts ?? []).map((a) => a.id).sort()).toEqual(accounts.map((a) => a.id))
+    expect(kept.deleted ?? []).toEqual([])
+
+    // The other device deletes them again: this time, Remove (asked first) takes them off here and in the file
+    otherDeletes()
+    expect(await kemlock.call('syncNow')).toMatchObject({ problem: 'removals', pendingRemovals: 6 })
+    const again = await kemlock.popup()
+    await openSection(again, 'Settings')
+    await expect(again.getByText(/would remove 6 of 22 items/i)).toBeVisible()
+    await control(again, /^remove$/i).click()
+    await expect(again.getByText(/remove them?/i)).toBeVisible()
+    expect(await kemlock.call('codes')).toHaveLength(22)
+    await control(again, /^remove$/i).click()
+    await expect(again.getByText(/would remove/i)).toHaveCount(0)
     expect(await kemlock.call('codes')).toHaveLength(16)
+    const removed = readFolder(site.dav, passphrase)
+    expect((removed.accounts ?? []).map((a) => a.id).sort()).toEqual(
+      accounts.slice(6).map((a) => a.id),
+    )
+    expect((removed.deleted ?? []).map((d) => d.id).sort()).toEqual(gone.map((a) => a.id))
   })
 
   test('the settings show the folder, and signing out keeps the items and deletes nothing', async ({

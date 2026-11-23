@@ -1095,6 +1095,37 @@ describe('sync from the pages', () => {
     expect(await h.ok<SyncStatus>({ kind: 'confirmRemovals' })).toMatchObject({ place: 'kemlock' })
   })
 
+  it('stops a run that would remove much, and answers Keep or Remove', async () => {
+    await signIn()
+    h.core.guard = { count: 6, scope: 22, items: [{ name: 'GitHub', kind: 'code' }] }
+    expect(await h.ok<SyncStatus>({ kind: 'syncNow' })).toMatchObject({
+      problem: 'removals',
+      pendingRemovals: 6,
+      scopeSize: 22,
+      pendingRemovalItems: [{ name: 'GitHub', kind: 'code' }],
+    })
+
+    // Keep runs once with nothing removed, and the stop clears
+    const kept = await h.ok<SyncStatus>({ kind: 'keepRemovals' })
+    expect(kept.problem).toBeUndefined()
+    expect(kept.pendingRemovals).toBeUndefined()
+    expect(h.core.guardAnswer).toBe('keep')
+    expect(h.core.calls).toContain('keepRemovals')
+
+    h.core.guard = { count: 6, scope: 22 }
+    await h.ok({ kind: 'syncNow' })
+    expect(await h.ok<SyncStatus>({ kind: 'confirmRemovals' })).toMatchObject({ place: 'kemlock' })
+    expect(h.core.guardAnswer).toBe('remove')
+  })
+
+  it('keeps the removal answers for the extension pages', async () => {
+    await signIn()
+    expect(await h.send({ kind: 'keepRemovals' }, content('https://x.example'))).toEqual({
+      ok: false,
+      error: 'refused',
+    })
+  })
+
   it('changes the settings, and the idle time with them', async () => {
     expect(await h.ok({ kind: 'saveSettings', settings: { autoLockMinutes: 15 } })).toMatchObject({
       autoLockMinutes: 15,
@@ -1106,6 +1137,58 @@ describe('sync from the pages', () => {
     vi.setSystemTime(start + 6 * 60_000)
     await h.bg.onAlarm({ name: idleAlarm })
     expect((await h.core.state()).unlocked).toBe(true)
+  })
+})
+
+describe("Kemlock Server's SSO and passkeys", () => {
+  const server = 'https://k.example'
+
+  it('sign in as the password does, and the first sync runs', async () => {
+    expect(
+      await h.ok({ kind: 'signInKemlockSso', server, email: 'me@k.example' }, setup),
+    ).toMatchObject({ step: 'done', status: { place: 'kemlock', account: 'me@k.example' } })
+    expect(h.core.calls).toContain('signInKemlockSso')
+    expect((await h.ok<SyncStatus>({ kind: 'syncStatus' })).lastSync).toBeDefined()
+    await h.ok({ kind: 'signOut' })
+
+    expect(await h.ok({ kind: 'signInKemlockPasskey', server }, setup)).toMatchObject({
+      step: 'done',
+      status: { place: 'kemlock' },
+    })
+    expect(h.core.calls).toContain('signInKemlockPasskey')
+  })
+
+  it('go on to the steps the account asks (approval, master password) without a first sync', async () => {
+    h.core.waysStep = { step: 'masterPassword' }
+    expect(await h.ok({ kind: 'signInKemlockSso', server }, setup)).toEqual({
+      step: 'masterPassword',
+    })
+    h.core.waysStep = { step: 'approval', phrase: ['a', 'b', 'c', 'd', 'e'], requestId: 'r1' }
+    expect(await h.ok({ kind: 'signInKemlockPasskey', server }, setup)).toMatchObject({
+      step: 'approval',
+    })
+  })
+
+  it("name this extension's id when the server does not list it", async () => {
+    h.core.waysStep = { step: 'error', problem: 'ssoRedirect' }
+    expect(await h.ok({ kind: 'signInKemlockSso', server }, setup)).toEqual({
+      step: 'error',
+      problem: 'ssoRedirect',
+      message: 'kemlockid',
+    })
+  })
+
+  it('refuse an address that is not secure, and a sender that is not an extension page', async () => {
+    expect(await h.send({ kind: 'signInKemlockSso', server: '' }, setup)).toEqual({
+      ok: false,
+      error: 'malformed',
+    })
+    expect(
+      await h.send({ kind: 'signInKemlockPasskey', server }, content('https://x.example')),
+    ).toEqual({
+      ok: false,
+      error: 'refused',
+    })
   })
 })
 

@@ -173,6 +173,42 @@ export function AccessScreen({ state, dispatch }: Props) {
   )
 }
 
+/** Kemlock Server's other ways in, with the words each uses (design D4). */
+type Way = 'sso' | 'passkey'
+const ways = {
+  sso: {
+    request: 'signInKemlockSso',
+    busy: 'setup_form_busy_sso',
+    cancelled: 'setup_way_sso_cancelled',
+    failed: 'setup_way_sso_failed',
+  },
+  passkey: {
+    request: 'signInKemlockPasskey',
+    busy: 'setup_form_busy_passkey',
+    cancelled: 'setup_way_passkey_cancelled',
+    failed: 'setup_way_passkey_failed',
+  },
+} as const
+
+/**
+ * What an error step of SSO or a passkey says in this screen's own words, or null to show it as any sign-in's problem. The
+ * server refusing this extension's redirect (its KEMLOCK_BROWSER_EXTENSION_IDS doesn't list the id) names the id to add.
+ */
+function wayFailure(way: Way, step: Extract<SignInStep, { step: 'error' }>): string | null {
+  switch (step.problem) {
+    case 'cancelled':
+      return t(ways[way].cancelled)
+    case 'ssoRedirect':
+      return t('setup_sso_refused', step.message ?? '')
+    case 'ssoFailed':
+      return t(ways[way].failed)
+    case 'unsupported':
+      return t('setup_way_unsupported')
+    default:
+      return null
+  }
+}
+
 /** The sign-in: email and master password, or a WebDAV folder's username, password and passphrase. */
 export function FormScreen({ state, dispatch }: Props) {
   const place = state.place ?? 'kemlock'
@@ -181,6 +217,7 @@ export function FormScreen({ state, dispatch }: Props) {
   const [password, setPassword] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [busy, run] = useBusy(dispatch)
+  const [way, setWay] = useState<Way | null>(null)
   const webdav = place === 'webdav'
   const ready = webdav
     ? username !== '' && password !== '' && passphrase !== ''
@@ -189,6 +226,7 @@ export function FormScreen({ state, dispatch }: Props) {
   const submit = (event: Event) => {
     event.preventDefault()
     if (busy || !ready) return
+    setWay(null)
     void run(async () => {
       let step: SignInStep
       if (place === 'kemlock')
@@ -204,6 +242,24 @@ export function FormScreen({ state, dispatch }: Props) {
       setPassword('')
       setPassphrase('')
       dispatch({ type: 'step', step })
+    })
+  }
+
+  // SSO or a passkey, then the same steps (approval, master password, first sync). The email is optional: it is only what the
+  // steps name.
+  const signInWith = (kind: Way) => {
+    if (busy) return
+    setWay(kind)
+    void run(async () => {
+      const address = email.trim()
+      const step = await ask(ways[kind].request, {
+        server: state.address,
+        ...(address === '' ? {} : { email: address }),
+      })
+      setPassword('')
+      const said = step.step === 'error' ? wayFailure(kind, step) : null
+      if (said !== null) dispatch({ type: 'failed', problem: 'setup', message: said })
+      else dispatch({ type: 'step', step })
     })
   }
 
@@ -262,7 +318,13 @@ export function FormScreen({ state, dispatch }: Props) {
           />
         ) : null}
         {place === 'vaultwarden' ? <p class="note">{t('setup_logins_stay')}</p> : null}
-        {busy ? <Status>{t(webdav ? 'setup_form_busy_webdav' : 'setup_form_busy')}</Status> : null}
+        {busy ? (
+          <Status>
+            {t(
+              webdav ? 'setup_form_busy_webdav' : way !== null ? ways[way].busy : 'setup_form_busy',
+            )}
+          </Status>
+        ) : null}
         <Actions>
           <button type="submit" class="primary" disabled={busy || !ready}>
             {t('setup_form_button')}
@@ -277,6 +339,29 @@ export function FormScreen({ state, dispatch }: Props) {
           </button>
         </Actions>
       </form>
+      {place === 'kemlock' ? (
+        <div class="ways">
+          <p class="hint">{t('setup_form_or')}</p>
+          <Actions>
+            <button
+              type="button"
+              class="secondary"
+              disabled={busy}
+              onClick={() => signInWith('sso')}
+            >
+              {t('setup_form_sso')}
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              disabled={busy}
+              onClick={() => signInWith('passkey')}
+            >
+              {t('setup_form_passkey')}
+            </button>
+          </Actions>
+        </div>
+      ) : null}
     </Frame>
   )
 }

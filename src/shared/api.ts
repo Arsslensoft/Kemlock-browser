@@ -181,6 +181,12 @@ export type SyncProblem =
   | 'spaceKeysPending'
   | (string & {})
 
+/** An entry the removal guard would remove: its name, and its kind (code, backupCodes, login, note, card, identity, key, passkey, contact). */
+export interface RemovalItem {
+  name: string
+  kind: string
+}
+
 export interface SyncStatus {
   place: SyncPlace
   /** The server or folder address. */
@@ -192,6 +198,10 @@ export interface SyncStatus {
   problem?: SyncProblem
   /** A removal guard asked first (spec): how many would go. */
   pendingRemovals?: number
+  /** With `pendingRemovals`: how many entries the scope holds ("would remove 6 of 22 items"). */
+  scopeSize?: number
+  /** With `pendingRemovals`: what would go, by name and kind, when the run can tell ("Review"). */
+  pendingRemovalItems?: RemovalItem[]
   /** Vaultwarden: logins travel through WebDAV only (spec), so the popup says so. */
   loginsNotSynced?: boolean
   // Added by popup
@@ -351,6 +361,8 @@ export interface CoreApi {
   syncNow(): Promise<SyncStatus>
   /** The removal guard: go on with the run that would remove many. */
   confirmRemovals(): Promise<SyncStatus>
+  /** The removal guard's other answer: run once more with no deletion either way (the app's "Keep"). */
+  keepRemovals(): Promise<SyncStatus>
   signOut(): Promise<void>
   // Added by setup
   /** Checks that the address answers as a supported server, before any password is asked. */
@@ -487,7 +499,15 @@ export interface PageApi {
   answerStep(args: { answer: StepAnswer }): Promise<SignInStep>
   syncNow(): Promise<SyncStatus>
   confirmRemovals(): Promise<SyncStatus>
+  /** The removal guard's "Keep": runs once with no deletion either way. */
+  keepRemovals(): Promise<SyncStatus>
   signOut(): Promise<void>
+  // Added by sign-in: Kemlock Server's other ways in (the core's hooks do the browser's part).
+  /** SSO on the provider the server names. Answers the steps a sign-in does; `email` only narrows which account the steps name. */
+  signInKemlockSso(args: { server: string; email?: string }): Promise<SignInStep>
+  /** A passkey or security key (with its PRF, which opens the account). */
+  signInKemlockPasskey(args: { server: string; email?: string }): Promise<SignInStep>
+  // End of added by sign-in
 
   settings(): Promise<Settings>
   saveSettings(args: { settings: Partial<Settings> }): Promise<Settings>

@@ -306,6 +306,48 @@ describe('the pretend sync', () => {
     expect(await core.syncStatus()).toBeNull()
     await expect(core.syncNow()).rejects.toMatchObject({ message: 'notSignedIn' })
   })
+
+  it('stops at the removal guard until it is answered with Keep or Remove', async () => {
+    const core = new FakeCore({ sample: true, now: () => 77 })
+    await core.unlock('correct horse')
+    await core.signInKemlock({ server: 'https://k.example', email: 'a@b.c', password: 'p' })
+    core.guard = { count: 6, scope: 22, items: [{ name: 'GitHub', kind: 'code' }] }
+    expect(await core.syncNow()).toMatchObject({
+      problem: 'removals',
+      pendingRemovals: 6,
+      scopeSize: 22,
+      pendingRemovalItems: [{ name: 'GitHub', kind: 'code' }],
+    })
+    const kept = await core.keepRemovals()
+    expect(kept).toMatchObject({ lastSync: 77 })
+    expect(kept).not.toHaveProperty('problem')
+    expect(kept).not.toHaveProperty('pendingRemovals')
+    expect(kept).not.toHaveProperty('pendingRemovalItems')
+    expect(core.guardAnswer).toBe('keep')
+    core.guard = { count: 2, scope: 5 }
+    await core.syncNow()
+    await core.confirmRemovals()
+    expect(core.guardAnswer).toBe('remove')
+    expect(core.calls).toEqual(expect.arrayContaining(['keepRemovals', 'confirmRemovals']))
+  })
+
+  it('signs in by SSO or a passkey as a password does', async () => {
+    const core = new FakeCore({ sample: true })
+    await core.unlock('correct horse')
+    expect(await core.signInKemlockSso({ server: 'https://k.example', email: 'a@b.c' })).toMatchObject({
+      step: 'done',
+      status: { place: 'kemlock', account: 'a@b.c' },
+    })
+    expect(await core.signInKemlockPasskey({ server: 'https://k.example' })).toMatchObject({
+      step: 'done',
+      status: { place: 'kemlock' },
+    })
+    core.waysStep = { step: 'error', problem: 'cancelled' }
+    expect(await core.signInKemlockSso({ server: 'https://k.example' })).toEqual({
+      step: 'error',
+      problem: 'cancelled',
+    })
+  })
 })
 
 describe('picks and recent passwords', () => {

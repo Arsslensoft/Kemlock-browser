@@ -342,6 +342,122 @@ describe('Kemlock Server', () => {
   })
 })
 
+describe('Kemlock Server, by SSO or a passkey', () => {
+  const toKemlockForm = async () => {
+    await open()
+    await toForm('Kemlock Server', 'https://km.example')
+  }
+
+  it('offers both next to the email and master password, only for Kemlock Server', async () => {
+    await toKemlockForm()
+    expect(button('Sign in with SSO')).toBeTruthy()
+    expect(button('Use a passkey or security key')).toBeTruthy()
+    expect(button('Sign in')).toBeTruthy()
+  })
+
+  it('signs in with SSO and goes on to the steps after it', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockSso = () => ({ step: 'masterPassword' })
+    await click('Sign in with SSO')
+    // The email is optional: nothing typed, none sent
+    expect(vi.mocked(ask)).toHaveBeenCalledWith('signInKemlockSso', {
+      server: 'https://km.example',
+    })
+    expect(vi.mocked(ask)).not.toHaveBeenCalledWith('signInKemlock', expect.anything())
+    expect(heading()).toBe("Open your account's key")
+
+    handlers.answerStep = () => ({ step: 'firstSync', adds: 3, removes: 0 })
+    await type('Master password', 'pw')
+    await click('Continue')
+    expect(heading()).toBe('The first sync')
+    handlers.answerStep = () => ({
+      step: 'done',
+      status: { place: 'kemlock', server: 'https://km.example', running: false },
+    })
+    await click('Start syncing')
+    expect(heading()).toBe('Kemlock is ready')
+  })
+
+  it('sends the typed email with a passkey, and waits for the approval', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockPasskey = () => ({
+      step: 'approval',
+      phrase: ['maple', 'river', 'stone', 'quiet', 'ember'],
+      requestId: 'r9',
+    })
+    await type('Email', ' me@km.example ')
+    await click('Use a passkey or security key')
+    expect(vi.mocked(ask)).toHaveBeenCalledWith('signInKemlockPasskey', {
+      server: 'https://km.example',
+      email: 'me@km.example',
+    })
+    expect(heading()).toBe('Approve this browser')
+  })
+
+  it('says it is waiting for the window while it is open', async () => {
+    await toKemlockForm()
+    let finish: (step: unknown) => void = () => undefined
+    handlers.signInKemlockSso = () => new Promise((resolve) => (finish = resolve))
+    await click('Sign in with SSO')
+    expect(text()).toContain('Finish signing in in the window that opened.')
+    expect(button('Sign in with SSO').disabled).toBe(true)
+    expect(button('Use a passkey or security key').disabled).toBe(true)
+    await act(() => finish({ step: 'masterPassword' }))
+    await settle()
+    expect(heading()).toBe("Open your account's key")
+  })
+
+  it('names the id to add when the server does not list this extension', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockSso = () => ({
+      step: 'error',
+      problem: 'ssoRedirect',
+      message: 'abcdefgh',
+    })
+    await click('Sign in with SSO')
+    expect(heading()).toBe('Sign in to Kemlock Server')
+    expect(text()).toContain('KEMLOCK_BROWSER_EXTENSION_IDS')
+    expect(text()).toContain('abcdefgh')
+  })
+
+  it('stays on the form with a word of its own when cancelled or it did not finish', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockSso = () => ({ step: 'error', problem: 'cancelled' })
+    await click('Sign in with SSO')
+    expect(heading()).toBe('Sign in to Kemlock Server')
+    expect(text()).toContain('The SSO sign-in was cancelled.')
+
+    handlers.signInKemlockPasskey = () => ({ step: 'error', problem: 'cancelled' })
+    await click('Use a passkey or security key')
+    expect(text()).toContain('The passkey was not used.')
+
+    handlers.signInKemlockPasskey = () => ({ step: 'error', problem: 'ssoFailed' })
+    await click('Use a passkey or security key')
+    expect(text()).toContain("The passkey page didn't give an answer.")
+
+    handlers.signInKemlockSso = () => ({ step: 'error', problem: 'unsupported' })
+    await click('Sign in with SSO')
+    expect(text()).toContain("This server doesn't offer that way of signing in.")
+  })
+
+  it('shows the app words for the other problems, such as a session that ended', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockSso = () => ({ step: 'error', problem: 'ssoRequired' })
+    await click('Sign in with SSO')
+    expect(heading()).toBe('Sign in to Kemlock Server')
+    expect(container.querySelector('.problem')).not.toBeNull()
+  })
+
+  it('shows the failure when the background refuses', async () => {
+    await toKemlockForm()
+    handlers.signInKemlockPasskey = () => {
+      throw new Error('boom')
+    }
+    await click('Use a passkey or security key')
+    expect(text()).toContain('Something went wrong. Try again.')
+  })
+})
+
 describe('Vaultwarden', () => {
   const homes = [
     { id: 'h1', name: 'Kemlock', storage: 'sealed', items: 22 },

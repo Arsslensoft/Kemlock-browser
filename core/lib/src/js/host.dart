@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:kemlock_core/crypto/bytes.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_auth_api.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_passkey.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_signin.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_sso.dart';
 import 'package:web/web.dart' as web;
 
@@ -79,17 +80,23 @@ class PagePasskeys implements KmPasskeyAsserter {
 
   @override
   Future<KmPasskeyAssertion> assertion(KmPasskeyOptions options, Uint8List prfInput, Uri server) async {
-    final answer = await _host.call('passkeyAssertion', [
-      jsonEncode({
-        'challenge': b64url(options.challenge),
-        'rpId': options.rpId,
-        'credentialIds': [for (final id in options.credentialIds) b64url(id)],
-        'userVerification': options.userVerification,
-        'prfInput': b64url(prfInput),
-      }),
-      server.toString(),
-    ]);
-    if (answer == null) throw const FormatException('the passkey page gave no answer');
+    final String? answer;
+    try {
+      answer = await _host.call('passkeyAssertion', [
+        jsonEncode({
+          'challenge': b64url(options.challenge),
+          'rpId': options.rpId,
+          'credentialIds': [for (final id in options.credentialIds) b64url(id)],
+          'userVerification': options.userVerification,
+          'prfInput': b64url(prfInput),
+        }),
+        server.toString(),
+      ]);
+    } catch (error) {
+      throw KmSignInError(KmSignInIssue.ssoFailed, detail: '$error');
+    }
+    // The person closed the page or dismissed the prompt
+    if (answer == null) throw const KmSignInError(KmSignInIssue.cancelled);
     final json = jsonDecode(answer);
     if (json is! Map<String, Object?>) throw const FormatException('the passkey page gave no assertion');
     Uint8List bytes(String name) => unb64url(json[name]! as String);

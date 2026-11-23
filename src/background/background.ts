@@ -30,6 +30,7 @@ import { ClipboardManager, offscreenBackend, type ClipboardBackend } from './cli
 import type { Deps } from './deps'
 import { BackgroundError } from './errors'
 import { Filler, recentKey } from './fill'
+import { browserExtensionId } from './identity'
 import { createMenus, menuItems, type MenuAction } from './menus'
 import { forgetPick, pickedHosts } from './picks'
 import { isNeverSave, mirrorPrefs, neverSave, readPrefs } from './prefs'
@@ -159,6 +160,16 @@ export class Background {
   /** A change was made in the browser: sync follows shortly. */
   private changed(): Promise<void> {
     return this.d.sync.changed()
+  }
+
+  /**
+   * The server refused this extension's SSO redirect (its KEMLOCK_BROWSER_EXTENSION_IDS doesn't list it): the step carries the
+   * id the admin must add, as `message`.
+   */
+  private withExtensionId(step: SignInStep): SignInStep {
+    return step.step === 'error' && step.problem === 'ssoRedirect'
+      ? { ...step, message: browserExtensionId() }
+      : step
   }
 
   /** Signed in: the first sync runs now (setup showed what it does), and the step ends with how it went. */
@@ -473,6 +484,24 @@ export class Background {
         await this.needOpen()
         return this.afterSignIn(await core.signInKemlock({ server, email, password }))
       },
+      signInKemlockSso: async ({ server, email }, sender) => {
+        this.check(sender, pages)
+        await this.needOpen()
+        if (core.signInKemlockSso === undefined) throw new BackgroundError('unsupported')
+        const step = await core.signInKemlockSso({
+          server,
+          ...(email === undefined ? {} : { email }),
+        })
+        return this.afterSignIn(this.withExtensionId(step))
+      },
+      signInKemlockPasskey: async ({ server, email }, sender) => {
+        this.check(sender, pages)
+        await this.needOpen()
+        if (core.signInKemlockPasskey === undefined) throw new BackgroundError('unsupported')
+        return this.afterSignIn(
+          await core.signInKemlockPasskey({ server, ...(email === undefined ? {} : { email }) }),
+        )
+      },
       signInWebdav: async ({ folder, username, password }, sender) => {
         this.check(sender, pages)
         await this.needOpen()
@@ -510,6 +539,13 @@ export class Background {
         this.check(sender, pages)
         await this.needOpen()
         const status = await core.confirmRemovals()
+        await this.d.sync.showIcon()
+        return status
+      },
+      keepRemovals: async (_message, sender) => {
+        this.check(sender, pages)
+        await this.needOpen()
+        const status = await core.keepRemovals()
         await this.d.sync.showIcon()
         return status
       },

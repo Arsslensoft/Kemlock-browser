@@ -17,7 +17,7 @@ export interface CoreHooks {
    * (`challenge`, `rpId`, `credentialIds`, `userVerification`, `prfInput`, binary values base64url) and the server's address;
    * answers the assertion as JSON (`credentialId`, `authenticatorData`, `clientData`, `signature`, `userHandle?`, `prfOutput?`).
    */
-  passkeyAssertion?(optionsJson: string, server: string): Promise<string>
+  passkeyAssertion?(optionsJson: string, server: string): Promise<string | null>
   /** Where the identity API ends a trip (`identity.getRedirectURL()`). */
   redirectUrl?: string
 }

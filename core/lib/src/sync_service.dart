@@ -4,6 +4,7 @@
 // vault), and a run: read the scope, merge, take what changed, write down what was held.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show max;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -68,7 +69,7 @@ String deviceKeyTag(String vaultId) => 'dpop.$vaultId';
 
 /// How one scope's last run went.
 class ScopeStatus {
-  const ScopeStatus({this.lastSyncAt, this.problem, this.count = 0});
+  const ScopeStatus({this.lastSyncAt, this.problem, this.count = 0, this.scope = 0, this.items = const []});
 
   /// Epoch ms of the last run that went through, or null.
   final int? lastSyncAt;
@@ -78,6 +79,41 @@ class ScopeStatus {
 
   /// With [SyncProblem.removals], how many entries would go.
   final int count;
+
+  /// With [SyncProblem.removals], how many entries the scope holds (on its larger side): "6 of 22".
+  final int scope;
+
+  /// With [SyncProblem.removals], what would go, by name and kind, when the run can tell (a folder's can; the two servers'
+  /// engines stop with the count only).
+  final List<RemovalItem> items;
+}
+
+/// An entry a run stopped by the removal guard would remove, as the "Review" list shows it.
+typedef RemovalItem = ({String name, String kind});
+
+/// What each entry of [lists] is called and what kind it is, by id.
+Map<String, RemovalItem> _removalNames(Lists lists) => {
+  for (final account in lists.accounts) account.id: (name: account.issuer.isEmpty ? account.label : account.issuer, kind: 'code'),
+  for (final account in lists.keyAccounts) account.id: (name: account.issuer.isEmpty ? account.name : account.issuer, kind: 'code'),
+  for (final service in lists.backupServices) service.id: (name: service.serviceName, kind: 'backupCodes'),
+  for (final login in lists.logins) login.id: (name: login.name, kind: 'login'),
+  for (final note in lists.notes) note.id: (name: note.title, kind: 'note'),
+  for (final card in lists.cards) card.id: (name: card.name, kind: 'card'),
+  for (final identity in lists.identities) identity.id: (name: identity.name, kind: 'identity'),
+  for (final key in lists.keys) key.id: (name: key.name, kind: 'key'),
+  for (final passkey in lists.passkeys) passkey.id: (name: passkey.rpName ?? passkey.rpId, kind: 'passkey'),
+  for (final contact in lists.contacts) contact.id: (name: contact.name, kind: 'contact'),
+};
+
+/// The most entries a "Review" list names.
+const _removalListLimit = 200;
+
+/// A folder's run the removal guard stopped: it knows what would go, which the two servers' engines don't say.
+class _FolderRemovals extends KmSyncError {
+  _FolderRemovals(int count, this.scope, this.items) : super(KmSyncIssue.removals, count: count);
+
+  final int scope;
+  final List<RemovalItem> items;
 }
 
 /// The vault's sealed values as `KmHost` reads and writes them: the session, the account and the cache.
@@ -335,6 +371,12 @@ class SyncService {
       'running': _running,
       'problem': ?problem?.name,
       'pendingRemovals': ?(problem == SyncProblem.removals ? status?.count : null),
+      'scopeSize': ?(problem == SyncProblem.removals && (status?.scope ?? 0) > 0 ? status?.scope : null),
+      'pendingRemovalItems': ?(problem == SyncProblem.removals && (status?.items.isNotEmpty ?? false)
+          ? [
+              for (final item in status!.items) {'name': item.name, 'kind': item.kind},
+            ]
+          : null),
       if (place == 'vaultwarden') ...{
         'loginsNotSynced': true,
         'storage': _settings.vaultwarden!.mode == VaultwardenMode.sealed ? 'sealed' : 'plain',
@@ -461,7 +503,16 @@ class SyncService {
       final redirect = _vault.platform.ssoRedirect;
       if (redirect == null) throw const CoreFailure(CoreFailure.unavailable, 'the browser gave no sign-in address');
       final pending = await _startKemlock(input['server']! as String, (input['email'] as String?) ?? '');
-      return _afterKemlock(pending, await kmSsoSignIn(pending.signIn, _vault.platform.browserAuth, returnTo: redirect));
+      try {
+        return await _afterKemlock(pending, await kmSsoSignIn(pending.signIn, _vault.platform.browserAuth, returnTo: redirect));
+      } on KmError catch (error) {
+        // The server's list of extensions that may end an SSO trip (KEMLOCK_BROWSER_EXTENSION_IDS) doesn't name this one
+        if (error.status == 400 && (error.message ?? '').contains('redirect')) {
+          _dropPending();
+          return {'step': 'error', 'problem': 'ssoRedirect'};
+        }
+        rethrow;
+      }
     });
   }
 
@@ -974,6 +1025,7 @@ class SyncService {
       final dav = WebDav(client = _vault.platform.clientFor(null));
       run = (local, state, now) async {
         // The core's run of a folder has no removal guard of its own: look before it writes, and stop when it would remove much
+        if (_removalChoice == RemovalChoice.keep) return _keepFolder(dav, target, local, state, now);
         final lost = await _guardFolder(dav, target, local, state, now);
         final result = await runWebDavScope(webDav: dav, target: target, local: local, state: state, now: now);
         return (doc: result.doc, known: result.known, state: {...result.state, lostKey: lost}, skipped: 0);
@@ -989,7 +1041,16 @@ class SyncService {
       try {
         result = await run(scopeLists(lists, null), state, _clock().millisecondsSinceEpoch);
       } catch (error) {
-        _status[key] = ScopeStatus(lastSyncAt: state.lastSyncAt, problem: problemOf(error), count: _countOf(error));
+        final problem = problemOf(error);
+        final count = _countOf(error);
+        _status[key] = ScopeStatus(
+          lastSyncAt: state.lastSyncAt,
+          problem: problem,
+          count: count,
+          // A folder's stop knows the scope and what would go; the servers' engines say the count only
+          scope: error is _FolderRemovals ? error.scope : (problem == SyncProblem.removals ? max(count, lists.ids.length) : 0),
+          items: error is _FolderRemovals ? error.items : const [],
+        );
         return;
       }
       if (!identical(session, _vault.session)) return;
@@ -1031,9 +1092,81 @@ class SyncService {
       now: now,
       choice: _removalChoice,
     );
-    if (guard.stop) throw KmSyncError(KmSyncIssue.removals, count: removals);
+    if (guard.stop) {
+      final names = {..._removalNames(remote ?? const SyncDoc()), ..._removalNames(local)};
+      final items = [
+        for (final id in {...here, ...there}.difference(merged)) ?names[id],
+      ]..sort((a, b) => a.kind == b.kind ? a.name.toLowerCase().compareTo(b.name.toLowerCase()) : a.kind.compareTo(b.kind));
+      throw _FolderRemovals(removals, here.length > there.length ? here.length : there.length, items.take(_removalListLimit).toList());
+    }
     return guard.lostJson;
   }
+
+  /// A folder's run that keeps everything ("Keep" after the removal guard): what the file's deletions and this browser's
+  /// own missing entries would take off either side stays, and comes back from the other, as the servers' engines do with
+  /// `RemovalChoice.keep`. The merge is `syncScope`'s, with the file's tombstones left out and no entry counted as known.
+  Future<({SyncDoc doc, List<String> known, Map<String, Object?> state, int skipped})> _keepFolder(
+    WebDav dav,
+    SyncTarget target,
+    Lists local,
+    ScopeState state,
+    int now,
+  ) async {
+    final key = unb64(target.key);
+    final seen = seenSeq(state.extra);
+    for (var attempt = 1; ; attempt++) {
+      final file = await dav.readFile(target.dav, target.file);
+      final read = file == null ? null : await decryptSyncFile(file.text, key);
+      final count = read?.seq;
+      if (count != null && seen != null && count < seen) {
+        if (attempt < 3) continue;
+        throw const SyncFileError(SyncFileProblem.older);
+      }
+      final remote = read == null ? null : _withoutDeletions(read, read.seq);
+      final merged = mergeScope(await combineKeyCopies(local, remote), const [], remote, now: now);
+      final next = max(count ?? 0, seen ?? 0) + 1;
+      final written = remote != null && sameDoc(merged.doc, remote) && read != null && read.deleted.isEmpty;
+      if (!written) {
+        try {
+          await dav.writeFile(
+            target.dav,
+            target.file,
+            await encryptSyncFile(_withoutDeletions(merged.doc, next), key, kdf: target.kdf),
+            etag: file?.etag,
+            mustNotExist: file == null,
+          );
+        } on DavError catch (error) {
+          if (error.problem == DavProblem.conflict && attempt < 3) continue;
+          rethrow;
+        }
+      }
+      return (
+        doc: merged.doc,
+        known: merged.known,
+        state: {
+          ...withSeenSeq(state.extra, written ? (count ?? seen) : next),
+          lostKey: lostLately(state.extra, now).map((run) => [run.at, run.count]).toList(),
+        },
+        skipped: 0,
+      );
+    }
+  }
+
+  /// [doc] with no deletions, counting [seq].
+  SyncDoc _withoutDeletions(SyncDoc doc, int? seq) => SyncDoc(
+    accounts: doc.accounts,
+    backupServices: doc.backupServices,
+    keys: doc.keys,
+    notes: doc.notes,
+    passkeys: doc.passkeys,
+    keyAccounts: doc.keyAccounts,
+    contacts: doc.contacts,
+    logins: doc.logins,
+    cards: doc.cards,
+    identities: doc.identities,
+    seq: seq,
+    extra: doc.extra,
+  );
 
   int _countOf(Object error) => switch (error) {
     VwSyncError(:final count) => count,
@@ -1044,6 +1177,12 @@ class SyncService {
   /// The removal guard's question answered "remove": the run goes on with the removals.
   Future<Map<String, Object?>> confirmRemovals() {
     _removalChoice = RemovalChoice.remove;
+    return syncNow();
+  }
+
+  /// The removal guard's question answered "keep": the run goes on once with no deletion either way.
+  Future<Map<String, Object?>> keepRemovals() {
+    _removalChoice = RemovalChoice.keep;
     return syncNow();
   }
 
