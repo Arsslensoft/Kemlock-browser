@@ -36,6 +36,8 @@ export interface FrameEnv {
   geometry: Geometry
   /** The menu page's address (`chrome.runtime.getURL`), without its hash. */
   pageUrl: string
+  /** The origin the frame has, when it isn't the page address's (Chrome's `use_dynamic_url`). */
+  frameOrigin?: string
   /** Where hosts are listed so the page scan and the fill's coverage test pass over them. */
   ownHosts: Set<Element>
 }
@@ -156,7 +158,11 @@ export class MenuFrame {
     const channel = new MessageChannel()
     this.port = channel.port1
     channel.port1.onmessage = (event: MessageEvent) => this.heard(event.data)
-    target.postMessage({ kemlock: 'port', nonce }, originOfUrl(this.env.pageUrl), [channel.port2])
+    target.postMessage(
+      { kemlock: 'port', nonce },
+      this.env.frameOrigin ?? originOfUrl(this.env.pageUrl),
+      [channel.port2],
+    )
     const { mode, tabId, frameId, fieldId, siteRules } = this.options
     this.send({
       kind: 'init',

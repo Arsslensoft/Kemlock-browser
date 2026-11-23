@@ -19,7 +19,8 @@ body {
   background: var(--paper);
   border: 1px solid var(--line-2);
   border-radius: 12px;
-  max-height: 100vh;
+  /* Not the frame's own height: the frame is sized to the card, so a card held to it never grows (frame.ts keeps the same 420 as its tallest) */
+  max-height: 420px;
   overflow: auto;
 }
 
