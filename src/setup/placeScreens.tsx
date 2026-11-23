@@ -1,0 +1,282 @@
+// Where the browser syncs: the place, its address, the access to that address, and the sign-in.
+import { useState } from 'preact/hooks'
+import type { SignInStep, SyncPlace } from '../shared/api'
+import { parseAddress } from './address'
+import type { FlowState } from './flow'
+import { progressOf } from './flow'
+import { t } from './i18n'
+import { ask } from './send'
+import { Actions, Alert, Field, Frame, PasswordField, Status, useBusy, type Dispatch } from './ui'
+
+interface Props {
+  state: FlowState
+  dispatch: Dispatch
+}
+
+const placeNames: Record<SyncPlace, string> = {
+  kemlock: 'setup_place_kemlock',
+  webdav: 'setup_place_webdav',
+  vaultwarden: 'setup_place_vaultwarden',
+}
+
+export const placeName = (place: SyncPlace | null): string =>
+  t(placeNames[place ?? 'kemlock'] ?? placeNames.kemlock)
+
+/** Kemlock Server first, then WebDAV and Vaultwarden (docs/plans/add-kemlock-server-sync.md). */
+export function PlaceScreen({ state, dispatch }: Props) {
+  const choices: SyncPlace[] = ['kemlock', 'webdav', 'vaultwarden']
+  return (
+    <Frame
+      title={t('setup_place_title')}
+      lead={t('setup_place_lead')}
+      progress={progressOf(state)}
+      error={state.error}
+    >
+      {state.current ? (
+        <p class="note">
+          {t('setup_place_current', placeName(state.current.place), state.current.server)}
+        </p>
+      ) : null}
+      <ul class="choices">
+        {choices.map((place) => (
+          <li key={place}>
+            <button type="button" class="choice" onClick={() => dispatch({ type: 'place', place })}>
+              <span class="choice-title">{placeName(place)}</span>
+              <span class="choice-body">{t(`${placeNames[place]}_body`)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p class="hint">{t('setup_place_phone')}</p>
+      <Actions>
+        <button type="button" class="secondary" onClick={() => dispatch({ type: 'skip' })}>
+          {state.current ? t('setup_place_keep') : t('setup_place_skip')}
+        </button>
+      </Actions>
+    </Frame>
+  )
+}
+
+/** The server's (or the WebDAV folder's) address: https only. */
+export function AddressScreen({ state, dispatch }: Props) {
+  const [text, setText] = useState(state.address)
+  const place = state.place ?? 'kemlock'
+  const folder = place === 'webdav'
+  const problem =
+    state.addressError === 'insecure'
+      ? t('sync_problem_insecure')
+      : state.addressError === 'invalid'
+        ? t('setup_address_invalid')
+        : null
+
+  const submit = (event: Event) => {
+    event.preventDefault()
+    dispatch({ type: 'address', text })
+  }
+
+  return (
+    <Frame
+      title={t(folder ? 'setup_address_title_folder' : 'setup_address_title', placeName(place))}
+      lead={t(folder ? 'setup_address_lead_folder' : 'setup_address_lead')}
+      progress={progressOf(state)}
+      error={state.error}
+      hint={state.error?.problem === 'network' && !folder ? t('setup_certificate_hint') : null}
+    >
+      <form onSubmit={submit} noValidate>
+        <Field
+          label={folder ? t('setup_address_folder') : t('setup_address_server')}
+          value={text}
+          onInput={setText}
+          type="url"
+          inputMode="url"
+          autoComplete="url"
+          placeholder={folder ? 'https://dav.example/kemlock' : 'https://vault.example'}
+          hint={folder ? undefined : t('setup_address_certificate')}
+          error={problem}
+          required
+        />
+        <Actions>
+          <button type="submit" class="primary">
+            {t('setup_continue')}
+          </button>
+          <button type="button" class="secondary" onClick={() => dispatch({ type: 'back' })}>
+            {t('setup_back')}
+          </button>
+        </Actions>
+      </form>
+    </Frame>
+  )
+}
+
+/**
+ * Access to the address, asked from this click (a user gesture) before anything is sent to it,
+ * and apart from the optional access to all sites (spec: browser-sync).
+ */
+export function AccessScreen({ state, dispatch }: Props) {
+  const parsed = parseAddress(state.address)
+  const [busy, run] = useBusy(dispatch)
+  const refused = state.screen.name === 'access' && state.screen.refused
+  if (!parsed.ok) return null
+  const place = state.place ?? 'kemlock'
+
+  const allow = () => {
+    // The browser's prompt needs this click, so it is asked before anything awaits
+    const request = chrome.permissions.request({ origins: [parsed.pattern] })
+    void run(async () => {
+      const granted = await Promise.resolve(request).then(
+        (ok) => ok,
+        () => false,
+      )
+      if (!granted) {
+        dispatch({ type: 'accessRefused' })
+        return
+      }
+      if (place !== 'webdav') {
+        const checked = await ask('checkServer', { place, server: state.address })
+        if (!checked.ok) {
+          dispatch({ type: 'failed', problem: checked.problem })
+          return
+        }
+      }
+      dispatch({ type: 'accessGranted' })
+    })
+  }
+
+  return (
+    <Frame
+      title={t('setup_access_title', parsed.host)}
+      lead={t('setup_access_lead', parsed.host)}
+      progress={progressOf(state)}
+      error={state.error}
+    >
+      <ul class="plain">
+        <li>{t('setup_access_only', parsed.host)}</li>
+        <li>{t('setup_access_nothing')}</li>
+        <li>{t('setup_access_apart')}</li>
+      </ul>
+      {refused ? <Alert>{t('setup_access_refused', parsed.host)}</Alert> : null}
+      {busy ? <Status>{t('setup_access_checking', parsed.host)}</Status> : null}
+      <Actions>
+        <button type="button" class="primary" disabled={busy} onClick={allow}>
+          {refused ? t('setup_access_again') : t('setup_access_button', parsed.host)}
+        </button>
+        <button
+          type="button"
+          class="secondary"
+          disabled={busy}
+          onClick={() => dispatch({ type: 'back' })}
+        >
+          {t('setup_back')}
+        </button>
+      </Actions>
+    </Frame>
+  )
+}
+
+/** The sign-in: email and master password, or a WebDAV folder's username, password and passphrase. */
+export function FormScreen({ state, dispatch }: Props) {
+  const place = state.place ?? 'kemlock'
+  const [email, setEmail] = useState(state.current?.account ?? '')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [passphrase, setPassphrase] = useState('')
+  const [busy, run] = useBusy(dispatch)
+  const webdav = place === 'webdav'
+  const ready = webdav
+    ? username !== '' && password !== '' && passphrase !== ''
+    : email !== '' && password !== ''
+
+  const submit = (event: Event) => {
+    event.preventDefault()
+    if (busy || !ready) return
+    void run(async () => {
+      let step: SignInStep
+      if (place === 'kemlock')
+        step = await ask('signInKemlock', { server: state.address, email, password })
+      else if (place === 'vaultwarden')
+        step = await ask('signInVaultwarden', { server: state.address, email, password })
+      else {
+        step = await ask('signInWebdav', { folder: state.address, username, password })
+        // The folder's sync passphrase was typed with the rest: answer its step with it
+        if (step.step === 'passphrase')
+          step = await ask('answerStep', { answer: { step: 'passphrase', passphrase } })
+      }
+      setPassword('')
+      setPassphrase('')
+      dispatch({ type: 'step', step })
+    })
+  }
+
+  return (
+    <Frame
+      title={t(`setup_form_title_${place}`)}
+      lead={t(`setup_form_lead_${place}`)}
+      progress={progressOf(state)}
+      error={state.error}
+      hint={
+        state.error?.problem === 'network' && place === 'kemlock'
+          ? t('setup_certificate_hint')
+          : null
+      }
+    >
+      <form onSubmit={submit} noValidate>
+        {webdav ? (
+          <Field
+            label={t('setup_form_username')}
+            value={username}
+            onInput={setUsername}
+            autoComplete="username"
+            disabled={busy}
+            required
+          />
+        ) : (
+          <Field
+            label={t('setup_form_email')}
+            value={email}
+            onInput={setEmail}
+            type="email"
+            inputMode="email"
+            autoComplete="username"
+            disabled={busy}
+            required
+          />
+        )}
+        <PasswordField
+          label={webdav ? t('setup_form_webdav_password') : t('setup_form_master')}
+          value={password}
+          onInput={setPassword}
+          autoComplete="current-password"
+          hint={webdav ? undefined : t(`setup_form_master_${place}`)}
+          disabled={busy}
+          required
+        />
+        {webdav ? (
+          <PasswordField
+            label={t('setup_form_passphrase')}
+            value={passphrase}
+            onInput={setPassphrase}
+            autoComplete="off"
+            hint={t('setup_form_passphrase_hint')}
+            disabled={busy}
+            required
+          />
+        ) : null}
+        {place === 'vaultwarden' ? <p class="note">{t('setup_logins_stay')}</p> : null}
+        {busy ? <Status>{t(webdav ? 'setup_form_busy_webdav' : 'setup_form_busy')}</Status> : null}
+        <Actions>
+          <button type="submit" class="primary" disabled={busy || !ready}>
+            {t('setup_form_button')}
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            disabled={busy}
+            onClick={() => dispatch({ type: 'back' })}
+          >
+            {t('setup_back')}
+          </button>
+        </Actions>
+      </form>
+    </Frame>
+  )
+}

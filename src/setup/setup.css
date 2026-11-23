@@ -1,0 +1,425 @@
+/* The setup tab: one card per step, in the app's tokens (light and dark follow the system). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Geist', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(60rem 30rem at 50% -10rem, var(--ambient), transparent 70%), var(--background);
+}
+
+.frame {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.brand .mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.45rem;
+  background: var(--primary);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.brand .name {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.brand .progress {
+  margin-inline-start: auto;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line-2);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  padding: 1.75rem;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+h1:focus {
+  outline: none;
+}
+
+h2 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.lead {
+  margin: 0 0 1.25rem;
+  color: var(--text-secondary);
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+.hint {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.note {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--accent-soft);
+  font-size: 0.9375rem;
+}
+
+.problem {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--error);
+  border-radius: 0.6rem;
+  background: var(--danger-soft);
+  color: var(--text);
+}
+
+.problem p:last-child {
+  margin-bottom: 0;
+}
+
+.field-error {
+  margin: 0.25rem 0 0;
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
+.status {
+  margin: 0.75rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label,
+legend {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.field .hint {
+  margin: 0.3rem 0 0;
+}
+
+input[type='text'],
+input[type='password'],
+input[type='email'],
+input[type='url'] {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line-2);
+  border-radius: 0.6rem;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+input:disabled {
+  color: var(--text-disabled);
+}
+
+.password {
+  position: relative;
+}
+
+.password .show {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.primary,
+.secondary,
+.danger {
+  padding: 0.65rem 1.1rem;
+  border-radius: 0.6rem;
+  border: 1px solid transparent;
+  font-weight: 500;
+}
+
+.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+.danger {
+  background: var(--error);
+  color: var(--on-error);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: 0.875rem;
+  text-decoration: underline;
+}
+
+:is(button, input, a):focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.choices,
+.plain,
+.checks,
+.counts,
+.next {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.plain li,
+.counts li {
+  padding: 0.35rem 0;
+}
+
+.next {
+  padding-inline-start: 1.25rem;
+  list-style: decimal;
+}
+
+.choices li + li {
+  margin-top: 0.6rem;
+}
+
+.choice {
+  display: block;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line-2);
+  border-radius: 0.75rem;
+  background: var(--raised);
+  color: var(--text);
+  text-align: start;
+}
+
+.choice:hover {
+  border-color: var(--accent-line);
+  background: var(--selected);
+}
+
+.choice-title {
+  display: block;
+  font-weight: 600;
+}
+
+.choice-body {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.methods {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.radio,
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.9375rem;
+}
+
+.check {
+  flex-wrap: wrap;
+}
+
+.check .hint {
+  flex-basis: 100%;
+  margin: 0;
+  padding-inline-start: 1.6rem;
+}
+
+.strength {
+  margin: -0.25rem 0 1rem;
+}
+
+.bars {
+  display: flex;
+  gap: 6px;
+}
+
+.bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-2);
+  transition: background-color 0.35s;
+}
+
+.bar.on.level-0,
+.bar.on.level-1 {
+  background: var(--error);
+}
+
+.bar.on.level-2 {
+  background: var(--warning);
+}
+
+.bar.on.level-3,
+.bar.on.level-4 {
+  background: var(--accent-text);
+}
+
+.level-name {
+  min-height: 1.4rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: end;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.checks li {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.checks li.met {
+  color: var(--accent-text);
+}
+
+.words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.words li {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 0.6rem;
+  background: var(--accent-soft);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.counts strong {
+  font-size: 1.25rem;
+}
+
+.counts .warn {
+  color: var(--warning);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.summary dt {
+  color: var(--text-secondary);
+}
+
+.summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 30rem) {
+  .card {
+    padding: 1.25rem;
+  }
+}
