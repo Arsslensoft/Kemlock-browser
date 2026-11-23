@@ -1,5 +1,45 @@
+# Packages
 node_modules/
+
+# Builds: dist/<browser>, and tool/build.sh's dist/source and dist/release
 dist/
+web-ext-artifacts/
+*.zip
+*.crx
+*.xpi
+
+# Tests
 coverage/
 test-results/
 playwright-report/
+blob-report/
+
+# Caches
+.vite/
+.eslintcache
+*.tsbuildinfo
+
+# Signing keys and store credentials: never commit them
+*.pem
+*.key
+.amo-upload-uuid
+.web-ext-config.*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local planning notes, not part of the repo
+/plans/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/worktrees/
