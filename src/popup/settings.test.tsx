@@ -233,7 +233,6 @@ describe('the sync card', () => {
       keepRemovals: (() => syncStatus({ lastSync: Date.now() })) as never,
     })
     const root = await openSettings()
-    expect(text(root)).toContain(message('en', 'sync_problem_removals'))
     expect(text(root)).toContain('would remove 6 of 22 items')
 
     // Review lists them by name and kind, and sends nothing

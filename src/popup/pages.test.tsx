@@ -94,7 +94,7 @@ describe('a login’s page', () => {
     expect(text(root)).toContain(message('en', 'popup_passwordHidden'))
     expect(text(root)).not.toContain('hunter2')
 
-    await click(button(root, 'Show'))
+    await click(button(root, 'Show the password of Orbit Cloud'))
     expect(text(root)).toContain('hunter2')
     expect(background.of('showPassword')[0]?.args).toEqual({ id: 'l1' })
 
@@ -114,6 +114,7 @@ describe('a login’s page', () => {
     const root = await openPopup()
     await openLogin(root, 'Orbit Cloud')
     expect(text(root)).toContain('8 of 10 left')
+    await click(root.querySelector('button.link-row'))
 
     await click(button(root, 'Copy a backup code of Orbit Cloud'))
     expect(background.of('copy')[0]?.args).toEqual({ what: 'backupCode', id: 'c1' })
@@ -410,7 +411,7 @@ describe('the generator', () => {
       generate: (() => 'Xy7!made-password') as never,
     })
     const root = await open()
-    expect(text(root)).toContain('Length: 20')
+    expect(input(root, 'Length')?.value).toBe('20')
     expect(root.querySelector('output')?.textContent).toBe('Xy7!made-password')
     expect(background.of('generate')[0]?.args).toEqual({
       options: {
@@ -437,13 +438,13 @@ describe('the generator', () => {
       generate: (() => 'abc') as never,
     })
     let root = await open()
-    await change(input(root, 'Length: 20'), '32')
+    await change(input(root, 'Length'), '32')
     expect(background.of('generate').at(-1)?.args).toMatchObject({ options: { length: 32 } })
     expect(fake.storage['kemlock_popup_generator']).toMatchObject({ length: 32, mode: 'random' })
     unmountAll()
 
     root = await open()
-    expect(text(root)).toContain('Length: 32')
+    expect(input(root, 'Length')?.value).toBe('32')
   })
 
   it('makes a passphrase of the app’s defaults', async () => {
@@ -453,7 +454,7 @@ describe('the generator', () => {
     })
     const root = await open()
     await click(root.querySelector('input[type="radio"][value="passphrase"]'))
-    expect(text(root)).toContain('Words: 5')
+    expect(input(root, 'Words')?.value).toBe('5')
     expect(background.of('generate').at(-1)?.args).toEqual({
       options: {
         mode: 'passphrase',

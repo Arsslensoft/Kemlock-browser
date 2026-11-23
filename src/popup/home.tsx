@@ -1,15 +1,28 @@
 // The popup's first screen: the site in front, then search, Codes and Logins.
-import type { CodeView, LoginView, TabView } from '../shared/api'
-import { IconButton, Notice, Tabs } from '../shared/ui/components'
-import { t } from '../shared/ui/i18n'
+import type { CodeView, GeneratedPassword, LoginView, TabView } from '../shared/api'
+import { Wordmark } from '../shared/brand/brand'
+import {
+  Button,
+  IconButton,
+  Notice,
+  Ring,
+  Tabs,
+  useLoad,
+  useToastBottom,
+} from '../shared/ui/components'
+import { formatDate, t } from '../shared/ui/i18n'
 import { Icon } from '../shared/ui/icons'
-import { BackupCodes, CodeRow } from './codes'
+import { CodeRow } from './codes'
+import { useCopy } from './copy'
 import { computable, type Vault } from './data'
-import { allTags, codeMatches, healthCounts, loginMatches } from './format'
-import { useLiveCodes } from './live'
+import { allTags, codeMatches, healthCounts, hostOf, loginMatches } from './format'
+import { useLiveCodes, secondsLeft, warnSeconds } from './live'
 import { LoginRow } from './logins'
 import type { Route } from './route'
+import { ask } from './send'
 import { SiteCards, siteItems } from './site'
+import { SyncBanner, SyncFooter, useSyncStatus } from './sync-state'
+import { openSetup } from './links'
 
 /** What the person has chosen on Home, kept while a page is open over it. */
 export interface HomeUi {
@@ -31,10 +44,37 @@ function healthLine(logins: LoginView[], breachedOn: boolean): string {
     counts.weak > 0 ? t('popup_countWeak', counts.weak) : '',
     counts.withoutItsCode > 0 ? t('popup_countWithoutCode', counts.withoutItsCode) : '',
   ].filter((part) => part !== '')
-  return [
-    t('popup_healthTitle'),
-    ...(parts.length > 0 ? parts : [t('popup_healthNoWarnings')]),
-  ].join(' · ')
+  return parts.length > 0 ? parts.join(' · ') : t('popup_healthNoWarnings')
+}
+
+/** "harbornotes.app · today": the newest password Kemlock made that no login holds. */
+function RecentCard(props: { entry: GeneratedPassword; onRecent: () => void; onSave: () => void }) {
+  const copy = useCopy()
+  const { entry } = props
+  const site = entry.site === undefined || entry.site === '' ? '' : hostOf(entry.site)
+  const sameDay = new Date(entry.at).toDateString() === new Date().toDateString()
+  const when = sameDay ? t('popup_today') : formatDate(entry.at)
+  return (
+    <div class="recent-card">
+      <span class="grow lines">
+        <button type="button" class="recent-link" onClick={props.onRecent}>
+          {t('popup_recent')}
+        </button>
+        <span class="mono ellipsis">{site === '' ? when : `${site} · ${when}`}</span>
+      </span>
+      <button
+        type="button"
+        class="link-btn quiet"
+        aria-label={t('popup_copyPasswordOf', site === '' ? t('popup_generatedUnnamed') : site)}
+        onClick={() => void copy('generated', String(entry.at), entry.value)}
+      >
+        {t('popup_copy')}
+      </button>
+      <button type="button" class="link-btn" onClick={props.onSave}>
+        {t('popup_saveAsLogin')}
+      </button>
+    </div>
+  )
 }
 
 export function Home(props: {
@@ -49,6 +89,9 @@ export function Home(props: {
 }) {
   const { vault, tab } = props
   const { query, list, tag } = props.ui
+  useToastBottom(52)
+  const [sync, setSync] = useSyncStatus()
+  const recent = useLoad(() => ask('recentPasswords'))
   const setQuery = (next: string) => props.onUi({ ...props.ui, query: next })
   const setList = (next: 'codes' | 'logins') => props.onUi({ ...props.ui, list: next })
   const setTag = (next: string | null) => props.onUi({ ...props.ui, tag: next })
@@ -74,12 +117,60 @@ export function Home(props: {
   const breachedOn = vault.settings.breachedPasswords
   const open = (id: string) => props.onRoute({ name: 'login', id })
 
+  // The small timer by the tabs follows the first code on show that counts down.
+  const timed = vault.codes.find((code) => {
+    const entry = live.entries[code.id]
+    return entry !== undefined && secondsLeft(entry, live.now) !== undefined
+  })
+  const timedEntry = timed === undefined ? undefined : live.entries[timed.id]
+  const timedLeft = timedEntry === undefined ? undefined : secondsLeft(timedEntry, live.now)
+
+  const nothingAtAll = vault.codes.length === 0 && vault.logins.length === 0
+  const first = vault.backups[0]
+  const backupsSub =
+    vault.backups.length === 0 || first === undefined
+      ? ''
+      : vault.backups.length === 1
+        ? `${t('popup_backupCount', first.left, first.total)} · ${first.issuer}`
+        : t('popup_backupServices', vault.backups.length)
+  const newest = [...(recent.value ?? [])].sort((a, b) => b.at - a.at)[0]
+  const vaultwarden = sync !== undefined && sync !== null && sync.place === 'vaultwarden'
+
+  const emptyState = (kind: 'codes' | 'logins') => {
+    const sentence = t(kind === 'codes' ? 'popup_noCodes' : 'popup_noLogins')
+    const cut = sentence.indexOf('. ') + 1
+    return (
+      <div class="empty-state">
+        <span class="empty-icon" aria-hidden="true">
+          <Icon name={kind === 'codes' ? 'scan' : 'key'} size={30} weight={1.6} />
+        </span>
+        <div class="empty-words">
+          <p class="empty-title">{cut > 0 ? sentence.slice(0, cut) : sentence}</p>
+          {cut > 0 && <p class="empty-rest">{sentence.slice(cut + 1)}</p>}
+        </div>
+        {kind === 'codes' ? (
+          <Button kind="primary" icon="plus" onClick={() => props.onRoute({ name: 'addCode' })}>
+            {t('popup_addCode')}
+          </Button>
+        ) : (
+          <Button icon="plus" onClick={() => props.onRoute({ name: 'edit', id: null })}>
+            {t('popup_newLogin')}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div class="home">
-      <header class="bar">
-        <h1 class="grow">{t('extName')}</h1>
+    <div class="screen home">
+      <header class="home-bar">
+        <div class="brand">
+          <Wordmark height={17} />
+          <span class="sub">{t('popup_personalVault')}</span>
+        </div>
         <IconButton
           icon="plus"
+          weight={2}
           label={t('popup_addCode')}
           onClick={() => props.onRoute({ name: 'addCode' })}
         />
@@ -96,126 +187,214 @@ export function Home(props: {
         <IconButton icon="lock" label={t('popup_lockNow')} onClick={props.onLock} />
       </header>
 
-      {props.notice !== undefined && <Notice class="gap">{props.notice}</Notice>}
+      {props.notice !== undefined && (
+        <div class="home-notice">
+          <Notice>{props.notice}</Notice>
+        </div>
+      )}
 
-      <SiteCards tab={tab} vault={vault} live={live} onOpenLogin={open} />
-
-      <div class="search">
-        <Icon name="search" size={16} />
-        <input
-          type="search"
-          value={query}
-          aria-label={t('popup_searchLabel')}
-          placeholder={t('popup_searchPlaceholder')}
-          autocomplete="off"
-          spellcheck={false}
-          onInput={(event) => setQuery(event.currentTarget.value)}
+      {sync !== undefined && sync !== null && (
+        <SyncBanner
+          status={sync}
+          onStatus={setSync}
+          onReview={() => props.onRoute({ name: 'settings' })}
         />
+      )}
+
+      <div class="search-wrap">
+        <label class="field">
+          <span class="box search">
+            <Icon name="search" size={16} weight={2} />
+            <input
+              type="search"
+              value={query}
+              aria-label={t('popup_searchLabel')}
+              placeholder={t('popup_searchPlaceholder')}
+              autocomplete="off"
+              spellcheck={false}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+            />
+          </span>
+        </label>
       </div>
 
-      {!searching && (
-        <Tabs
-          label={t('popup_listsLabel')}
-          selected={list}
-          onSelect={(id) => setList(id === 'logins' ? 'logins' : 'codes')}
-          tabs={[
-            { id: 'codes', label: t('popup_codes'), count: vault.codes.length },
-            { id: 'logins', label: t('popup_logins'), count: vault.logins.length },
-          ]}
-        />
-      )}
+      <div class="scroll">
+        {!searching && <SiteCards tab={tab} vault={vault} live={live} onOpenLogin={open} />}
 
-      {tags.length > 0 && (
-        <div class="chips filter" role="group" aria-label={t('popup_tagFilter')}>
-          <button
-            type="button"
-            class={tag === null ? 'chip on' : 'chip'}
-            aria-pressed={tag === null ? 'true' : 'false'}
-            onClick={() => setTag(null)}
+        {!searching && (
+          <div class="tabs-row">
+            <Tabs
+              label={t('popup_listsLabel')}
+              selected={list}
+              onSelect={(id) => setList(id === 'logins' ? 'logins' : 'codes')}
+              tabs={[
+                { id: 'codes', label: t('popup_codes'), count: vault.codes.length },
+                { id: 'logins', label: t('popup_logins'), count: vault.logins.length },
+              ]}
+            />
+            {list === 'codes' && timedLeft !== undefined && timed !== undefined && (
+              <span class="tab-timer mono">
+                <Ring
+                  remaining={timedLeft}
+                  period={timed.period}
+                  warn={timedLeft <= warnSeconds}
+                  size={14}
+                  label={t('popup_secondsLeft', timedLeft)}
+                />
+                <span aria-hidden="true">{t('popup_secondsShort', timedLeft)}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {tags.length > 0 && (
+          <div class="chips" role="group" aria-label={t('popup_tagFilter')}>
+            <button
+              type="button"
+              class={tag === null ? 'chip on' : 'chip'}
+              aria-pressed={tag === null ? 'true' : 'false'}
+              onClick={() => setTag(null)}
+            >
+              <span>{t('popup_allTags')}</span>
+            </button>
+            {tags.map((name) => (
+              <button
+                key={name}
+                type="button"
+                class={tag === name ? 'chip on' : 'chip'}
+                aria-pressed={tag === name ? 'true' : 'false'}
+                onClick={() => setTag(tag === name ? null : name)}
+              >
+                <span>{name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showCodes && (
+          <div
+            class="panel"
+            role={searching ? undefined : 'tabpanel'}
+            id="panel-codes"
+            aria-labelledby={searching ? undefined : 'tab-codes'}
           >
-            {t('popup_allTags')}
-          </button>
-          {tags.map((name) => (
-            <button
-              key={name}
-              type="button"
-              class={tag === name ? 'chip on' : 'chip'}
-              aria-pressed={tag === name ? 'true' : 'false'}
-              onClick={() => setTag(tag === name ? null : name)}
-            >
-              {name}
-            </button>
-          ))}
+            {searching && codes.length > 0 && (
+              <h2 class="label-caps list-title">{t('popup_codes')}</h2>
+            )}
+            {codes.length > 0 ? (
+              <ul class="list">
+                {codes.map((code) => (
+                  <CodeRow key={code.id} code={code} live={live} />
+                ))}
+              </ul>
+            ) : (
+              !searching &&
+              (vault.codes.length === 0 ? (
+                emptyState('codes')
+              ) : (
+                <p class="empty muted">{t('popup_noneInTag')}</p>
+              ))
+            )}
+            {!searching && tag === null && vault.backups.length > 0 && (
+              <button
+                type="button"
+                class="link-card hov"
+                onClick={() => props.onRoute({ name: 'backupCodes' })}
+              >
+                <span class="grow lines">
+                  <span class="name">{t('popup_backupCodes')}</span>
+                  <span class="label">{backupsSub}</span>
+                </span>
+                <Icon name="chevron" size={16} weight={2} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {showLogins && (
+          <div
+            class="panel"
+            role={searching ? undefined : 'tabpanel'}
+            id="panel-logins"
+            aria-labelledby={searching ? undefined : 'tab-logins'}
+          >
+            {searching && logins.length > 0 && (
+              <h2 class="label-caps list-title">{t('popup_logins')}</h2>
+            )}
+            {!searching && vaultwarden && (
+              <div class="note" role="note">
+                {t('popup_loginsNotSynced')}
+              </div>
+            )}
+            {!searching && vault.logins.length > 0 && (
+              <button
+                type="button"
+                class="link-card hov"
+                onClick={() => props.onRoute({ name: 'health' })}
+              >
+                <span class="warn-icon" aria-hidden="true">
+                  <Icon name="warning" size={16} weight={2} />
+                </span>
+                <span class="grow lines">
+                  <span class="name">{t('popup_healthTitle')}</span>
+                  <span class="label warn-text">{healthLine(vault.logins, breachedOn)}</span>
+                </span>
+                <Icon name="chevron" size={16} weight={2} />
+              </button>
+            )}
+            {logins.length > 0 ? (
+              <ul class="list">
+                {logins.map((login) => (
+                  <LoginRow key={login.id} login={login} breachedOn={breachedOn} onOpen={open} />
+                ))}
+              </ul>
+            ) : (
+              !searching &&
+              (vault.logins.length === 0 ? (
+                emptyState('logins')
+              ) : (
+                <p class="empty muted">{t('popup_noneInTag')}</p>
+              ))
+            )}
+            {!searching && newest !== undefined && (
+              <RecentCard
+                entry={newest}
+                onRecent={() => props.onRoute({ name: 'recent' })}
+                onSave={() =>
+                  props.onRoute({
+                    name: 'edit',
+                    id: null,
+                    prefill: {
+                      name: newest.site === undefined ? '' : hostOf(newest.site),
+                      password: newest.value,
+                      websites:
+                        newest.site === undefined || newest.site === '' ? [] : [newest.site],
+                    },
+                  })
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {searching && codes.length === 0 && logins.length === 0 && (
+          <div class="empty-state" role="status">
+            <div class="empty-words">
+              <p class="empty-title">{t('popup_nothingMatches', needle)}</p>
+              <p class="empty-rest">{t('popup_searchHelp')}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {sync === null && nothingAtAll && (
+        <div class="sync-off">
+          <span class="grow">{t('popup_syncOff')}</span>
+          <Button onClick={() => openSetup('again')}>{t('popup_setUpSync')}</Button>
         </div>
       )}
 
-      {showCodes && (
-        <div
-          role={searching ? undefined : 'tabpanel'}
-          id="panel-codes"
-          aria-labelledby={searching ? undefined : 'tab-codes'}
-        >
-          {searching && <h2 class="section-title list-title">{t('popup_codes')}</h2>}
-          {codes.length > 0 ? (
-            <ul class="list">
-              {codes.map((code) => (
-                <CodeRow key={code.id} code={code} live={live} />
-              ))}
-            </ul>
-          ) : (
-            !searching && (
-              <p class="empty muted">
-                {vault.codes.length === 0 ? t('popup_noCodes') : t('popup_noneInTag')}
-              </p>
-            )
-          )}
-          {!searching && vault.backups.length > 0 && (
-            <details class="backups">
-              <summary>{t('popup_backupCodes')}</summary>
-              <BackupCodes backups={vault.backups} onChanged={vault.reload} />
-            </details>
-          )}
-        </div>
-      )}
-
-      {showLogins && (
-        <div
-          role={searching ? undefined : 'tabpanel'}
-          id="panel-logins"
-          aria-labelledby={searching ? undefined : 'tab-logins'}
-        >
-          {searching && <h2 class="section-title list-title">{t('popup_logins')}</h2>}
-          {!searching && vault.logins.length > 0 && (
-            <button
-              type="button"
-              class="health-row"
-              onClick={() => props.onRoute({ name: 'health' })}
-            >
-              <span class="grow">{healthLine(vault.logins, breachedOn)}</span>
-              <Icon name="chevron" size={16} />
-            </button>
-          )}
-          {logins.length > 0 ? (
-            <ul class="list">
-              {logins.map((login) => (
-                <LoginRow key={login.id} login={login} breachedOn={breachedOn} onOpen={open} />
-              ))}
-            </ul>
-          ) : (
-            !searching && (
-              <p class="empty muted">
-                {vault.logins.length === 0 ? t('popup_noLogins') : t('popup_noneInTag')}
-              </p>
-            )
-          )}
-        </div>
-      )}
-
-      {searching && codes.length === 0 && logins.length === 0 && (
-        <p class="empty muted" role="status">
-          {t('popup_nothingMatches', needle)}
-        </p>
-      )}
+      {!(sync === null && nothingAtAll) && <SyncFooter status={sync} settings={vault.settings} />}
     </div>
   )
 }

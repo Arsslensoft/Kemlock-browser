@@ -1,6 +1,14 @@
 // The password generator: the app's choices and defaults, remembered in this browser only.
 import { useEffect, useId, useState } from 'preact/hooks'
-import { Button, Notice, PageHeader, SelectField, Section, Switch } from '../shared/ui/components'
+import {
+  Button,
+  Group,
+  IconButton,
+  Notice,
+  PageHeader,
+  Switch,
+  useToastBottom,
+} from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
 import {
   defaultChoices,
@@ -22,6 +30,29 @@ const separatorNames: Record<string, string> = {
   _: 'popup_separatorUnderscore',
 }
 
+const separatorMarks: Record<string, string> = { '-': '-', ' ': '␣', '.': '.', _: '_' }
+
+/** What the choices are worth, in bits: a rough measure of how many tries a guess would take. */
+export function bitsOf(choices: Choices): number {
+  if (choices.mode === 'passphrase') {
+    return Math.round(
+      choices.words * Math.log2(7776) + (choices.includeNumber ? Math.log2(10 * choices.words) : 0),
+    )
+  }
+  const lower = choices.avoidLookAlikes ? 25 : 26
+  const upper = choices.capitals ? (choices.avoidLookAlikes ? 24 : 26) : 0
+  const digits = choices.digits ? (choices.avoidLookAlikes ? 8 : 10) : 0
+  const symbols = choices.symbols ? 7 : 0
+  return Math.round(choices.length * Math.log2(lower + upper + digits + symbols))
+}
+
+/** 1 to 4, as the bars show it. */
+export function levelOf(bits: number): number {
+  return bits < 50 ? 1 : bits < 70 ? 2 : bits < 90 ? 3 : 4
+}
+
+const levelNames = ['', 'popup_strength1', 'popup_strength2', 'popup_strength3', 'popup_strength4']
+
 function Range(props: {
   label: string
   value: number
@@ -31,8 +62,11 @@ function Range(props: {
 }) {
   const id = useId()
   return (
-    <div class="field">
-      <label for={id}>{props.label}</label>
+    <div class="range">
+      <div class="range-head">
+        <label for={id}>{props.label}</label>
+        <span class="mono">{props.value}</span>
+      </div>
       <input
         id={id}
         type="range"
@@ -45,12 +79,28 @@ function Range(props: {
   )
 }
 
+function Characters(props: { value: string }) {
+  return (
+    <>
+      {[...props.value].map((ch, index) => (
+        <span
+          key={index}
+          class={/[0-9]/.test(ch) ? 'ch digit' : /[A-Za-z]/.test(ch) ? 'ch' : 'ch symbol'}
+        >
+          {ch}
+        </span>
+      ))}
+    </>
+  )
+}
+
 export function Generator(props: { onBack: () => void; onRecent: () => void }) {
   const [choices, setChoices] = useState<Choices | null>(null)
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | undefined>()
   const [round, setRound] = useState(0)
   const copy = useCopy()
+  useToastBottom(76)
 
   useEffect(() => {
     let alive = true
@@ -79,31 +129,48 @@ export function Generator(props: { onBack: () => void; onRecent: () => void }) {
 
   const shown = choices ?? defaultChoices
   const change = (patch: Partial<Choices>) => setChoices({ ...shown, ...patch })
+  const bits = bitsOf(shown)
+  const level = levelOf(bits)
 
   return (
-    <div>
+    <div class="screen">
       <PageHeader title={t('popup_generator')} onBack={props.onBack} backLabel={t('popup_back')} />
-      <Section>
+      <div class="body generator-body">
         {error !== undefined && <Notice kind="error">{error}</Notice>}
-        <output class="generated mono" aria-label={t('popup_generatedPassword')}>
-          {value}
-        </output>
-        <div class="actions">
-          <Button icon="refresh" onClick={() => setRound((n) => n + 1)}>
-            {t('popup_generate')}
-          </Button>
-          <Button
-            kind="primary"
-            icon="copy"
-            disabled={value === ''}
-            onClick={() => void copy('generated', 'generator', value)}
+        <Group pad accent>
+          <output
+            class="generated mono"
+            aria-live="polite"
+            aria-label={t('popup_generatedPassword')}
           >
-            {t('popup_copy')}
-          </Button>
-        </div>
-      </Section>
+            <Characters value={value} />
+          </output>
+          <div class="strength">
+            <div class={`bars level-${level}`} aria-hidden="true">
+              {[1, 2, 3, 4].map((step) => (
+                <span key={step} class={step <= level ? 'on' : ''} />
+              ))}
+            </div>
+            <span class={`strength-name level-${level}`}>
+              {t('popup_strengthBits', t(levelNames[level]!), bits)}
+            </span>
+            <IconButton
+              icon="refresh"
+              size={16}
+              weight={2}
+              label={t('popup_generate')}
+              onClick={() => setRound((n) => n + 1)}
+            />
+            <IconButton
+              icon="copy"
+              size={16}
+              label={t('popup_copy')}
+              disabled={value === ''}
+              onClick={() => void copy('generated', 'generator', value)}
+            />
+          </div>
+        </Group>
 
-      <Section>
         <fieldset class="kind">
           <legend class="visually-hidden">{t('popup_make')}</legend>
           {(['random', 'passphrase'] as const).map((mode) => (
@@ -120,75 +187,86 @@ export function Generator(props: { onBack: () => void; onRecent: () => void }) {
           ))}
         </fieldset>
 
-        {shown.mode === 'random' ? (
-          <>
-            <Range
-              label={t('popup_lengthValue', shown.length)}
-              value={shown.length}
-              min={lengthRange.min}
-              max={lengthRange.max}
-              onChange={(length) => change({ length })}
-            />
-            <Switch
-              label={t('popup_capitals')}
-              checked={shown.capitals}
-              onChange={(capitals) => change({ capitals })}
-            />
-            <Switch
-              label={t('popup_digits')}
-              detail="0 – 9"
-              checked={shown.digits}
-              onChange={(digits) => change({ digits })}
-            />
-            <Switch
-              label={t('popup_symbols')}
-              detail="! # % & - _ ?"
-              checked={shown.symbols}
-              onChange={(symbols) => change({ symbols })}
-            />
-            <Switch
-              label={t('popup_lookAlikes')}
-              detail={t('popup_lookAlikesDetail')}
-              checked={shown.avoidLookAlikes}
-              onChange={(avoidLookAlikes) => change({ avoidLookAlikes })}
-            />
-          </>
-        ) : (
-          <>
-            <Range
-              label={t('popup_wordsValue', shown.words)}
-              value={shown.words}
-              min={wordsRange.min}
-              max={wordsRange.max}
-              onChange={(words) => change({ words })}
-            />
-            <SelectField
-              label={t('popup_separator')}
-              value={shown.separator}
-              options={separators.map((separator) => ({
-                value: separator as string,
-                label: t(separatorNames[separator] ?? 'popup_separatorDash'),
-              }))}
-              onChange={(separator) => change({ separator })}
-            />
-            <Switch
-              label={t('popup_capitalise')}
-              checked={shown.capitalize}
-              onChange={(capitalize) => change({ capitalize })}
-            />
-            <Switch
-              label={t('popup_addDigit')}
-              checked={shown.includeNumber}
-              onChange={(includeNumber) => change({ includeNumber })}
-            />
-          </>
-        )}
-        <p class="muted small">{t('popup_generatorNote')}</p>
-      </Section>
-
-      <Section>
-        <Button onClick={props.onRecent}>{t('popup_recent')}</Button>
-      </Section>
+        <Group>
+          {shown.mode === 'random' ? (
+            <>
+              <Range
+                label={t('popup_length')}
+                value={shown.length}
+                min={lengthRange.min}
+                max={lengthRange.max}
+                onChange={(length) => change({ length })}
+              />
+              <Switch
+                label={t('popup_capitals')}
+                checked={shown.capitals}
+                onChange={(capitals) => change({ capitals })}
+              />
+              <Switch
+                label={t('popup_digits')}
+                checked={shown.digits}
+                onChange={(digits) => change({ digits })}
+              />
+              <Switch
+                label={t('popup_symbols')}
+                checked={shown.symbols}
+                onChange={(symbols) => change({ symbols })}
+              />
+              <Switch
+                label={t('popup_lookAlikes')}
+                checked={shown.avoidLookAlikes}
+                onChange={(avoidLookAlikes) => change({ avoidLookAlikes })}
+              />
+            </>
+          ) : (
+            <>
+              <Range
+                label={t('popup_words')}
+                value={shown.words}
+                min={wordsRange.min}
+                max={wordsRange.max}
+                onChange={(words) => change({ words })}
+              />
+              <Switch
+                label={t('popup_capitalise')}
+                checked={shown.capitalize}
+                onChange={(capitalize) => change({ capitalize })}
+              />
+              <Switch
+                label={t('popup_addDigit')}
+                checked={shown.includeNumber}
+                onChange={(includeNumber) => change({ includeNumber })}
+              />
+              <div class="separator-row">
+                <span id="separator-label">{t('popup_separator')}</span>
+                <div class="seg" role="group" aria-labelledby="separator-label">
+                  {separators.map((separator) => (
+                    <button
+                      key={separator}
+                      type="button"
+                      class={shown.separator === separator ? 'mono on' : 'mono'}
+                      aria-pressed={shown.separator === separator ? 'true' : 'false'}
+                      aria-label={t(separatorNames[separator] ?? 'popup_separatorDash')}
+                      onClick={() => change({ separator })}
+                    >
+                      {separatorMarks[separator] ?? separator}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </Group>
+        <p class="note-faint">
+          {t(shown.mode === 'random' ? 'popup_generatorNote' : 'popup_generatorNoteWords')}
+        </p>
+      </div>
+      <div class="foot-bar">
+        <Button onClick={() => setRound((n) => n + 1)}>{t('popup_generate')}</Button>
+        <Button kind="primary" class="wide" onClick={props.onRecent}>
+          {t('popup_recent')}
+        </Button>
+      </div>
     </div>
   )
 }

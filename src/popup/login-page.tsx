@@ -1,26 +1,33 @@
 // A login's page: what it holds, its warnings, its code and backup codes, and Edit and Delete.
 import { useState } from 'preact/hooks'
 import type { TabView } from '../shared/api'
+import { KemlockIcon } from '../shared/brand/brand'
 import {
   Button,
   Confirm,
+  Group,
   IconButton,
+  LinkButton,
   Notice,
   PageHeader,
-  SelectField,
   Section,
+  SelectField,
+  Tile,
   useLoad,
   useToast,
+  useToastBottom,
 } from '../shared/ui/components'
 import { errorMessage, formatDate, t } from '../shared/ui/i18n'
-import { BackupCodes, CodeValue, codeName } from './codes'
+import { Icon } from '../shared/ui/icons'
+import { CodeLine, codeName } from './codes'
+import { useCopy } from './copy'
 import { backupsFor, type Vault } from './data'
 import { healthTags, hostOf } from './format'
 import { useLiveCodes } from './live'
 import { PasswordLine } from './logins'
-import { useCopy } from './copy'
 import type { Route } from './route'
 import { ask } from './send'
+import { useFill } from './site'
 
 export function LoginPage(props: {
   id: string
@@ -38,17 +45,19 @@ export function LoginPage(props: {
   const live = useLiveCodes(code !== undefined && !code.onSecurityKey ? [code.id] : [])
   const copy = useCopy()
   const say = useToast()
+  const fill = useFill(tab)
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
   const remembered = useLoad(() => ask('rememberedSites', { loginId: props.id }), [props.id])
+  useToastBottom(tab === undefined ? 16 : 76)
 
   if (login === undefined) {
     return (
-      <div>
+      <div class="screen">
         <PageHeader title={t('popup_logins')} onBack={props.onBack} backLabel={t('popup_back')} />
-        <Section>
+        <div class="body">
           <Notice>{t('popup_loginGone')}</Notice>
-        </Section>
+        </div>
       </div>
     )
   }
@@ -66,34 +75,32 @@ export function LoginPage(props: {
     }
   }
 
-  const fill = async (args: { loginId?: string; codeId?: string }) => {
-    if (tab === undefined) return
-    try {
-      await ask('fill', { tabId: tab.tabId, ...args })
-      say(t('popup_filled'))
-    } catch (error) {
-      say(errorMessage(error))
-    }
-  }
-
   const tags = healthTags(login, vault.settings.breachedPasswords)
   const unlinked = vault.codes.filter((candidate) => candidate.loginId === undefined)
   const backups = code === undefined ? [] : backupsFor(vault.backups, code)
   const strengthLabel = t(`popup_strength${Math.max(0, Math.min(4, login.strength))}`)
+  const backup = backups[0]
+  const toGenerator = () => props.onRoute({ name: 'generator' })
 
   return (
-    <div>
-      <PageHeader title={login.name} onBack={props.onBack} backLabel={t('popup_back')}>
-        <IconButton
-          icon="edit"
-          label={t('popup_edit')}
+    <div class="screen">
+      <header class="bar login-bar">
+        <IconButton icon="back" label={t('popup_back')} onClick={props.onBack} />
+        <KemlockIcon size={24} class="mark" />
+        <Tile name={login.name} size={32} />
+        <h1 class="login-title">{login.name}</h1>
+        <button
+          type="button"
+          class="link-btn hov"
           onClick={() => props.onRoute({ name: 'edit', id: login.id })}
-        />
+        >
+          {t('popup_edit')}
+        </button>
         <IconButton icon="trash" label={t('popup_deleteLogin')} onClick={() => setAsking(true)} />
-      </PageHeader>
+      </header>
 
       {asking && (
-        <Section>
+        <div class="login-confirm">
           <Confirm
             title={t('popup_deleteTitle')}
             body={t('popup_deleteBody', login.name)}
@@ -117,156 +124,220 @@ export function LoginPage(props: {
               })()
             }
           />
-        </Section>
+        </div>
       )}
 
-      {tab !== undefined && (
-        <Section>
-          <div class="actions start">
-            <Button kind="primary" onClick={() => void fill({ loginId: login.id })}>
-              {t('popup_fillLogin')}
-            </Button>
-            {code !== undefined && !code.onSecurityKey && (
-              <Button onClick={() => void fill({ codeId: code.id })}>{t('popup_fillCode')}</Button>
+      <div class="body tight">
+        <Group>
+          <div class="detail-row">
+            <span class="detail-label">{t('popup_websites')}</span>
+            {login.websites.length > 0 ? (
+              <span class="mono grow websites">
+                {login.websites.map((site) => (
+                  <span key={site} class="ellipsis">
+                    {hostOf(site)}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span class="grow muted">{t('popup_noWebsite')}</span>
             )}
           </div>
-        </Section>
-      )}
-
-      {tags.length > 0 && (
-        <Section>
-          {tags.includes('breached') && <Notice kind="error">{t('popup_warnBreached')}</Notice>}
-          {tags.includes('reused') && <Notice kind="warn">{t('popup_warnReused')}</Notice>}
-          {tags.includes('weak') && (
-            <Notice kind="warn">{t('popup_warnWeak', strengthLabel)}</Notice>
+          <div class="detail-row">
+            <span class="detail-label">{t('popup_username')}</span>
+            <span class="grow ellipsis">{login.username === '' ? '–' : login.username}</span>
+            {login.username !== '' && (
+              <IconButton
+                icon="copy"
+                size={16}
+                label={t('popup_copyUsernameOf', login.name)}
+                onClick={() => void copy('username', login.id)}
+              />
+            )}
+          </div>
+          <PasswordLine login={login} variant="detail" />
+        </Group>
+        <p class="strength-line">
+          {login.passwordChangedAt === undefined
+            ? strengthLabel
+            : t('popup_strengthChanged', strengthLabel, formatDate(login.passwordChangedAt))}
+          {login.previousPasswords > 0 && (
+            <span> · {t('popup_previousCount', login.previousPasswords)}</span>
           )}
-          {tags.includes('withoutItsCode') && (
-            <Notice kind="warn">
-              <p>{t('popup_warnNoCode')}</p>
-              <div class="actions start">
-                <Button onClick={() => props.onRoute({ name: 'addCode' })}>
+        </p>
+
+        {tags.includes('breached') && (
+          <div class="login-note danger" role="note">
+            <Icon name="warning" size={15} weight={2} />
+            <div class="grow">
+              <p class="note-title">{t('popup_tagBreached')}</p>
+              <p class="note-body">{t('popup_warnBreached')}</p>
+              <button type="button" class="note-link" onClick={toGenerator}>
+                {t('popup_generateAPassword')}
+              </button>
+            </div>
+          </div>
+        )}
+        {tags.includes('reused') && (
+          <div class="login-note" role="note">
+            <Icon name="warning" size={15} weight={2} />
+            <div class="grow">
+              <p class="note-title">{t('popup_tagReused')}</p>
+              <p class="note-body">{t('popup_warnReused')}</p>
+              <button type="button" class="note-link" onClick={toGenerator}>
+                {t('popup_generateAPassword')}
+              </button>
+            </div>
+          </div>
+        )}
+        {tags.includes('weak') && (
+          <div class="login-note" role="note">
+            <Icon name="warning" size={15} weight={2} />
+            <div class="grow">
+              <p class="note-title">{t('popup_tagWeak')}</p>
+              <p class="note-body">{t('popup_warnWeak', strengthLabel)}</p>
+              <button type="button" class="note-link" onClick={toGenerator}>
+                {t('popup_generateAPassword')}
+              </button>
+            </div>
+          </div>
+        )}
+        {tags.includes('withoutItsCode') && (
+          <div class="login-note" role="note">
+            <Icon name="warning" size={15} weight={2} />
+            <div class="grow">
+              <p class="note-title">{t('popup_tagWithoutCode')}</p>
+              <p class="note-body">{t('popup_warnNoCode')}</p>
+              <div class="note-actions">
+                <button
+                  type="button"
+                  class="note-link"
+                  onClick={() => props.onRoute({ name: 'addCode' })}
+                >
                   {t('popup_addCode')}
-                </Button>
-                <Button
-                  busy={busy}
+                </button>
+                <button
+                  type="button"
+                  class="note-link"
+                  disabled={busy}
                   onClick={() =>
                     void run(() => ask('ignoreHealth', { id: login.id, ignored: true }))
                   }
                 >
                   {t('popup_dontWarn')}
-                </Button>
+                </button>
               </div>
-            </Notice>
-          )}
-        </Section>
-      )}
-
-      <Section title={t('popup_websites')}>
-        {login.websites.length > 0 ? (
-          <ul class="plain">
-            {login.websites.map((site) => (
-              <li key={site} class="ellipsis">
-                {hostOf(site)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class="muted">{t('popup_noWebsite')}</p>
-        )}
-      </Section>
-
-      <Section title={t('popup_username')}>
-        <div class="row">
-          <span class="grow ellipsis">{login.username === '' ? '–' : login.username}</span>
-          {login.username !== '' && (
-            <IconButton
-              icon="copy"
-              label={t('popup_copyUsernameOf', login.name)}
-              onClick={() => void copy('username', login.id)}
-            />
-          )}
-        </div>
-      </Section>
-
-      <Section title={t('popup_password')}>
-        <PasswordLine login={login} />
-        <p class="muted small">
-          {login.passwordChangedAt === undefined
-            ? strengthLabel
-            : t('popup_strengthChanged', strengthLabel, formatDate(login.passwordChangedAt))}
-        </p>
-        <div class="meter" role="img" aria-label={strengthLabel}>
-          {[0, 1, 2, 3, 4].map((step) => (
-            <span key={step} class={step <= login.strength ? 'bar-on' : ''} />
-          ))}
-        </div>
-        {login.previousPasswords > 0 && (
-          <p class="muted small">{t('popup_previousCount', login.previousPasswords)}</p>
-        )}
-      </Section>
-
-      <Section title={t('popup_twoStepCode')}>
-        {code !== undefined ? (
-          <div class="row">
-            <span class="grow ellipsis">{codeName(code)}</span>
-            <CodeValue code={code} live={live} />
+            </div>
           </div>
-        ) : unlinked.length > 0 ? (
-          <SelectField
-            label={t('popup_linkCode')}
-            value=""
-            options={[
-              { value: '', label: t('popup_noCodeLinked') },
-              ...unlinked.map((candidate) => ({
-                value: candidate.id,
-                label: `${codeName(candidate)} · ${candidate.account}`,
-              })),
-            ]}
-            onChange={(value) => {
-              if (value !== '')
-                void run(
-                  () => ask('linkCode', { codeId: value, loginId: login.id }),
-                  t('popup_linked'),
-                )
-            }}
-          />
-        ) : (
-          <p class="muted">{t('popup_noCodeLinked')}</p>
         )}
-      </Section>
 
-      {backups.length > 0 && (
-        <Section title={t('popup_backupCodes')}>
-          <BackupCodes backups={backups} onChanged={vault.reload} />
-        </Section>
-      )}
-
-      {remembered.value !== undefined && remembered.value.length > 0 && (
-        <Section title={t('popup_remembered')}>
-          <p class="muted small">{t('popup_rememberedNote')}</p>
-          <ul class="list">
-            {remembered.value.map((host) => (
-              <li key={host} class="item">
-                <span class="grow ellipsis">{host}</span>
-                <Button
-                  label={t('popup_forgetHost', host)}
-                  onClick={() =>
-                    void (async () => {
-                      try {
-                        await ask('forgetSite', { loginId: login.id, host })
-                        await remembered.reload()
-                      } catch (error) {
-                        say(errorMessage(error))
-                      }
-                    })()
-                  }
+        <Section title={t('popup_twoStepCode')}>
+          {code !== undefined ? (
+            <Group>
+              <CodeLine
+                code={code}
+                live={live}
+                variant="detail"
+                sub={`${codeName(code)} · ${code.account}`}
+              />
+              {backup !== undefined && (
+                <button
+                  type="button"
+                  class="link-row hov"
+                  onClick={() => props.onRoute({ name: 'backupCodes' })}
                 >
-                  {t('popup_forget')}
-                </Button>
-              </li>
-            ))}
-          </ul>
+                  <span class="chip-bc" aria-hidden="true">
+                    BC
+                  </span>
+                  <span class="grow lines">
+                    <span class="name">{t('popup_backupCodes')}</span>
+                    <span class="label">{t('popup_backupCount', backup.left, backup.total)}</span>
+                  </span>
+                  <Icon name="chevron" size={16} weight={2} />
+                </button>
+              )}
+            </Group>
+          ) : unlinked.length > 0 ? (
+            <Group pad>
+              <SelectField
+                stacked
+                label={t('popup_linkCode')}
+                value=""
+                options={[
+                  { value: '', label: t('popup_noCodeLinked') },
+                  ...unlinked.map((candidate) => ({
+                    value: candidate.id,
+                    label: `${codeName(candidate)} · ${candidate.account}`,
+                  })),
+                ]}
+                onChange={(value) => {
+                  if (value !== '')
+                    void run(
+                      () => ask('linkCode', { codeId: value, loginId: login.id }),
+                      t('popup_linked'),
+                    )
+                }}
+              />
+            </Group>
+          ) : (
+            <Group pad>
+              <p class="muted">{t('popup_noCodeLinked')}</p>
+            </Group>
+          )}
         </Section>
+
+        {remembered.value !== undefined && remembered.value.length > 0 && (
+          <Section>
+            <Group>
+              {remembered.value.map((host) => (
+                <div key={host} class="remembered">
+                  <span class="grow lines">
+                    <span class="label">{t('popup_remembered')}</span>
+                    <span class="mono ellipsis">{host}</span>
+                  </span>
+                  <LinkButton
+                    quiet
+                    label={t('popup_forgetHost', host)}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          await ask('forgetSite', { loginId: login.id, host })
+                          await remembered.reload()
+                        } catch (error) {
+                          say(errorMessage(error))
+                        }
+                      })()
+                    }
+                  >
+                    {t('popup_forget')}
+                  </LinkButton>
+                </div>
+              ))}
+            </Group>
+            <p class="strength-line">{t('popup_rememberedNote')}</p>
+          </Section>
+        )}
+      </div>
+
+      {tab !== undefined && (
+        <div class="foot-bar">
+          <Button
+            kind="primary"
+            label={t('popup_fillLoginOf', login.name)}
+            onClick={() => void fill({ loginId: login.id })}
+          >
+            {t('popup_fillLogin')}
+          </Button>
+          {code !== undefined && !code.onSecurityKey && (
+            <Button
+              class="no-grow"
+              label={t('popup_fillCodeOf', login.name)}
+              onClick={() => void fill({ codeId: code.id })}
+            >
+              {t('popup_fillCode')}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

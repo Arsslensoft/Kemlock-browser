@@ -1,10 +1,13 @@
 // The lock screen: nothing of the vault shows here, only the password, and how many wrong tries.
-import { useState } from 'preact/hooks'
-import type { VaultState } from '../shared/api'
-import { Button, Confirm, Notice, TextField } from '../shared/ui/components'
+import { useEffect, useState } from 'preact/hooks'
+import type { SyncPlace, VaultState } from '../shared/api'
+import { KemlockIcon, Wordmark } from '../shared/brand/brand'
+import { Button, Confirm, IconButton, Notice, TextField } from '../shared/ui/components'
 import { errorMessage, formatDateTime, t } from '../shared/ui/i18n'
+import { Icon } from '../shared/ui/icons'
 import { openSetup } from './links'
 import { ask } from './send'
+import { placeNames, savedPlace } from './sync-state'
 
 export function wrongTriesText(count: number, at: number | undefined): string {
   if (at === undefined) return t('popup_wrongCount', count)
@@ -20,7 +23,7 @@ export function RemoveKemlock(props: { onRemoved: () => void }) {
   const [error, setError] = useState<string | undefined>()
   if (!asking) {
     return (
-      <Button kind="ghost" onClick={() => setAsking(true)}>
+      <Button kind="ghost" class="danger" onClick={() => setAsking(true)}>
         {t('popup_removeKemlock')}
       </Button>
     )
@@ -63,19 +66,47 @@ export function LockScreen(props: {
 }) {
   const { state } = props
   const [password, setPassword] = useState('')
+  const [shown, setShown] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [wrong, setWrong] = useState(state.wrongPasswords)
   const [lastAt, setLastAt] = useState(state.lastWrongAt)
+  const [place, setPlace] = useState<SyncPlace | undefined>(state.sync?.place)
+
+  // Where the vault syncs isn't known while it is sealed: the popup remembers it from the last time it was open.
+  useEffect(() => {
+    let alive = true
+    void savedPlace().then(
+      (saved) => alive && saved !== undefined && setPlace((now) => now ?? saved),
+    )
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const head = (
+    <>
+      <div class="lock-mark">
+        <KemlockIcon size={64} />
+      </div>
+      <h1 class="lock-name">
+        <Wordmark height={24} />
+      </h1>
+    </>
+  )
 
   if (!state.exists) {
     return (
-      <main class="lock">
-        <h1>{t('extName')}</h1>
-        <p class="muted">{t('popup_noVault')}</p>
-        <Button kind="primary" onClick={() => openSetup()}>
-          {t('popup_setUp')}
-        </Button>
+      <main class="screen lock">
+        <div class="lock-top">
+          {head}
+          <p class="lock-text">{t('popup_noVault')}</p>
+        </div>
+        <div class="lock-actions">
+          <Button kind="primary" tall onClick={() => openSetup()}>
+            {t('popup_setUp')}
+          </Button>
+        </div>
       </main>
     )
   }
@@ -102,11 +133,19 @@ export function LockScreen(props: {
   }
 
   return (
-    <main class="lock">
-      <h1>{t('extName')}</h1>
-      <p class="muted">{t('popup_locked')}</p>
+    <main class="screen lock">
+      <div class="lock-top">
+        {head}
+        <p class="lock-text">{t('popup_locked')}</p>
+        {place !== undefined && (
+          <span class="lock-pill">
+            <Icon name="server" size={14} weight={2} />
+            {t('popup_syncPlace')} {t(placeNames[place])}
+          </span>
+        )}
+      </div>
       <form
-        class="stack"
+        class="lock-form"
         onSubmit={(event) => {
           event.preventDefault()
           void unlock()
@@ -114,21 +153,31 @@ export function LockScreen(props: {
       >
         <TextField
           label={t('popup_vaultPassword')}
-          type="password"
+          type={shown ? 'text' : 'password'}
           value={password}
           autocomplete="current-password"
           autofocus
           invalid={error !== undefined}
           onInput={setPassword}
+          trailing={
+            <IconButton
+              icon={shown ? 'eyeOff' : 'eye'}
+              label={shown ? t('popup_hide') : t('popup_show')}
+              pressed={shown}
+              onClick={() => setShown(!shown)}
+            />
+          }
         />
         {error !== undefined && <Notice kind="error">{error}</Notice>}
         {wrong > 0 && <Notice kind="warn">{wrongTriesText(wrong, lastAt)}</Notice>}
-        <Button kind="primary" type="submit" busy={busy} disabled={password === ''}>
+        <Button kind="primary" tall type="submit" busy={busy} disabled={password === ''}>
           {busy ? t('popup_unlocking') : t('popup_unlock')}
         </Button>
       </form>
-      <p class="muted small">{t('popup_forgot')}</p>
-      <RemoveKemlock onRemoved={props.onRemoved} />
+      <p class="lock-forgot">{t('popup_forgot')}</p>
+      <div class="lock-remove">
+        <RemoveKemlock onRemoved={props.onRemoved} />
+      </div>
     </main>
   )
 }

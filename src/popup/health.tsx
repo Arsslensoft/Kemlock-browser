@@ -1,15 +1,16 @@
 // Password health, worked out in the browser from the vault: nothing about it is stored or synced.
 import type { LoginView } from '../shared/api'
 import {
-  Button,
-  IconButton,
+  Group,
   Notice,
   PageHeader,
   Section,
+  Tile,
   useLoad,
   useToast,
 } from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
+import { Icon } from '../shared/ui/icons'
 import type { Vault } from './data'
 import { ask } from './send'
 
@@ -17,6 +18,7 @@ export function HealthPage(props: {
   vault: Vault
   onBack: () => void
   onOpenLogin: (id: string) => void
+  onSettings: () => void
 }) {
   const { vault } = props
   const say = useToast()
@@ -38,33 +40,35 @@ export function HealthPage(props: {
   const list = (title: string, logins: LoginView[], withIgnore = false) =>
     logins.length === 0 ? null : (
       <Section title={`${title} · ${logins.length}`}>
-        <ul class="list">
+        <Group>
           {logins.map((login) => (
-            <li class="item" key={login.id}>
-              <button type="button" class="item-main" onClick={() => props.onOpenLogin(login.id)}>
-                <span class="grow">
-                  <span class="strong ellipsis">{login.name}</span>
-                  {login.username !== '' && (
-                    <span class="muted small ellipsis">{login.username}</span>
-                  )}
+            <div class="health-item" key={login.id}>
+              <button
+                type="button"
+                class="health-open hov"
+                aria-label={t('popup_openLogin', login.name)}
+                onClick={() => props.onOpenLogin(login.id)}
+              >
+                <Tile name={login.name} />
+                <span class="grow lines">
+                  <span class="name ellipsis">{login.name}</span>
+                  {login.username !== '' && <span class="label ellipsis">{login.username}</span>}
                 </span>
+                <Icon name="chevron" size={16} weight={2} />
               </button>
               {withIgnore && (
-                <Button
-                  label={t('popup_dontWarnOf', login.name)}
+                <button
+                  type="button"
+                  class="link-btn hov health-ignore"
+                  aria-label={t('popup_dontWarnOf', login.name)}
                   onClick={() => void ignore(login.id)}
                 >
                   {t('popup_dontWarn')}
-                </Button>
+                </button>
               )}
-              <IconButton
-                icon="chevron"
-                label={t('popup_openLogin', login.name)}
-                onClick={() => props.onOpenLogin(login.id)}
-              />
-            </li>
+            </div>
           ))}
-        </ul>
+        </Group>
       </Section>
     )
 
@@ -77,39 +81,41 @@ export function HealthPage(props: {
     data.breached.length === 0
 
   return (
-    <div>
+    <div class="screen">
       <PageHeader
         title={t('popup_healthTitle')}
         onBack={props.onBack}
         backLabel={t('popup_back')}
       />
-      {report.error !== undefined && (
-        <Section>
-          <Notice kind="error">{report.error}</Notice>
-        </Section>
-      )}
-      {data !== undefined && (
-        <>
-          {vault.settings.breachedPasswords ? (
-            list(t('popup_sectionBreached'), named(data.breached))
-          ) : (
-            <Section>
-              <Notice>{t('popup_breachOff')}</Notice>
-            </Section>
-          )}
-          {list(t('popup_sectionReused'), named(data.reused))}
-          {list(t('popup_sectionWeak'), named(data.weak))}
-          {list(t('popup_sectionWithoutCode'), named(data.withoutItsCode), true)}
-          {nothing && (
-            <Section>
-              <p class="muted">{t('popup_healthNone')}</p>
-            </Section>
-          )}
-        </>
-      )}
-      <Section>
-        <p class="muted small">{t('popup_healthNote')}</p>
-      </Section>
+      <div class="body">
+        {report.error !== undefined && <Notice kind="error">{report.error}</Notice>}
+        {data !== undefined && (
+          <>
+            {vault.settings.breachedPasswords ? (
+              list(t('popup_sectionBreached'), named(data.breached))
+            ) : (
+              <Notice>
+                <p>{t('popup_breachOff')}</p>
+                <button type="button" class="note-link" onClick={props.onSettings}>
+                  {t('popup_settings')}
+                </button>
+              </Notice>
+            )}
+            {list(t('popup_sectionReused'), named(data.reused))}
+            {list(t('popup_sectionWeak'), named(data.weak))}
+            {list(t('popup_sectionWithoutCode'), named(data.withoutItsCode), true)}
+            {nothing && (
+              <div class="all-clear">
+                <span class="empty-icon solid" aria-hidden="true">
+                  <Icon name="shieldCheck" size={24} />
+                </span>
+                <p class="muted">{t('popup_healthNone')}</p>
+              </div>
+            )}
+          </>
+        )}
+        <p class="note-faint">{t('popup_healthNote')}</p>
+      </div>
     </div>
   )
 }
