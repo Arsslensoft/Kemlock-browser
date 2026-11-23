@@ -116,7 +116,7 @@ describe('nothing in the popup asks for Premium', () => {
     await visit('Open Orbit Cloud', 'Edit', 'Back')
     await click(button(root, 'Back'))
     await visit('Add a code', 'Back')
-    await visit('Generate a password', 'Recently generated', 'Back')
+    await visit('Generator', 'Recently generated', 'Back')
     await click(button(root, 'Back'))
     await visit('Settings', 'Back')
 

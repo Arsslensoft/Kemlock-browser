@@ -56,9 +56,9 @@ function setUp(over: { granted?: boolean } = {}) {
   })
 }
 
-async function openSettings() {
+async function openSettings(lang: 'en' | 'fr' = 'en') {
   const root = await openPopup()
-  await click(button(root, 'Settings'))
+  await click(button(root, message(lang, 'popup_settings')))
   return root
 }
 
@@ -137,7 +137,7 @@ describe('the settings', () => {
     })
     const root = await openSettings()
     await click(button(root, 'Set up again'))
-    expect(fake.tabsCreated).toEqual(['chrome-extension://kemlock/src/setup/index.html?again'])
+    expect(fake.tabsCreated).toEqual(['chrome-extension://kemlock/src/setup/index.html#again'])
 
     await click(button(root, 'Remove Kemlock from this browser'))
     expect(background.of('removeVault')).toHaveLength(0)
@@ -160,7 +160,7 @@ describe('the sync card', () => {
     const root = await openSettings()
     expect(text(root)).toContain(message('en', 'popup_syncOff'))
     await click(button(root, 'Set up sync'))
-    expect(fake.tabsCreated.at(-1)).toBe('chrome-extension://kemlock/src/setup/index.html?again')
+    expect(fake.tabsCreated.at(-1)).toBe('chrome-extension://kemlock/src/setup/index.html#again')
   })
 
   it('shows where it syncs, the Vaultwarden logins line, and syncs now', async () => {
@@ -202,7 +202,7 @@ describe('the sync card', () => {
     unmountAll()
 
     fake = installChrome('fr')
-    root = await openSettings()
+    root = await openSettings('fr')
     expect(text(root)).toContain(message('fr', 'sync_problem_homeMissing'))
     expect(message('fr', 'sync_problem_homeMissing')).not.toBe(
       message('en', 'sync_problem_homeMissing'),
@@ -214,7 +214,7 @@ describe('the sync card', () => {
     status = syncStatus({ place: 'vaultwarden', problem: 'signedOut' })
     const root = await openSettings()
     await click(button(root, 'Sign in again'))
-    expect(fake.tabsCreated.at(-1)).toBe('chrome-extension://kemlock/src/setup/index.html?signin')
+    expect(fake.tabsCreated.at(-1)).toBe('chrome-extension://kemlock/src/setup/index.html#signin')
   })
 
   it('waits for confirmation when a sync would remove many entries', async () => {

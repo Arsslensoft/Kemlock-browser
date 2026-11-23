@@ -2,6 +2,7 @@
 // helpers over Preact's `act`. Nothing here is imported by the popup itself.
 import { render, type ComponentChild } from 'preact'
 import { act } from 'preact/test-utils'
+import { vi } from 'vitest'
 import baseEn from '../../locales/en.json'
 import baseFr from '../../locales/fr.json'
 import appEn from '../../locales/app/en.json'
@@ -19,6 +20,16 @@ import type {
   SyncStatus,
   VaultState,
 } from '../shared/api'
+
+/* The test run */
+
+// A full run starts dozens of jsdom workers at once, so a test that takes a fraction of a second
+// alone can take seconds then. Give the popup's tests room, and wake the date formatters (their
+// first use loads the language data) before any test's clock starts.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 })
+for (const language of ['en', 'fr']) {
+  new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(0)
+}
 
 /* The background */
 
@@ -263,9 +274,14 @@ export function unmountAll(): void {
 export async function settle(): Promise<void> {
   let before = ''
   let calm = 0
-  for (let round = 0; round < 80 && calm < 3; round += 1) {
+  // A turn of the event loop, not a timer: a timer waits a whole clock tick on Windows.
+  const immediate = (globalThis as { setImmediate?: (callback: () => void) => unknown })
+    .setImmediate
+  const turn = (resolve: () => void) =>
+    immediate === undefined ? setTimeout(resolve, 0) : immediate(resolve)
+  for (let round = 0; round < 200 && calm < 3; round += 1) {
     await act(async () => {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      await new Promise<void>(turn)
     })
     const now = document.body.innerHTML
     calm = now === before && background.pending === 0 ? calm + 1 : 0

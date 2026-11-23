@@ -359,7 +359,7 @@ describe('password health', () => {
 describe('the generator', () => {
   const open = async () => {
     const root = await openPopup()
-    await click(button(root, 'Generate a password'))
+    await click(button(root, 'Generator'))
     return root
   }
 
@@ -437,7 +437,7 @@ describe('recently generated passwords', () => {
       saveLogin: (() => docs) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Generate a password'))
+    await click(button(root, 'Generator'))
     await click(button(root, 'Recently generated'))
     expect(text(root)).toContain('id.example.com')
     expect(text(root)).not.toContain('pw-recent-1')
