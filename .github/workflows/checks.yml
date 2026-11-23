@@ -75,6 +75,18 @@ jobs:
       - name: Types
         run: npm run typecheck
 
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        with:
+          sdk: 3.13.5
+
+      # The Dart core (core/): its format at analysis_options.yaml's width, and the analyzer
+      - name: The core's format and analysis
+        working-directory: core
+        run: |
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed .
+          dart analyze --fatal-infos
+
       # Every finding is an annotation on its line, and only an error fails the check. Only the shell
       # files the change touches are read; with no earlier commit to compare with, every one
       - name: ShellCheck
@@ -130,8 +142,21 @@ jobs:
       - name: Install the packages
         run: npm ci --no-audit --no-fund
 
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        with:
+          sdk: 3.13.5
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
       - name: Tests
         run: npm test
+
+      # The Dart core's own tests (core/test), on the VM
+      - name: The core's tests
+        working-directory: core
+        run: dart test
 
   # The whole suite again, with the Kemlock app's checkout where the tests compare the extension's
   # copies with it (tool/app.mjs): its fonts, field cases, strings, colours and logo. Not
@@ -212,6 +237,14 @@ jobs:
       - name: Install the packages
         run: npm ci --no-audit --no-fund
 
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        with:
+          sdk: 3.13.5
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
       - name: Build
         run: npm run build
 
@@ -252,6 +285,10 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       # The browser Playwright's version drives, and the libraries it needs
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
