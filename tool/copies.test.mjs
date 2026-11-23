@@ -23,8 +23,14 @@ describe.skipIf(!hasApp)("the copies of the app's files", () => {
       for (const file of (await readdir(join(root, ours))).filter(
         (name) => !only || name.endsWith(only),
       )) {
-        const mine = await readFile(join(root, ours, file))
-        const theirs = await readFile(join(appMobile, app, file))
+        // An SVG is text, which a checkout may give either line ending: compare it with LF
+        const read = async (path) => {
+          const bytes = await readFile(path)
+          if (!file.endsWith('.svg')) return bytes
+          return Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'))
+        }
+        const mine = await read(join(root, ours, file))
+        const theirs = await read(join(appMobile, app, file))
         expect(mine.equals(theirs), `${ours}/${file}: copy it again from the app`).toBe(true)
       }
     })
