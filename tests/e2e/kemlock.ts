@@ -149,12 +149,42 @@ export class Kemlock {
     await this.open()
   }
 
-  /** Stops the extension's service worker, as DevTools' "Stop" does. */
+  /**
+   * Stops the extension's service worker, as DevTools' "Stop" does. Nothing of the extension may be
+   * open meanwhile: the popup the bridge shows asks the background every second, and a tab being
+   * opened or closed is an event the worker wakes for. So the bridge is closed first, the stop is
+   * sent from a page that is already there, and the next `call` opens a bridge, which wakes it.
+   */
   async stopWorker(): Promise<void> {
-    const page = await this.bridge()
+    const page =
+      this.context.pages().find((p) => !p.url().startsWith('chrome-extension://')) ??
+      (await this.context.newPage())
+    await this.closeBridge()
+    // What closing the bridge woke the worker for is over before it is stopped
+    await page.waitForTimeout(1000)
     const cdp = await this.context.newCDPSession(page)
+    // Playwright keeps listing a stopped worker in `serviceWorkers()`, so the browser's own word is
+    // waited for: its running status turns to "stopped"
+    const stopped = new Promise<void>((resolve) => {
+      cdp.on('ServiceWorker.workerVersionUpdated', ({ versions }) => {
+        if (
+          versions.some(
+            (v) =>
+              v.scriptURL.startsWith(`chrome-extension://${this.id}/`) &&
+              v.runningStatus === 'stopped',
+          )
+        )
+          resolve()
+      })
+    })
     await cdp.send('ServiceWorker.enable')
     await cdp.send('ServiceWorker.stopAllWorkers')
+    await Promise.race([
+      stopped,
+      new Promise((_, fail) =>
+        setTimeout(() => fail(new Error('the service worker did not stop')), 10_000),
+      ),
+    ])
     await cdp.detach()
   }
 

@@ -802,6 +802,28 @@ describe('adding a code', () => {
     expect(await codes()).toHaveLength(1)
   })
 
+  it('shows the QR code in the tab in front without adding it, and names the code it already is', async () => {
+    activeTab(orbit)
+    const link = 'otpauth://totp/GitHub:sam?secret=JBSWY3DPEHPK3PXQ&issuer=GitHub'
+    h.mock.captured = qr(link)
+    expect(await h.ok({ kind: 'readCodeFromTab', tabId: 7 })).toEqual({
+      otpauth: link,
+      issuer: 'GitHub',
+      account: 'sam',
+      website: 'accounts.orbit-cloud.com',
+    })
+    expect(await codes()).toHaveLength(1)
+
+    await h.ok({ kind: 'addCodeFromLink', otpauth: link, website: 'orbit-cloud.com' })
+    expect(await h.ok<{ existing: CodeView }>({ kind: 'readCodeFromTab', tabId: 7 })).toMatchObject(
+      {
+        existing: { issuer: 'GitHub', websites: ['orbit-cloud.com'] },
+      },
+    )
+    h.mock.captured = qr('https://example.org/')
+    expect(await h.ok({ kind: 'readCodeFromTab', tabId: 7 })).toBeNull()
+  })
+
   it('reads only the tab in front', async () => {
     h.mock.tabs.set(7, { id: 7, url: orbit, active: false, windowId: 1 })
     expect(await h.send({ kind: 'addCodeFromTab', tabId: 7 })).toEqual({

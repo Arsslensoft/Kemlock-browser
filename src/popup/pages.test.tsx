@@ -266,33 +266,74 @@ describe('adding a code', () => {
     match: { site: 'example.org', logins: ['l3'], codes: [] },
   }
 
+  const link = 'otpauth://totp/Docs:sam?secret=JBSWY3DPEHPK3PXP&issuer=Docs'
+  const found = { otpauth: link, issuer: 'Docs', account: 'sam', website: 'example.org' }
+
   it('says when the page shows no code, and adds nothing', async () => {
     background.reset({
       ...unlockedHandlers(world({ tab })),
-      addCodeFromTab: (() => null) as never,
+      readCodeFromTab: (() => null) as never,
     })
     const root = await openPopup()
     await click(button(root, 'Add a code'))
-    await click(button(root, 'Scan this page'))
-    expect(background.of('addCodeFromTab')[0]?.args).toEqual({ tabId: 4 })
+    expect(background.of('readCodeFromTab')[0]?.args).toEqual({ tabId: 4 })
     expect(text(root)).toContain(message('en', 'popup_noCodeFound'))
+    expect(background.of('addCodeFromLink')).toHaveLength(0)
   })
 
-  it('adds the code found, then offers to link it to the site’s login', async () => {
+  it('shows the code found, with its name, and adds it on Add with the site as its website', async () => {
     const added = code({ id: 'new', issuer: 'Docs', account: 'sam', websites: ['example.org'] })
     background.reset({
       ...unlockedHandlers(world({ tab })),
-      addCodeFromTab: (() => added) as never,
+      readCodeFromTab: (() => found) as never,
+      addCodeFromLink: (() => added) as never,
       linkCode: (() => undefined) as never,
     })
     const root = await openPopup()
     await click(button(root, 'Add a code'))
-    await click(button(root, 'Scan this page'))
-    expect(text(root)).toContain('Added Docs · sam')
+    expect(input(root, 'Name').value).toBe('Docs')
+    // Nothing is added until the person says so
+    expect(background.of('addCodeFromLink')).toHaveLength(0)
 
-    await click(button(root, 'Link to the Docs login'))
-    expect(background.of('linkCode')[0]?.args).toEqual({ codeId: 'new', loginId: 'l3' })
+    await click(button(root, 'Add'))
+    expect(background.of('addCodeFromLink')[0]?.args).toEqual({
+      otpauth: link,
+      website: 'example.org',
+    })
+    expect(text(root)).toContain('Added Docs · sam')
+  })
+
+  it('adds the code under the name the person typed, linked to the site’s login when asked', async () => {
+    const added = code({ id: 'new', issuer: 'Docs 2', account: 'sam' })
+    background.reset({
+      ...unlockedHandlers(world({ tab })),
+      readCodeFromTab: (() => found) as never,
+      addCodeFromLink: (() => added) as never,
+    })
+    const root = await openPopup()
+    await click(button(root, 'Add a code'))
+    await change(input(root, 'Name'), 'Docs 2')
+    const toggle = root.querySelector<HTMLInputElement>('input[role="switch"]')
+    expect(text(root)).toContain('Link to the Docs login')
+    await click(toggle)
+    await click(button(root, 'Add'))
+    const args = background.of('addCodeFromLink')[0]?.args as { otpauth: string; linkTo: string }
+    expect(args.linkTo).toBe('l3')
+    expect(new URL(args.otpauth).searchParams.get('issuer')).toBe('Docs 2')
+    expect(new URL(args.otpauth).searchParams.get('secret')).toBe('JBSWY3DPEHPK3PXP')
     expect(text(root)).toContain(message('en', 'popup_codeLinkedTo', ['Docs']))
+  })
+
+  it('names the account already holding the code found, and offers no Add', async () => {
+    background.reset({
+      ...unlockedHandlers(world({ tab })),
+      readCodeFromTab: (() => ({ ...found, existing: spare })) as never,
+    })
+    const root = await openPopup()
+    await click(button(root, 'Add a code'))
+    expect(text(root)).toContain(message('en', 'popup_codeAlready', ['Spare', 'sam']))
+    expect(root.querySelector('input[role="switch"]')).toBeNull()
+    expect(background.of('addCodeFromLink')).toHaveLength(0)
   })
 
   it('adds a pasted otpauth link', async () => {

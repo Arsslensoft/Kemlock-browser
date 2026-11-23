@@ -71,12 +71,19 @@ export const search = (page: Page) =>
     .or(page.getByPlaceholder(/search/i))
     .first()
 
-/** The six digits a code row shows (as "123 456", "123456" or one span a digit group). */
+/**
+ * The six digits a code row shows (as "123 456", "123456" or one span a digit group). A row shows
+ * dots until the first answer of the background, so this waits for the digits.
+ */
 export async function codeShownIn(row: Locator): Promise<string> {
-  const text = await row.innerText()
-  const match = text.replace(/\s/g, '').match(/\d{6,8}/)
-  if (!match) throw new Error(`no code in: ${text}`)
-  return match[0]
+  let text = ''
+  await expect
+    .poll(async () => {
+      text = await row.innerText()
+      return /\d{6,8}/.test(text.replace(/\s/g, ''))
+    })
+    .toBe(true)
+  return text.replace(/\s/g, '').match(/\d{6,8}/)![0]
 }
 
 /* ---------------------------------------------------------------------------------------------- */

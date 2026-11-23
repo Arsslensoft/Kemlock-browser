@@ -89,9 +89,13 @@ test.describe('the browser vault', () => {
     // The lock screen says that sync brings the items back after a forgotten password
     await expect(popup.getByText(/sync/i).first()).toBeVisible()
 
-    for (const wrong of ['nope 1', 'nope 2', 'nope 3']) {
+    for (const [index, wrong] of ['nope 1', 'nope 2', 'nope 3'].entries()) {
       await unlockWith(popup, wrong)
-      await expect(popup.getByText(/wrong|isn.t the password/i).first()).toBeVisible()
+      // Each try is answered before the next: the screen shows the count it has reached
+      await expect(popup.getByText(/isn.t the password/i)).toBeVisible()
+      await expect(
+        popup.getByText(new RegExp(`^${index + 1} wrong tr(y|ies) since the vault last opened`)),
+      ).toBeVisible()
     }
     // The popup is closed and opened again: the count and the time are still there
     await popup.close()
@@ -111,8 +115,8 @@ test.describe('the browser vault', () => {
   test('the vault stays open when the service worker is stopped', async ({ kemlock }) => {
     await kemlock.createVault()
     await kemlock.seedOrbit()
+    // Resolves when the browser says the worker is stopped (Playwright's own list keeps it)
     await kemlock.stopWorker()
-    await expect.poll(() => kemlock.context.serviceWorkers().length).toBe(0)
     // The next request wakes it, and finds the keys in the session storage
     const { state } = await kemlock.call('popup')
     expect(state).toMatchObject({ exists: true, unlocked: true })
@@ -128,6 +132,8 @@ test.describe('the browser vault', () => {
     const popup = await kemlock.popup()
     await expectLocked(popup)
     await unlockWith(popup, PASSWORD)
+    // Unlocking is the popup's request: it is done when the popup shows the vault
+    await expect(popup.getByText(ORBIT.name).first()).toBeVisible()
     expect((await kemlock.call('logins')).map((l) => l.name)).toContain(ORBIT.name)
   })
 
