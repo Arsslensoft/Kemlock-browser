@@ -1,10 +1,21 @@
 // The toolbar popup (design decision 3).
 import '../shared/fonts.css'
 import '../shared/tokens.css'
+import '../shared/ui/ui.css'
+import './popup.css'
 import { render } from 'preact'
+import { ToastProvider } from '../shared/ui/components'
+import { App } from './app'
 
-function Popup() {
-  return <main>Kemlock</main>
+try {
+  document.documentElement.lang = chrome.i18n.getUILanguage()
+} catch {
+  // The page keeps the language its HTML says.
 }
 
-render(<Popup />, document.getElementById('app')!)
+render(
+  <ToastProvider>
+    <App />
+  </ToastProvider>,
+  document.getElementById('app')!,
+)

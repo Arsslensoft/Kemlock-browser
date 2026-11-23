@@ -471,6 +471,15 @@ export interface PageApi {
   /** Asks for the all-sites permission (must run from a user gesture in a page). */
   allSitesGranted(): Promise<boolean>
 
+  // Added by popup: what the popup needs and the contract lacked.
+  /** The code each id will show when its current one ends (the popup's "next" in the last 5 seconds). */
+  nextCodes(args: { ids: string[] }): Promise<LiveCode[]>
+  /** Marks the service's next unused backup code used (copy() with what: 'backupCode' copies it first). */
+  useBackupCode(args: { serviceId: string }): Promise<void>
+  /** Hosts remembered for a login with "Always suggest here", in this browser only. */
+  rememberedSites(args: { loginId: string }): Promise<string[]>
+  forgetSite(args: { loginId: string; host: string }): Promise<void>
+
   /** The in-page menu's list for the frame that opened it. */
   menu(args: { tabId: number; frameId: number; fieldId: string }): Promise<MenuView>
   /** Saving or updating a login the content script saw sent (decision 10). */
