@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Renders the extension's icons into extension/icons:
+# Renders the extension's icons into icons/:
 #
 #   kemlock-{16,32,48,128}.png  the extension's icon, from the logo masters in
-#                               mobile/assets/brand (the favicon at 16 and 32, the
-#                               small icon at 48, the icon at 128).
+#                               the app's mobile/assets/brand ($KEMLOCK_APP, or
+#                               ../kemlock): the favicon at 16 and 32, the small
+#                               icon at 48, the icon at 128.
 #                               The 128 is drawn at 96 pixels with the transparent
 #                               edge the Chrome Web Store asks for.
 #   locked-*.png                toolbar: the vault is locked (grey)
@@ -14,13 +15,14 @@
 # states are the browser's badge over unlocked-*.png: the count of the site's
 # logins and codes on #1559C7, and "!" for a look-alike site on #9A4A06.
 #
-# Runs rsvg-convert in a Fedora container, as mobile/tool/icons/render.sh does,
+# Runs rsvg-convert in a Fedora container, as the app's mobile/tool/icons/render.sh does,
 # so nothing has to be installed.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 extension="$(cd "$here/../.." && pwd)"
-brand="$(cd "$extension/../mobile/assets/brand" && pwd)"
+app="${KEMLOCK_APP:-$extension/../kemlock}"
+brand="$(cd "$app/mobile/assets/brand" && pwd)"
 mkdir -p "$extension/icons"
 
 # Git Bash would rewrite the container paths below as Windows paths.

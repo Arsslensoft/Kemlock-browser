@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { hasApp } from './app.mjs'
 import { localeMessages } from './build.mjs'
 import {
   appLocales,
@@ -12,15 +13,18 @@ import {
 } from './locales.mjs'
 
 describe('locales/app', () => {
-  it("is what the app's en.json and fr.json give: run `npm run locales` after they change", async () => {
-    const strings = await readAppStrings()
-    for (const lang of languages) {
-      const committed = JSON.parse(await readFile(join(appLocales, `${lang}.json`), 'utf8'))
-      expect(committed, lang).toEqual(strings[lang])
-    }
-  })
+  it.skipIf(!hasApp)(
+    "is what the app's en.json and fr.json give: run `npm run locales` after they change",
+    async () => {
+      const strings = await readAppStrings()
+      for (const lang of languages) {
+        const committed = JSON.parse(await readFile(join(appLocales, `${lang}.json`), 'utf8'))
+        expect(committed, lang).toEqual(strings[lang])
+      }
+    },
+  )
 
-  it('holds every sync problem the app has, in both languages', async () => {
+  it.skipIf(!hasApp)('holds every sync problem the app has, in both languages', async () => {
     const strings = await readAppStrings()
     expect(Object.keys(strings.en)).toContain('sync_problem_signedOut')
     expect(Object.keys(strings.en)).toContain('sync_problem_removals')

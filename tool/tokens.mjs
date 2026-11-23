@@ -1,13 +1,15 @@
 // Writes src/shared/tokens.css from the app's mobile/lib/ui/theme/tokens.dart
-// (design decision 3): every colour of AppPalette and BmcTokens as a custom
+// (the app's checkout is found by tool/app.mjs)
+// for design decision 3: every colour of AppPalette and BmcTokens as a custom
 // property, light by default and dark when the system is. Run it after
 // changing tokens.dart; tool/tokens.test.mjs fails until it is.
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { appMobile, inApp } from './app.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-export const tokensDart = join(root, '..', 'mobile', 'lib', 'ui', 'theme', 'tokens.dart')
+export const tokensDart = join(appMobile, 'lib', 'ui', 'theme', 'tokens.dart')
 export const tokensCss = join(root, 'src', 'shared', 'tokens.css')
 
 const kebab = (name) => name.replace(/([a-z])([A-Z0-9])/g, '$1-$2').toLowerCase()
@@ -103,6 +105,7 @@ export function tokensToCss(source) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  inApp()
   await writeFile(tokensCss, tokensToCss(await readFile(tokensDart, 'utf8')))
   console.log('src/shared/tokens.css')
 }

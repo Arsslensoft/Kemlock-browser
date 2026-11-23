@@ -1,4 +1,5 @@
-// Writes locales/app/<lang>.json from the app's mobile/assets/i18n/<lang>.json:
+// Writes locales/app/<lang>.json from the app's mobile/assets/i18n/<lang>.json
+// (the app's checkout is found by tool/app.mjs):
 // the messages the extension says in the app's own words (design decision
 // 3). The build turns them, with the extension's own locales/<lang>.json,
 // into the browser's _locales. Run it after the app's strings change;
@@ -6,9 +7,10 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { appMobile, inApp } from './app.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-export const appI18n = join(root, '..', 'mobile', 'assets', 'i18n')
+export const appI18n = join(appMobile, 'assets', 'i18n')
 export const appLocales = join(root, 'locales', 'app')
 export const languages = ['en', 'fr']
 
@@ -82,6 +84,7 @@ export async function readAppStrings() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  inApp()
   const strings = await readAppStrings()
   await mkdir(appLocales, { recursive: true })
   for (const lang of languages) {

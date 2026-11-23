@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { appMobile, hasApp } from './app.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const icons = join(root, 'icons')
@@ -27,8 +28,11 @@ describe('icons', () => {
     for (const size of [16, 32, 48, 128]) expect(files).toContain(`kemlock-${size}.png`)
   })
 
-  it("draw the keyhole K of the app's logo", async () => {
-    const brand = await readFile(join(root, '..', 'mobile', 'assets', 'brand', 'kemlock-mark-dark.svg'), 'utf8')
+  it.skipIf(!hasApp)("draw the keyhole K of the app's logo", async () => {
+    const brand = await readFile(
+      join(appMobile, 'assets', 'brand', 'kemlock-mark-dark.svg'),
+      'utf8',
+    )
     const shapes = [...brand.matchAll(/ d="([^"]+)"/g)].map((m) => m[1])
     expect(shapes).toHaveLength(2)
     for (const state of ['locked', 'unlocked', 'sync-stopped']) {

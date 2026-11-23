@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
+import { hasApp } from './app.mjs'
 import { tokensCss, tokensDart, tokensToCss } from './tokens.mjs'
 
 const sample = (palette, tokens = 'raised: Color(0xFF1C1D21),') => `
@@ -28,10 +29,13 @@ class BmcTokens {
 `
 
 describe('tokens.css', () => {
-  it('is what tokens.dart gives: run `npm run tokens` after changing it', async () => {
-    const dart = await readFile(tokensDart, 'utf8')
-    expect(await readFile(tokensCss, 'utf8')).toBe(tokensToCss(dart))
-  })
+  it.skipIf(!hasApp)(
+    'is what tokens.dart gives: run `npm run tokens` after changing it',
+    async () => {
+      const dart = await readFile(tokensDart, 'utf8')
+      expect(await readFile(tokensCss, 'utf8')).toBe(tokensToCss(dart))
+    },
+  )
 
   it('has the light palette by default and the dark one for a dark system', async () => {
     const css = await readFile(tokensCss, 'utf8')
