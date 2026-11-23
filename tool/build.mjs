@@ -3,7 +3,10 @@
 // classic script (content scripts can't be modules), the manifest merged
 // from manifests/base.json and the browser's own (its version is
 // $KEMLOCK_VERSION when that is set: a release's), and _locales from
-// locales/. `node tool/build.mjs chrome` builds one browser.
+// locales/. The Dart core (core/) is compiled to WebAssembly once, with
+// `dart compile wasm`, and copied to each browser's core/ folder beside the
+// data it reads. `node tool/build.mjs chrome` builds one browser.
+import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -90,15 +93,57 @@ async function writeLocales(outDir) {
   }
 }
 
+/** The Dart SDK the core is built with (the Containerfile's, and the pubspec's `sdk`). */
+export const dartVersion = '3.13.5'
+
+/** The arguments of `dart compile wasm` for the core's entry, writing core.wasm and its loader core.mjs as [out]. */
+export function dartCompileArgs(out) {
+  return ['compile', 'wasm', '-O2', '-o', out, 'lib/main.dart']
+}
+
+function dart(args, cwd) {
+  const run = spawnSync('dart', args, { cwd, stdio: 'inherit' })
+  if (run.error?.code === 'ENOENT')
+    throw new Error(
+      `The Dart SDK ${dartVersion} is needed to build the core (core/), and dart is not on the PATH. Install it from dart.dev, or build in the container with tool/build.sh.`,
+    )
+  if (run.status !== 0)
+    throw new Error(`dart ${args.slice(0, 2).join(' ')} failed (exit ${run.status})`)
+}
+
+/** Compiles the core once into dist/.core: core.wasm and its loader core.mjs. */
+async function compileCore() {
+  const coreDir = join(root, 'core')
+  const out = join(root, 'dist', '.core')
+  dart(['--version'], root)
+  if (!existsSync(join(coreDir, '.dart_tool', 'package_config.json'))) dart(['pub', 'get'], coreDir)
+  await rm(out, { recursive: true, force: true })
+  await mkdir(out, { recursive: true })
+  dart(dartCompileArgs(join(out, 'core.wasm')), coreDir)
+  console.log('dist/.core')
+  return out
+}
+
+/**
+ * The background imports the Dart loader as 'kemlock-core-wasm' (a service worker may not `import()`), and the bundle keeps
+ * that import as it is, at the file the build copies into core/.
+ */
+const coreLoader = {
+  name: 'kemlock-core-loader',
+  resolveId: (source) =>
+    source === 'kemlock-core-wasm' ? { id: '/core/core.mjs', external: true } : null,
+}
+
 const shared = (browser) => ({
   root,
   configFile: false,
   logLevel: 'warn',
   define: { __BROWSER__: JSON.stringify(browser) },
+  plugins: [coreLoader],
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
 })
 
-async function buildBrowser(browser) {
+async function buildBrowser(browser, coreOut) {
   const outDir = join(root, 'dist', browser)
   await rm(outDir, { recursive: true, force: true })
   const pages = {
@@ -144,6 +189,9 @@ async function buildBrowser(browser) {
   manifest.version = releaseVersion(process.env, manifest)
   await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   await writeLocales(outDir)
+  // The core: its module and loader, and the files it reads (the Public Suffix List, the word list, the 2FA directory)
+  await cp(coreOut, join(outDir, 'core'), { recursive: true })
+  await cp(join(root, 'core', 'data'), join(outDir, 'core', 'data'), { recursive: true })
   // Rendered by tool/icons/render.sh
   await cp(join(root, 'icons'), join(outDir, 'icons'), { recursive: true })
   // Geist's licence goes with the fonts src/shared/fonts.css bundles
@@ -153,5 +201,6 @@ async function buildBrowser(browser) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  for (const browser of browsers) await buildBrowser(browser)
+  const coreOut = await compileCore()
+  for (const browser of browsers) await buildBrowser(browser, coreOut)
 }

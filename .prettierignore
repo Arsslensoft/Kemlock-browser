@@ -7,3 +7,5 @@ test/fixtures/
 fonts/
 # The Contributor Covenant, as its authors wrote it
 CODE_OF_CONDUCT.md
+# The Dart core: Dart's own formatter, and its data files and lock as they come
+core/

@@ -9,7 +9,8 @@
 #
 # The commit's files come from `git archive`, never the working tree, so a
 # checkout's line endings or untracked files change nothing. The packages
-# come from package-lock.json, which npm checks. The zips land in
+# come from package-lock.json, which npm checks, and core/'s from its pubspec.lock
+# (dart pub get --enforce-lockfile), which pins Kemlock-core to a commit. The zips land in
 # dist/release as kemlock-<version>-<browser>.zip, and their SHA-256 is
 # printed. With Podman, set CONTAINER_ENGINE=podman.
 #
@@ -23,7 +24,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 engine="${CONTAINER_ENGINE:-docker}"
-image=kemlock-extension:node-26.13.0
+image=kemlock-extension:node-26.13.0-dart-3.13.5
 
 usage() {
   echo "usage: $0 [--here] [--version <x.y.z>] [<commit>]" >&2
@@ -70,14 +71,15 @@ git -C "$repo" -c core.autocrlf=false archive --format=tar "$commit" | tar -C "$
 echo "building $commit ${version:+(version $version)}"
 
 if [ "$local_node" = "1" ]; then
+  (cd "$work/core" && dart pub get --enforce-lockfile)
   (cd "$work" && npm ci --no-audit --no-fund && npm run build && node tool/zip.mjs dist "$out")
 else
   "$engine" build -q -t "$image" -f "$here/docker/Containerfile" "$here/docker" >/dev/null
   # Git Bash would rewrite the container paths below as Windows paths.
   export MSYS_NO_PATHCONV=1
   "$engine" run --rm --platform linux/amd64 -e "KEMLOCK_VERSION=$version" -v "$work:/src:ro" -v "$out:/out" \
-    -v kemlock-npmcache:/root/.npm "$image" \
-    bash -c 'set -e; cp -r /src/. /w; cd /w; npm ci; npm run build; node tool/zip.mjs dist /out'
+    -v kemlock-npmcache:/root/.npm -v kemlock-pubcache:/root/.pub-cache "$image" \
+    bash -c 'set -e; cp -r /src/. /w; cd /w; (cd core && dart pub get --enforce-lockfile); npm ci; npm run build; node tool/zip.mjs dist /out'
 fi
 
 rm -rf "$work"

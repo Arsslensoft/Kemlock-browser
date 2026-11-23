@@ -123,6 +123,8 @@ export interface GeneratorOptions {
   includeNumber?: boolean
   /** A site's rules (maxlength, minlength, pattern, password-rules), when filling a new-password field. */
   siteRules?: string
+  /** Added by popup: leave out the look-alike characters (0 O 1 l I), as the app's generator does. On by default. */
+  avoidLookAlikes?: boolean
 }
 
 export interface GeneratedPassword {
@@ -176,6 +178,9 @@ export interface SyncStatus {
   pendingRemovals?: number
   /** Vaultwarden: logins travel through WebDAV only (spec), so the popup says so. */
   loginsNotSynced?: boolean
+  /** Added by popup. Vaultwarden: how the home keeps its entries, and its name. */
+  storage?: 'sealed' | 'plain'
+  home?: string
 }
 
 export interface VaultState {
@@ -196,7 +201,13 @@ export interface UnlockResult {
 export type SignInStep =
   | { step: 'done'; status: SyncStatus }
   /** A second step: the methods the browser can answer, the others named. */
-  | { step: 'second'; methods: SecondMethod[]; unsupported: string[] }
+  | {
+      step: 'second'
+      methods: SecondMethod[]
+      unsupported: string[]
+      /** Added by core: Vaultwarden's obscured address for the email code ("m***@example.com"). */
+      emailHint?: string
+    }
   /** Kemlock Server: approve from another device, which shows these five words. */
   | { step: 'approval'; phrase: string[]; requestId: string }
   /** Kemlock Server: the account key opens with the master password (no trusted device). */
@@ -310,6 +321,34 @@ export interface CoreApi {
 
   settings(): Promise<Settings>
   saveSettings(settings: Partial<Settings>): Promise<Settings>
+
+  // Added by core: Kemlock Server's other ways in (design D4). Both answer as the sign-ins above do; the hooks they use (the
+  // browser's identity flow, the passkey page) are given to the core when it loads (src/background/core/wasm.ts).
+  /** SSO through `identity.launchWebAuthFlow`, on the provider the server names. */
+  signInKemlockSso?(input: { server: string; email?: string }): Promise<SignInStep>
+  /** A passkey or security key with its PRF, asked in a page of the extension. */
+  signInKemlockPasskey?(input: { server: string; email?: string }): Promise<SignInStep>
+
+  // Added by core: the passwords the generator made that no saved login holds, kept in the vault for 30 days (never synced).
+  recentPasswords?(): Promise<GeneratedPassword[]>
+  addRecentPassword?(password: GeneratedPassword): Promise<void>
+
+  // Added by popup
+  /**
+   * The sites a login is filled on beyond its own websites ("Always fill on this site"). Kemlock-core's Login holds no such
+   * field (the app keeps per-app picks only), so the core answers [] and keeps nothing: the background keeps them.
+   */
+  rememberedSites(loginId: string): Promise<string[]>
+  forgetSite(loginId: string, host: string): Promise<void>
+
+  // Added by setup
+  /** Reads the server's own answer about itself, before any password: Kemlock's `/kem/v1/config`, Vaultwarden's `/api/config`. */
+  checkServer(
+    place: 'kemlock' | 'vaultwarden',
+    server: string,
+  ): Promise<{ ok: true } | { ok: false; problem: SyncProblem }>
+  /** For the pending second step's security key: the page of the server's own address that asks it, and what it takes. */
+  securityKeyChallenge(): Promise<{ domain: string; path: string; data: string } | null>
 }
 
 export type StepAnswer =
