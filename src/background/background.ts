@@ -144,9 +144,12 @@ export class Background {
     return this.d.sync.changed()
   }
 
+  /** Signed in: the first sync runs now (setup showed what it does), and the step ends with how it went. */
   private async afterSignIn(step: SignInStep): Promise<SignInStep> {
-    if (step.step === 'done') await this.d.sync.showIcon()
-    return step
+    if (step.step !== 'done') return step
+    const status = await this.d.sync.run(true)
+    await this.d.sync.showIcon()
+    return status === null ? step : { step: 'done', status }
   }
 
   /** The menu a content script opened is the one that may list and fill, for its frame and field only. */

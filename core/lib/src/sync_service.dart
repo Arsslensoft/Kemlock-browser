@@ -29,6 +29,7 @@ import 'package:kemlock_core/features/sync/kemlock/km_signin.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_sso.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_sync.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_trust.dart';
+import 'package:kemlock_core/features/sync/removal_guard.dart';
 import 'package:kemlock_core/features/sync/sync.dart';
 import 'package:kemlock_core/features/sync/sync_crypto.dart';
 import 'package:kemlock_core/features/sync/sync_merge.dart';
@@ -154,6 +155,9 @@ class _PendingDav extends _Pending {
   final DavAccount dav;
   final DavFile? existing;
   final Kdf kdf;
+
+  /// What the passphrase opened, once it has: the place to join, kept until the first sync is confirmed.
+  SyncTarget? target;
 
   @override
   void close() {}
@@ -383,8 +387,11 @@ class SyncService {
         case _PendingKemlock():
           return _answerKemlock(pending, answer);
         case _PendingDav():
-          if (step != 'passphrase') throw _noStep;
-          return _answerDav(pending, answer['passphrase'] as String? ?? '');
+          return switch (step) {
+            'passphrase' => _answerDav(pending, answer['passphrase'] as String? ?? ''),
+            'firstSync' => _firstSyncDav(pending, go: answer['go'] == true),
+            _ => throw _noStep,
+          };
         case _PendingVw():
           return _answerVaultwarden(pending, answer);
       }
@@ -644,16 +651,26 @@ class SyncService {
     if (passphrase.length < 8) return {'step': 'error', 'problem': 'shortPassphrase'};
     final key = await deriveSyncKey(passphrase, pending.kdf);
     final existing = pending.existing;
-    if (existing != null) await decryptSyncFile(existing.text, key);
+    // The file proves the passphrase: a wrong one throws here, and nothing is stored
+    final doc = existing == null ? const SyncDoc() : await decryptSyncFile(existing.text, key);
+    pending.target = SyncTarget(dav: pending.dav, file: syncFile, key: b64(key), kdf: pending.kdf);
+    // What the first sync does, before it runs (spec): the entries it brings, and the ones it takes off
+    final here = _vault.lists.ids.toSet();
+    final gone = {for (final tombstone in doc.deleted) tombstone.id};
+    return {'step': 'firstSync', 'adds': doc.ids.where((id) => !here.contains(id)).length, 'removes': here.where(gone.contains).length};
+  }
+
+  Future<Map<String, Object?>> _firstSyncDav(_PendingDav pending, {required bool go}) async {
+    final target = pending.target;
+    if (target == null) throw _noStep;
+    if (!go) {
+      _dropPending();
+      return {'step': 'error', 'problem': 'cancelled'};
+    }
+    pending.close();
     _pending = null;
     await _forgetScope(personalScope);
-    await _replacePlaces(
-      _settings.copyWith(
-        personal: SyncTarget(dav: pending.dav, file: syncFile, key: b64(key), kdf: pending.kdf),
-        vaultwarden: null,
-        kemlock: null,
-      ),
-    );
+    await _replacePlaces(_settings.copyWith(personal: target, vaultwarden: null, kemlock: null));
     return _done();
   }
 
@@ -931,8 +948,10 @@ class SyncService {
       key = personalScope;
       final dav = WebDav(client = _vault.platform.clientFor(null));
       run = (local, state, now) async {
+        // The core's run of a folder has no removal guard of its own: look before it writes, and stop when it would remove much
+        final lost = await _guardFolder(dav, target, local, state, now);
         final result = await runWebDavScope(webDav: dav, target: target, local: local, state: state, now: now);
-        return (doc: result.doc, known: result.known, state: result.state, skipped: 0);
+        return (doc: result.doc, known: result.known, state: {...result.state, lostKey: lost}, skipped: 0);
       };
     } else {
       return;
@@ -962,10 +981,33 @@ class SyncService {
       if (!sameLists(lists, _vault.lists)) await _vault.applySynced(lists);
       await _saveStates();
       _status[key] = ScopeStatus(lastSyncAt: at);
-      if (key != personalScope) _removalChoice = null;
+      _removalChoice = null;
     } finally {
       client?.close();
     }
+  }
+
+  /// The removal guard for a folder's run, which the core's run leaves to its caller (spec): the entries the merge would take off
+  /// this browser or off the file, counted as the servers' runs count them. Throws when the run must stop and ask; otherwise
+  /// answers the runs of the last day to keep in the scope's state.
+  Future<List<List<int>>> _guardFolder(WebDav dav, SyncTarget target, Lists local, ScopeState state, int now) async {
+    final file = await dav.readFile(target.dav, target.file);
+    final remote = file == null ? null : await decryptSyncFile(file.text, unb64(target.key));
+    final merged = mergeScope(await combineKeyCopies(local, remote), state.known, remote, now: now).doc.ids.toSet();
+    final here = local.ids.toSet();
+    final there = (remote?.ids ?? const <String>[]).toSet();
+    final removals = {...here, ...there}.difference(merged).length;
+    final removedHere = here.difference(merged).length;
+    final guard = checkRemovals(
+      removals: removals,
+      removedHere: removedHere,
+      scope: here.length > there.length ? here.length : there.length,
+      recent: lostLately(state.extra, now),
+      now: now,
+      choice: _removalChoice,
+    );
+    if (guard.stop) throw KmSyncError(KmSyncIssue.removals, count: removals);
+    return guard.lostJson;
   }
 
   int _countOf(Object error) => switch (error) {

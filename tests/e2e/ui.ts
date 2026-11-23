@@ -141,7 +141,7 @@ export async function signInToFolder(
   login: { username: string; password: string; passphrase: string },
 ): Promise<void> {
   await page.getByLabel(/^username/i).fill(login.username)
-  await page.getByLabel(/^password (or app password)/i).fill(login.password)
+  await page.getByLabel(/^password \(or app password\)/i).fill(login.password)
   await page.getByLabel(/^sync passphrase/i).fill(login.passphrase)
   await control(page, /^sign in$/i).click()
 }

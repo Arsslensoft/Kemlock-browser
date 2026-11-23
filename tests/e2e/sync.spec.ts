@@ -16,12 +16,10 @@ import { expect, ORBIT, PASSWORD, test } from './kemlock'
 import { makeSyncFile, openSyncFile, totpNear } from './otp'
 import {
   allowAccess,
-  codeShownIn,
   control,
   enterAddress,
   openSection,
   pickPlace,
-  row,
   setBrowserPassword,
   signInToFolder,
 } from './ui'
@@ -68,7 +66,15 @@ test.describe('sync with a WebDAV folder', () => {
     await expect(popup.getByText('Société Générale ✓').first()).toBeVisible()
     await expect(popup.getByText('Steam').first()).toBeVisible()
     // The live code is the one this test computes from the fixture's secret
-    const github = await codeShownIn(row(popup, 'GitHub'))
+    // GitHub is listed twice: its code, and its backup codes under a fold. The code's row has the copy
+    // button, and says how many backup codes are left and, near the end of the period, the next code
+    const githubRow = popup
+      .locator('li')
+      .filter({ has: popup.getByRole('button', { name: 'Copy the code of GitHub' }) })
+    const shown = (await githubRow.innerText())
+      .replace(/backup codes left: \d+/i, '')
+      .split(/next/i)[0]
+    const github = shown.replace(/\s/g, '').match(/\d{6,8}/)![0]
     expect(totpNear('JBSWY3DPEHPK3PXP')).toContain(github)
   })
 
@@ -192,6 +198,8 @@ test.describe('sync with a WebDAV folder', () => {
   }) => {
     const passphrase = 'sync passphrase one'
     const original = openSyncFile(everyKind.file, { key: everyKind.key })
+    // A deletion is remembered for 180 days; the fixture's are a year old by now, so date them again
+    original.deleted = (original.deleted ?? []).map((d, i) => ({ ...d, at: Date.now() - 1000 * i }))
     seedFile(site.dav, makeSyncFile(original, passphrase))
     // A note's attached file lives beside the sync file; the browser must leave it alone
     for (const attachment of (original.notes as { attachments: { id: string }[] }[])[0]
@@ -274,7 +282,9 @@ test.describe('sync with a WebDAV folder', () => {
     expect(site.dav.writes()).toHaveLength(writes)
     expect(await kemlock.call('codes')).toHaveLength(22)
 
+    // The sync card of the popup's settings says so, and offers to go on
     const popup = await kemlock.popup()
+    await openSection(popup, 'Settings')
     await expect(popup.getByText(/would remove many entries/i)).toBeVisible()
     await control(popup, /^sync anyway$/i).click()
     await expect(popup.getByText(/would remove 6 entries/i)).toBeVisible()
