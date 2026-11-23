@@ -442,3 +442,17 @@ export type ContentRequest = {
 
 /** The wire answer: the result, or an error the page shows in its own words. */
 export type Answer<T> = { ok: true; value: T } | { ok: false; error: string }
+
+/* ----------------------------------------------------------------------------------------------- */
+/* Added by content                                                                                  */
+/* ----------------------------------------------------------------------------------------------- */
+
+// Added by content
+export interface ContentApi {
+  /**
+   * The tab and frame the browser says this script runs in, so the menu frame it opens can name its
+   * field to the background, which checks the sender (the `menu` request). A content script can't learn its
+   * own frame id any other way. The background answers from the sender it trusts, never from the message.
+   */
+  frame(args: object): Promise<{ tabId: number; frameId: number }>
+}
