@@ -80,8 +80,10 @@ export const methods = [
   'saveSettings',
   'recentPasswords',
   'addRecentPassword',
-  'rememberedSites',
-  'forgetSite',
+  'rememberPick',
+  'picks',
+  'pickedHosts',
+  'forgetPick',
   'checkServer',
   'securityKeyChallenge',
 ] as const satisfies readonly (keyof CoreApi)[]
@@ -96,7 +98,8 @@ const answersNothing = new Set<string>([
   'linkCode',
   'signOut',
   'addRecentPassword',
-  'forgetSite',
+  'rememberPick',
+  'forgetPick',
 ])
 
 /** `CoreApi` over [bridge]. */

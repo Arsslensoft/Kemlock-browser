@@ -38,6 +38,10 @@ const keyUnlockFailures = 'backmycodes_unlock_failures';
 /// The extension's own settings, sealed in the vault like the app's.
 const keyExtensionSettings = 'backmycodes_extension_settings';
 
+/// "Always suggest here": the items the person picked on each host, `{host: [itemId]}`, sealed in the vault, never synced, and
+/// deleted with it. Only the open vault can read or change them.
+const keyExtensionPicks = 'backmycodes_extension_picks';
+
 /// The extension's settings, as `Settings` in src/shared/api.ts, with their defaults (browser-vault and browser-popup specs).
 Map<String, Object?> defaultSettings() => {
   'autoLockMinutes': 5,
@@ -64,6 +68,21 @@ Map<String, Object?> readSettings(Object? raw, [Map<String, Object?>? base]) {
   return settings;
 }
 
+/// The picks [raw] holds: hosts with the ids picked on them; anything else in it is dropped.
+Map<String, List<String>> readPicks(Object? raw) {
+  final picks = <String, List<String>>{};
+  if (raw is! Map<String, Object?>) return picks;
+  for (final MapEntry(:key, :value) in raw.entries) {
+    if (value is! List<Object?>) continue;
+    final ids = value.whereType<String>().toSet().toList();
+    if (key.isNotEmpty && ids.isNotEmpty) picks[key] = ids;
+  }
+  return picks;
+}
+
+/// A code's secret as it is compared: upper case, with no spaces, dashes or '=' padding, as the app's otpauth parsing reads it.
+String comparableSecret(String secret) => normalizeSecret(secret).replaceAll('=', '');
+
 /// The vault.
 class VaultService {
   VaultService._(this.platform, this.data, this.store, this.registry, this.vault);
@@ -85,6 +104,7 @@ class VaultService {
 
   VaultSession? _session;
   List<GeneratedPassword> _generated = [];
+  Map<String, List<String>> _picks = {};
   Lists _lists = const Lists();
   Map<String, Object?> _settings = defaultSettings();
   var _revision = 0;
@@ -192,6 +212,7 @@ class VaultService {
         identities: await vault.loadIdentities(session),
       );
       _settings = readSettings(await vault.loadEncryptedValue(keyExtensionSettings, session));
+      _picks = readPicks(await vault.loadEncryptedValue(keyExtensionPicks, session));
       // Generated passwords are kept a month, and until a login holds them; a value that won't open doesn't keep the vault shut
       final stored = await vault
           .loadGenerated(session)
@@ -214,6 +235,7 @@ class VaultService {
   void _forget() {
     _session = null;
     _generated = [];
+    _picks = {};
     _lists = const Lists();
     _settings = defaultSettings();
     _health = LoginHealth.empty;
@@ -406,7 +428,7 @@ class VaultService {
     }
     Map<String, Object?>? existing;
     for (final (i, held) in _lists.accounts.indexed) {
-      if (held.issuer == parsed.issuer && held.secret == parsed.secret) {
+      if (held.issuer == parsed.issuer && comparableSecret(held.secret) == comparableSecret(parsed.secret)) {
         existing = _codeView(held, i);
         break;
       }
@@ -421,7 +443,7 @@ class VaultService {
       throw const CoreFailure(CoreFailure.notAnOtpauth, 'not a code link');
     }
     for (final held in _lists.accounts) {
-      if (held.issuer == parsed.issuer && held.secret == parsed.secret) {
+      if (held.issuer == parsed.issuer && comparableSecret(held.secret) == comparableSecret(parsed.secret)) {
         // The same account is saved already: it isn't added twice, but a login asked to link to it is
         if (linkTo != null) await linkCode(held.id, linkTo);
         throw const CoreFailure(CoreFailure.duplicate, 'this code is saved already');
@@ -551,6 +573,7 @@ class VaultService {
     ];
     final note = asOptionalString(input['note']);
     final tags = asStrings(input['tags']);
+    final fromAutofill = input['fromAutofill'] == true;
     if (name.isEmpty || (username.isEmpty && password.isEmpty)) {
       throw const CoreFailure(CoreFailure.invalid, 'a login needs a name and a username or a password');
     }
@@ -567,6 +590,7 @@ class VaultService {
         tags: tags == null || tags.isEmpty ? null : tags,
         passwordChangedAt: password.isEmpty ? null : now,
         addedAt: now,
+        source: fromAutofill ? Login.fromAutofill : null,
       );
       await _saveLogins([..._lists.logins, saved]);
     } else {
@@ -582,6 +606,16 @@ class VaultService {
       next = next.withPassword(password.isEmpty ? null : password, nowMs);
       saved = next;
       await _saveLogins([for (final login in _lists.logins) login.id == id ? next : login]);
+    }
+    // A login that holds a generated password now holds it for good: it is no longer "recently generated"
+    if (password.isNotEmpty && _generated.any((item) => item.password == password)) {
+      final next = [
+        for (final item in _generated)
+          if (item.password != password) item,
+      ];
+      await vault.saveGenerated(next, requireSession());
+      _generated = next;
+      await store.flush();
     }
     final index = _lists.logins.indexWhere((login) => login.id == saved.id);
     return loginView(_lists.logins[index], order: index, health: await health());
@@ -604,11 +638,12 @@ class VaultService {
 
   // ─── Recently generated passwords ─────────────────────────────────────
 
-  /// The passwords the generator made that no saved login holds, newest last, as `GeneratedPassword` in src/shared/api.ts.
+  /// The passwords the generator made that no saved login holds, newest first, as `GeneratedPassword` in src/shared/api.ts.
+  /// (They are kept oldest first, each new one added at the end.)
   List<Map<String, Object?>> recentPasswords() {
     requireSession();
     return [
-      for (final item in _generated) {'value': item.password, 'at': item.at, 'site': ?item.site},
+      for (final item in _generated.reversed) {'value': item.password, 'at': item.at, 'site': ?item.site},
     ];
   }
 
@@ -625,6 +660,64 @@ class VaultService {
     await vault.saveGenerated(next, session);
     _generated = next;
     await store.flush();
+  }
+
+  // ─── "Always suggest here" ────────────────────────────────────────────
+
+  Future<void> _savePicks(Map<String, List<String>> next) async {
+    final session = requireSession();
+    await vault.saveEncryptedValue(keyExtensionPicks, next, session);
+    _picks = next;
+    await store.flush();
+  }
+
+  String _pickHost(String host) {
+    final name = host.trim().toLowerCase();
+    if (name.isEmpty || name.length > 253) throw const CoreFailure(CoreFailure.invalid, 'no host');
+    return name;
+  }
+
+  /// Remembers that [itemId] (a login or a code) was picked on [host]. Sealed with the vault; a locked core has none.
+  Future<void> rememberPick(String host, String itemId) async {
+    requireSession();
+    final name = _pickHost(host);
+    if (itemId.isEmpty) throw const CoreFailure(CoreFailure.invalid, 'no item');
+    final ids = _picks[name] ?? const <String>[];
+    if (ids.contains(itemId)) return;
+    await _savePicks({
+      ..._picks,
+      name: [...ids, itemId],
+    });
+  }
+
+  /// The items picked on [host].
+  List<String> picks(String host) {
+    requireSession();
+    return [...?_picks[_pickHost(host)]];
+  }
+
+  /// The hosts [itemId] was picked on, sorted.
+  List<String> pickedHosts(String itemId) {
+    requireSession();
+    return [
+      for (final MapEntry(:key, :value) in _picks.entries)
+        if (value.contains(itemId)) key,
+    ]..sort();
+  }
+
+  Future<void> forgetPick(String host, String itemId) async {
+    requireSession();
+    final name = _pickHost(host);
+    final ids = _picks[name];
+    if (ids == null || !ids.contains(itemId)) return;
+    final left = [
+      for (final id in ids)
+        if (id != itemId) id,
+    ];
+    await _savePicks({
+      for (final MapEntry(:key, :value) in _picks.entries)
+        if (key != name) key: value else if (left.isNotEmpty) key: left,
+    });
   }
 
   // ─── Settings ─────────────────────────────────────────────────────────

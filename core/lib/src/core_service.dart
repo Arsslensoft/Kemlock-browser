@@ -57,8 +57,10 @@ class CoreService {
     'saveSettings',
     'recentPasswords',
     'addRecentPassword',
-    'rememberedSites',
-    'forgetSite',
+    'rememberPick',
+    'picks',
+    'pickedHosts',
+    'forgetPick',
     'checkServer',
     'securityKeyChallenge',
   };
@@ -199,12 +201,15 @@ class CoreService {
       case 'addRecentPassword':
         await vault.addRecentPassword(_object(args, 0));
         return null;
-      case 'rememberedSites':
-        // Kemlock-core's Login has no field for the sites a login is filled on beyond its own, so the core keeps none
-        vault.requireSession();
-        return const <String>[];
-      case 'forgetSite':
-        vault.requireSession();
+      case 'rememberPick':
+        await vault.rememberPick(_string(args, 0), _string(args, 1));
+        return null;
+      case 'picks':
+        return vault.picks(_string(args, 0));
+      case 'pickedHosts':
+        return vault.pickedHosts(_string(args, 0));
+      case 'forgetPick':
+        await vault.forgetPick(_string(args, 0), _string(args, 1));
         return null;
       case 'checkServer':
         return sync.checkServer(_string(args, 0), _string(args, 1));
