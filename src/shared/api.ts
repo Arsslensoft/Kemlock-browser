@@ -375,6 +375,26 @@ export interface PopupView {
   tab?: TabView
 }
 
+// Added by setup (begin): what the setup tab needs beyond the sign-in steps.
+/** What `checkServer` found: the address answers as the place's server, or the app's problem. */
+export type ServerCheck = { ok: true } | { ok: false; problem: SyncProblem }
+
+/**
+ * The security key's connector on the server's own address (design decision 13). Setup opens
+ * `domain + path + ?data=<data>&parent=<setup page>&v=1&locale=<language>` in a tab, relays the
+ * page's `webAuthnResult` and answers `{ step: 'securityKey', assertion }`. Vaultwarden: the web
+ * vault's `/webauthn-fallback-connector.html`; Kemlock Server: `/kem/v1/webauthn`.
+ */
+export interface SecurityKeyChallenge {
+  /** The server's own address (Vaultwarden's DOMAIN, the Kemlock server's address), no trailing slash. */
+  domain: string
+  /** The connector page's path on it. */
+  path: string
+  /** The challenge, encoded for the connector's `data` parameter. */
+  data: string
+}
+// Added by setup (end)
+
 /**
  * The extension's own pages' requests. Each is `{ kind, ...args }` on the wire
  * (`PageRequest`), and the answer is the method's result, or `{ error }`.
@@ -456,6 +476,19 @@ export interface PageApi {
   /** Saving or updating a login the content script saw sent (decision 10). */
   pendingSave(args: { tabId: number }): Promise<PendingSave | null>
   answerSave(args: { tabId: number; save: boolean; never?: boolean }): Promise<void>
+
+  // Added by setup (begin)
+  /**
+   * Before the master password: the address answers as a Vaultwarden at a supported version, or
+   * as a Kemlock Server (its /kem/v1/config). Sends nothing but the check; needs the access step.
+   */
+  checkServer(args: { place: 'kemlock' | 'vaultwarden'; server: string }): Promise<ServerCheck>
+  /**
+   * The challenge of the last sign-in's security key step, or null when the server serves no
+   * connector page (the other methods and the API key are offered instead).
+   */
+  securityKeyChallenge(): Promise<SecurityKeyChallenge | null>
+  // Added by setup (end)
 }
 
 export interface MenuView {
