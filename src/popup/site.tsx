@@ -1,9 +1,10 @@
 // The card for the tab in front: its logins and codes first, with Fill, or a warning when the
 // address looks like another site's, or a hint when the vault has nothing for it.
 import type { CodeView, LoginView, TabView } from '../shared/api'
-import { Button, Notice, useToast } from '../shared/ui/components'
+import { Button, IconButton, Notice, Tile, useToast } from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
-import { CodeValue, codeName } from './codes'
+import { Icon } from '../shared/ui/icons'
+import { CodeLine, codeName } from './codes'
 import type { Vault } from './data'
 import type { Live } from './live'
 import { PasswordLine } from './logins'
@@ -35,6 +36,22 @@ export function siteItems(tab: TabView | undefined, vault: Vault): SiteItems {
   return { logins, codes, shownCodes: [...linkedCodes, ...codes] }
 }
 
+/** The fill buttons of a site's card say what went to the page, in a toast. */
+export function useFill(tab: TabView | undefined) {
+  const say = useToast()
+  return async (args: { loginId?: string; codeId?: string }) => {
+    if (tab === undefined) return
+    try {
+      await ask('fill', { tabId: tab.tabId, ...args })
+      if (args.codeId !== undefined && args.loginId === undefined)
+        say(t('popup_codeFilledOn', tab.match.site), t('popup_codeFilledSub'))
+      else say(t('popup_loginFilledOn', tab.match.site), t('popup_loginFilledSub'))
+    } catch (error) {
+      say(errorMessage(error))
+    }
+  }
+}
+
 export function SiteCards(props: {
   tab: TabView | undefined
   vault: Vault
@@ -42,24 +59,26 @@ export function SiteCards(props: {
   onOpenLogin: (id: string) => void
 }) {
   const { tab, vault, live } = props
-  const say = useToast()
+  const fill = useFill(tab)
   if (tab === undefined) return null
   const items = siteItems(tab, vault)
   const { match } = tab
-
-  const fill = async (args: { loginId?: string; codeId?: string }) => {
-    try {
-      await ask('fill', { tabId: tab.tabId, ...args })
-      say(t('popup_filled'))
-    } catch (error) {
-      say(errorMessage(error))
-    }
-  }
-
   const nothing = items.logins.length === 0 && items.codes.length === 0
+  const hasCards = !nothing
+
+  if (!hasCards && match.lookAlikeOf === undefined && match.site === '') return null
 
   return (
-    <div class="site">
+    <section class="site" aria-label={t('popup_onThisSite')}>
+      <div class="site-head">
+        <span class="label-caps">{t('popup_onThisSite')}</span>
+        {match.site !== '' && (
+          <span class="site-chip">
+            <Icon name="shieldCheck" size={13} weight={2} />
+            {match.site}
+          </span>
+        )}
+      </div>
       {match.lookAlikeOf !== undefined && (
         <Notice kind="warn">
           <strong>{t('popup_lookAlikeTitle', match.lookAlikeOf)}</strong>{' '}
@@ -72,28 +91,37 @@ export function SiteCards(props: {
       {items.logins.map((login) => {
         const code =
           login.codeId === undefined ? undefined : vault.codes.find((c) => c.id === login.codeId)
+        const fillable = code !== undefined && !code.onSecurityKey
         return (
           <article class="card" key={login.id} aria-label={login.name}>
-            <div class="row">
-              <div class="grow">
-                <h2 class="card-title">
-                  <button type="button" class="link" onClick={() => props.onOpenLogin(login.id)}>
-                    {login.name}
-                  </button>
-                </h2>
-                {login.username !== '' && <div class="muted small ellipsis">{login.username}</div>}
-              </div>
+            <div class="row card-head">
+              <Tile name={login.name} size={40} />
+              <span class="grow lines">
+                <h2 class="card-title ellipsis">{login.name}</h2>
+                {login.username !== '' && <span class="label ellipsis">{login.username}</span>}
+              </span>
+              <IconButton
+                icon="chevron"
+                size={16}
+                weight={2}
+                label={t('popup_openLogin', login.name)}
+                onClick={() => props.onOpenLogin(login.id)}
+              />
             </div>
-            <PasswordLine login={login} />
-            {code !== undefined && (
-              <div class="row card-code">
-                <span class="muted small grow ellipsis">{t('popup_twoStepCode')}</span>
-                <CodeValue code={code} live={live} />
-              </div>
-            )}
-            <div class="actions">
-              {code !== undefined && !code.onSecurityKey && (
+            <div class="well">
+              <PasswordLine login={login} />
+              {code !== undefined && (
+                <>
+                  <div class="well-sep" />
+                  <CodeLine code={code} live={live} variant="card" />
+                </>
+              )}
+            </div>
+            <div class="actions split">
+              {fillable && (
                 <Button
+                  kind="primary"
+                  icon="fill"
                   label={t('popup_fillCodeOf', login.name)}
                   onClick={() => void fill({ codeId: code.id })}
                 >
@@ -101,7 +129,7 @@ export function SiteCards(props: {
                 </Button>
               )}
               <Button
-                kind="primary"
+                kind={fillable ? 'secondary' : 'primary'}
                 label={t('popup_fillLoginOf', login.name)}
                 onClick={() => void fill({ loginId: login.id })}
               >
@@ -113,18 +141,21 @@ export function SiteCards(props: {
       })}
       {items.codes.map((code) => (
         <article class="card" key={code.id} aria-label={codeName(code)}>
-          <div class="grow">
-            <h2 class="card-title">{codeName(code)}</h2>
-            {code.issuer !== '' && <div class="muted small ellipsis">{code.account}</div>}
+          <div class="row card-head">
+            <Tile name={codeName(code)} size={40} />
+            <span class="grow lines">
+              <h2 class="card-title ellipsis">{codeName(code)}</h2>
+              {code.issuer !== '' && <span class="label ellipsis">{code.account}</span>}
+            </span>
           </div>
-          <div class="row card-code">
-            <span class="grow" />
-            <CodeValue code={code} live={live} />
+          <div class="well">
+            <CodeLine code={code} live={live} variant="card" />
           </div>
           {!code.onSecurityKey && (
-            <div class="actions">
+            <div class="actions split">
               <Button
                 kind="primary"
+                icon="fill"
                 label={t('popup_fillCodeOf', codeName(code))}
                 onClick={() => void fill({ codeId: code.id })}
               >
@@ -134,6 +165,6 @@ export function SiteCards(props: {
           )}
         </article>
       ))}
-    </div>
+    </section>
   )
 }

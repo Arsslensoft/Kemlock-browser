@@ -64,13 +64,13 @@ export function EditLogin(props: {
 
   if (props.id !== null && login === undefined) {
     return (
-      <div>
+      <div class="screen">
         <PageHeader
           title={t('popup_editLogin')}
           onBack={props.onBack}
           backLabel={t('popup_back')}
         />
-        <div class="section">
+        <div class="body">
           <Notice>{t('popup_loginGone')}</Notice>
         </div>
       </div>
@@ -128,89 +128,110 @@ export function EditLogin(props: {
   )
 
   return (
-    <div>
+    <div class="screen">
       <PageHeader
         title={props.id === null ? t('popup_newLogin') : t('popup_editLogin')}
         onBack={props.onBack}
         backLabel={t('popup_back')}
       />
       <form
-        class="section"
+        class="form"
         onSubmit={(event) => {
           event.preventDefault()
           void save()
         }}
       >
-        {error !== undefined && <Notice kind="error">{error}</Notice>}
-        <TextField label={t('popup_fieldName')} value={name} onInput={setName} />
-        {websites.map((site, index) => (
-          <div class="row site-field" key={index}>
+        <div class="body form-body">
+          {error !== undefined && <Notice kind="error">{error}</Notice>}
+          <TextField label={t('popup_fieldName')} value={name} onInput={setName} />
+          <div class="stack sites">
+            {websites.map((site, index) => (
+              <TextField
+                key={index}
+                label={t('popup_fieldWebsite')}
+                value={site}
+                type="url"
+                placeholder="example.com"
+                onInput={(value) =>
+                  setWebsites((previous) => previous.map((s, i) => (i === index ? value : s)))
+                }
+                trailing={
+                  websites.length > 1 ? (
+                    <IconButton
+                      icon="x"
+                      size={16}
+                      weight={2}
+                      label={t(
+                        'popup_removeWebsite',
+                        site === '' ? String(index + 1) : hostOf(site),
+                      )}
+                      onClick={() =>
+                        setWebsites((previous) => previous.filter((_, i) => i !== index))
+                      }
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+            <div class="actions start">
+              <Button
+                kind="ghost"
+                icon="plus"
+                onClick={() => setWebsites((previous) => [...previous, ''])}
+              >
+                {t('popup_addWebsite')}
+              </Button>
+            </div>
+          </div>
+          <TextField
+            label={t('popup_fieldUsername')}
+            value={username}
+            autocomplete="off"
+            onInput={setUsername}
+          />
+          <div class="password-edit">
             <TextField
               class="grow"
-              label={t('popup_fieldWebsite')}
-              value={site}
-              type="url"
-              placeholder="example.com"
-              onInput={(value) =>
-                setWebsites((previous) => previous.map((s, i) => (i === index ? value : s)))
+              label={t('popup_fieldPassword')}
+              value={password}
+              mono
+              type={reveal ? 'text' : 'password'}
+              autocomplete="new-password"
+              readOnly={!loaded}
+              onInput={setPassword}
+              trailing={
+                <IconButton
+                  icon={reveal ? 'eyeOff' : 'eye'}
+                  label={reveal ? t('popup_hide') : t('popup_show')}
+                  pressed={reveal}
+                  onClick={() => setReveal((value) => !value)}
+                />
               }
             />
-            {websites.length > 1 && (
-              <IconButton
-                icon="x"
-                label={t('popup_removeWebsite', site === '' ? String(index + 1) : hostOf(site))}
-                onClick={() => setWebsites((previous) => previous.filter((_, i) => i !== index))}
-              />
-            )}
+            <Button class="tall" disabled={!loaded} onClick={() => void generate()}>
+              {t('popup_generate')}
+            </Button>
           </div>
-        ))}
-        <div class="actions start">
-          <Button icon="plus" onClick={() => setWebsites((previous) => [...previous, ''])}>
-            {t('popup_addWebsite')}
-          </Button>
-        </div>
-        <TextField
-          label={t('popup_fieldUsername')}
-          value={username}
-          autocomplete="off"
-          onInput={setUsername}
-        />
-        <div class="row password-edit">
-          <TextField
-            class="grow"
-            label={t('popup_fieldPassword')}
-            value={password}
-            type={reveal ? 'text' : 'password'}
-            autocomplete="new-password"
-            readOnly={!loaded}
-            onInput={setPassword}
+          <TextField label={t('popup_fieldNote')} value={note} multiline onInput={setNote} />
+          <SelectField
+            stacked
+            label={t('popup_twoStepCode')}
+            value={codeId}
+            options={[
+              { value: '', label: t('popup_noCodeLinked') },
+              ...choices.map((code) => ({
+                value: code.id,
+                label: `${codeName(code)} · ${code.account}`,
+              })),
+            ]}
+            onChange={setCodeId}
           />
-          <IconButton
-            icon={reveal ? 'eyeOff' : 'eye'}
-            label={reveal ? t('popup_hide') : t('popup_show')}
-            pressed={reveal}
-            onClick={() => setReveal((value) => !value)}
-          />
-          <Button disabled={!loaded} onClick={() => void generate()}>
-            {t('popup_generate')}
-          </Button>
         </div>
-        <TextField label={t('popup_fieldNote')} value={note} multiline onInput={setNote} />
-        <SelectField
-          label={t('popup_twoStepCode')}
-          value={codeId}
-          options={[
-            { value: '', label: t('popup_noCodeLinked') },
-            ...choices.map((code) => ({
-              value: code.id,
-              label: `${codeName(code)} · ${code.account}`,
-            })),
-          ]}
-          onChange={setCodeId}
-        />
-        <div class="actions">
-          <Button onClick={props.onBack}>{t('popup_cancel')}</Button>
-          <Button kind="primary" type="submit" busy={busy} disabled={!loaded}>
+        <div class="foot-bar">
+          <Button tall onClick={props.onBack}>
+            {t('popup_cancel')}
+          </Button>
+          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded}>
             {t('popup_save')}
           </Button>
         </div>

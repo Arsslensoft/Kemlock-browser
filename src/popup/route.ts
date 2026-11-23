@@ -13,6 +13,7 @@ export type Route =
   | { name: 'edit'; id: string | null; prefill?: Prefill }
   | { name: 'addCode' }
   | { name: 'health' }
+  | { name: 'backupCodes' }
   | { name: 'generator' }
   | { name: 'recent' }
   | { name: 'settings' }

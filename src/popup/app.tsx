@@ -4,6 +4,8 @@ import type { PopupView } from '../shared/api'
 import { Notice, useLoad } from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
 import { AddCode } from './add-code'
+import { BackupCodesPage } from './backup-codes'
+import { rememberClipboardSeconds } from './copy'
 import { loadVault, type Vault } from './data'
 import { EditLogin } from './edit'
 import { Generator } from './generator'
@@ -36,17 +38,18 @@ function Unlocked(props: {
 
   if (loaded.value === undefined) {
     return loaded.error !== undefined ? (
-      <main class="pad">
+      <main class="screen pad">
         <Notice kind="error">{loaded.error}</Notice>
       </main>
     ) : (
-      <div class="pad muted" role="status">
+      <div class="screen pad muted" role="status">
         {t('popup_loading')}
       </div>
     )
   }
 
   const vault: Vault = { ...loaded.value, reload: loaded.reload }
+  rememberClipboardSeconds(vault.settings.clipboardSeconds)
 
   const lock = () =>
     void ask('lock').then(props.onLocked, () => {
@@ -70,8 +73,15 @@ function Unlocked(props: {
       return <AddCode vault={vault} tab={tab} onBack={back} />
     case 'health':
       return (
-        <HealthPage vault={vault} onBack={back} onOpenLogin={(id) => go({ name: 'login', id })} />
+        <HealthPage
+          vault={vault}
+          onBack={back}
+          onOpenLogin={(id) => go({ name: 'login', id })}
+          onSettings={() => go({ name: 'settings' })}
+        />
       )
+    case 'backupCodes':
+      return <BackupCodesPage vault={vault} onBack={back} />
     case 'generator':
       return <Generator onBack={back} onRecent={() => go({ name: 'recent' })} />
     case 'recent':
@@ -122,11 +132,11 @@ export function App() {
 
   if (view === undefined) {
     return error !== undefined ? (
-      <main class="pad">
+      <main class="screen pad">
         <Notice kind="error">{error}</Notice>
       </main>
     ) : (
-      <div class="pad muted" role="status">
+      <div class="screen pad muted" role="status">
         {t('popup_loading')}
       </div>
     )
