@@ -1,7 +1,8 @@
 // Builds the extension into dist/chrome and dist/firefox (design decision 3):
 // the pages and the background as ES modules, the content script as one
 // classic script (content scripts can't be modules), the manifest merged
-// from manifests/base.json and the browser's own, and _locales from
+// from manifests/base.json and the browser's own (its version is
+// $KEMLOCK_VERSION when that is set: a release's), and _locales from
 // locales/. `node tool/build.mjs chrome` builds one browser.
 import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -27,6 +28,19 @@ export function mergeManifest(base, extra) {
 }
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * The version a build carries: `KEMLOCK_VERSION` when it is set, which is how a
+ * release takes the version of its tag (tool/build.sh), and otherwise the
+ * one in manifests/base.json.
+ */
+export function releaseVersion(env, manifest) {
+  const wanted = env.KEMLOCK_VERSION
+  if (wanted === undefined || wanted === '') return manifest.version
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(wanted))
+    throw new Error(`KEMLOCK_VERSION is not a version like 1.2.3: ${wanted}`)
+  return wanted
+}
 
 /**
  * The extension's own strings and the app's (tool/locales.mjs), by name,
@@ -106,6 +120,7 @@ async function buildBrowser(browser) {
     await readJson('manifests/base.json'),
     await readJson(`manifests/${browser}.json`),
   )
+  manifest.version = releaseVersion(process.env, manifest)
   await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   await writeLocales(outDir)
   // Rendered by tool/icons/render.sh

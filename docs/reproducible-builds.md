@@ -9,15 +9,26 @@ tool/build.sh v1.2.0
 ```
 
 It builds the tag (or `HEAD` when none is given) and prints the SHA-256 of both zips, to
-compare with the published ones. Three things make the bytes the same on any machine:
+compare with the published ones (`SHA256SUMS` in the release). The release workflow builds the
+commit twice, on two runners, with `tool/build.sh --version <x.y.z>`, and tags and publishes it
+only if the two are the same bytes. A release is rebuilt with `tool/build.sh v<x.y.z>`, from the
+tag: the same bytes as the workflow's build of the commit. Four things make the bytes the same on
+any machine:
+
+- **The version is the tag's.** A release commits no version: `manifests/base.json` keeps the
+  version the repository started at. For a tag named `v<x.y.z>`, `tool/build.sh` builds with
+  `KEMLOCK_VERSION=<x.y.z>`, which `tool/build.mjs` writes into both manifests and so into the
+  zips' names. The release workflow gives the same version to the commit it builds before the tag
+  exists, with `--version <x.y.z>` (a tag and `--version` that differ are refused). Any other
+  commit has the version of `manifests/base.json`.
 
 - **The source is the commit's.** The script takes the commit's files with `git archive`,
   never the working copy, so line endings a checkout converted, or files it holds and the
   commit doesn't, change nothing. Everything the build reads is in this repository, the
   app's fonts included (`fonts/`), so the app's checkout plays no part.
 - **The tools and packages are fixed.** It builds in
-  [`tool/docker/Containerfile`](../tool/docker/Containerfile): Debian 12 with Node 26.13.0,
-  checked against its published SHA-256. The packages are those `package-lock.json` names,
+  [`tool/docker/Containerfile`](../tool/docker/Containerfile): Debian 12, pinned by its image
+  digest, with Node 26.13.0, checked against its published SHA-256. The packages are those `package-lock.json` names,
   each checked by npm against its recorded hash.
 - **The zip holds nothing of the moment.** Its entries are written in path order, each dated
   1 January 1980, with one mode and one compression level.
