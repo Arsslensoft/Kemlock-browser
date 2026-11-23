@@ -43,3 +43,8 @@ Thumbs.db
 # Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+
+# The Dart core (core/): the package's own caches, and the local override that points Kemlock-core at a sibling checkout
+core/.dart_tool/
+core/build/
+core/pubspec_overrides.yaml

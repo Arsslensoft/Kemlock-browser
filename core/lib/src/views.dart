@@ -1,0 +1,84 @@
+// The vault's items as the TypeScript side sees them (`CodeView`, `LoginView`, … in src/shared/api.ts): plain JSON, with no
+// secret. A code's secret never leaves the core, and a password leaves only through `revealLogin`.
+import 'package:kemlock_core/features/accounts/otp.dart';
+import 'package:kemlock_core/models/backup_service.dart';
+import 'package:kemlock_core/models/key_account.dart';
+import 'package:kemlock_core/models/login.dart';
+import 'package:kemlock_core/models/otp_account.dart';
+
+import 'health.dart';
+
+/// [account] as a `CodeView`. [order] is its place in the vault's list, for an account with none of its own; [loginId] is the
+/// login linked to it.
+Map<String, Object?> codeView(OtpAccount account, {required int order, String? loginId, int? backupCodesLeft}) => {
+  'id': account.id,
+  'issuer': account.issuer,
+  'account': account.label,
+  'type': account.kind.name,
+  'digits': codeLength(account),
+  'period': account.kind == OtpType.hotp ? 0 : account.period,
+  'tags': account.tags ?? const <String>[],
+  'order': account.order ?? order,
+  'onSecurityKey': false,
+  'websites': [for (final rule in account.rules) ?rule.host],
+  'loginId': ?loginId,
+  'backupCodesLeft': ?backupCodesLeft,
+};
+
+/// What the vault remembers of an account on a security key: named, never computed or filled.
+Map<String, Object?> keyAccountView(KeyAccount account, {required int order}) => {
+  'id': account.id,
+  'issuer': account.issuer.isEmpty ? account.name : account.issuer,
+  'account': account.label,
+  'type': account.type.name,
+  'digits': 6,
+  'period': account.type == KeyAccountType.hotp ? 0 : account.period,
+  'tags': account.tags ?? const <String>[],
+  'order': order,
+  'onSecurityKey': true,
+  'websites': const <String>[],
+};
+
+/// A live code: only the digits leave the core. TOTP and Steam end with their window; HOTP has no end.
+Map<String, Object?> liveCode(OtpAccount account, int nowMs) {
+  final seconds = nowMs ~/ 1000;
+  final code = codeAt(account, seconds);
+  if (account.kind == OtpType.hotp || account.period <= 0) return {'id': account.id, 'code': code};
+  final windowEnd = (seconds ~/ account.period + 1) * account.period;
+  return {'id': account.id, 'code': code, 'expiresAt': windowEnd * 1000};
+}
+
+/// [login] as a `LoginView`, with no password.
+Map<String, Object?> loginView(Login login, {required int order, required LoginHealth health}) {
+  final warnings = health.of(login.id);
+  final password = login.password ?? '';
+  return {
+    'id': login.id,
+    'name': login.name,
+    'username': login.username ?? '',
+    'websites': [for (final rule in login.rules) ?rule.host],
+    'tags': login.tags ?? const <String>[],
+    'order': order,
+    'note': ?login.note,
+    'hasPassword': password.isNotEmpty,
+    'strength': password.isEmpty ? 0 : strengthLevel(password),
+    'passwordChangedAt': ?login.passwordChangedAt,
+    'previousPasswords': login.previousPasswords?.length ?? 0,
+    'codeId': ?login.accountId,
+    'health': {
+      'reused': warnings.contains(LoginWarning.reused),
+      'weak': warnings.contains(LoginWarning.weak),
+      'withoutItsCode': warnings.contains(LoginWarning.noCode),
+      'breached': ?(warnings.contains(LoginWarning.breached) ? true : null),
+      'ignored': login.codeWarning == false,
+    },
+  };
+}
+
+/// A service's backup codes as a `BackupCodeView`: one row per service.
+Map<String, Object?> backupView(BackupService service) => {
+  'serviceId': service.id,
+  'issuer': service.serviceName,
+  'total': service.codes.length,
+  'left': service.codes.where((code) => !code.used).length,
+};
