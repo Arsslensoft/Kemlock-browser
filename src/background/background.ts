@@ -26,7 +26,7 @@ import {
   idleAlarm,
   beatAlarm,
 } from './autolock'
-import { ClipboardManager, offscreenBackend, type ClipboardBackend } from './clipboard'
+import { ClipboardManager, directBackend, type ClipboardBackend } from './clipboard'
 import type { Deps } from './deps'
 import { BackgroundError } from './errors'
 import { Filler, recentKey } from './fill'
@@ -963,7 +963,8 @@ export async function createBackground(
   const toolbar = new Toolbar()
   const tabs = new TabStore()
   const sync = new SyncScheduler(core, toolbar, now)
-  const backend = options.clipboard ?? offscreenBackend()
+  // index.ts gives Chrome and Edge the offscreen backend; a build for Firefox must not even name it
+  const backend = options.clipboard ?? directBackend()
   const clipboard = new ClipboardManager(backend, now)
   const vault = new VaultSession(core, toolbar, sync, tabs)
   const autoLock = new AutoLock(

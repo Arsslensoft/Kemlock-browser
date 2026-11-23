@@ -5,7 +5,7 @@
 // Every listener is added here, at the top level and at once, as a worker the browser stopped and
 // woke for an event must have them before it loads anything; each waits for the core.
 import { createBackground, type Background } from './background'
-import { directBackend } from './clipboard'
+import { directBackend, offscreenBackend } from './clipboard'
 import { loadBackgroundCore } from './core/load'
 import { isForOtherPages, route } from './router'
 import { originOf, type Identity } from './senders'
@@ -22,8 +22,11 @@ function identity(): Identity {
 const self = identity()
 
 const ready: Promise<Background> = loadBackgroundCore().then((core) =>
-  // Firefox's event page has a clipboard of its own; Chrome and Edge copy through the offscreen document
-  createBackground(core, __BROWSER__ === 'firefox' ? { clipboard: directBackend() } : {}),
+  // Firefox's event page has a clipboard of its own; Chrome and Edge copy through the offscreen document. __BROWSER__
+  // is fixed at build time, so Firefox's bundle drops the offscreen code, which web-ext lint refuses there.
+  createBackground(core, {
+    clipboard: __BROWSER__ === 'firefox' ? directBackend() : offscreenBackend(),
+  }),
 )
 // A core that doesn't load answers every message with `failed`, and the console says why
 ready.catch((error: unknown) => console.error('Kemlock: the core did not load', error))
