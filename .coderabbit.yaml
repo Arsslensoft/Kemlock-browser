@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit's review of every pull request. It takes CLAUDE.md as the project's guidelines. It
+# requests changes while a blocking finding or a pre-merge check below is open and approves once
+# they are settled; the main ruleset has every review thread resolved before a merge
+# (CONTRIBUTING.md).
+language: en-US
+reviews:
+  profile: chill
+  auto_approvals:
+    enabled: true
+    # Its approval is its own: a pull request's author cannot have it approve or resolve by a command
+    allow_author_approval: false
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: true
+  # A review that stops on an error fails its CodeRabbit check rather than passing it
+  fail_commit_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    # Every push, however many came before
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    base_branches: ['main']
+  # What is copied from the Kemlock app or made by a generator is not reviewed by hand
+  path_filters:
+    - '!fonts/**'
+    - '!test/fixtures/**'
+    - '!locales/app/**'
+    - '!src/shared/tokens.css'
+    - '!icons/*.png'
+    - '!**/*.png'
+    - '!package-lock.json'
+    - '!dist/**'
+  pre_merge_checks:
+    # The author cannot set a failing check aside
+    override_requested_reviewers_only: true
+    title:
+      mode: warning
+      requirements: >-
+        A Conventional Commits title (the Title check holds its form), lowercase after the colon,
+        no trailing period. A feat or fix title is a line of the release's notes: plain words for
+        people who use the extension, naming no file or function.
+    description:
+      mode: warning
+    custom_checks:
+      - name: Licences and credits
+        mode: error
+        instructions: >-
+          Fail if the pull request adds a file, font, picture, icon, string, data set or code taken
+          from another project and does not both say where it comes from and ship its licence beside
+          it (fonts/OFL.txt for the Geist fonts), or adds a package under a licence that
+          .github/scripts/check-licences.mjs does not allow without adding it to
+          .github/licence-exceptions.json with the reason. Fail if it edits a copy of the Kemlock
+          app's files (fonts/, test/fixtures/, locales/app/, src/shared/tokens.css) by hand instead
+          of copying or generating it again from the app. Fail if it removes or rewrites a copyright
+          line, a licence text or a comment that credits an author. Fail if it adds another maker's
+          logo or trademark. Pass otherwise, and when nothing comes from another project.
+      - name: Tests with the change
+        mode: error
+        instructions: >-
+          Pass when the pull request changes only documentation, comments, CI configuration or
+          pinned dependency versions. Otherwise pass only when each new or changed behaviour (a
+          feature, a message, a setting, a default, a fixed bug) comes with a Vitest test that
+          would fail without it, next to the code (src/**/*.test.ts, tool/*.test.mjs). A test for a
+          fix comes with the fix. Fail when it deletes, skips or weakens an existing test, or makes
+          one pass by changing what it expects, without saying why in the description.
+      - name: Security defaults
+        mode: error
+        instructions: >-
+          Fail if the pull request: adds a permission or host permission to manifests/*.json, or
+          widens one (a required host permission instead of an optional one, matches on more sites,
+          a new web-accessible resource), without the reason in the description; loads or runs code
+          that is not in the zip (a remote script, eval, new Function, a string passed to
+          setTimeout, an inline script, 'unsafe-eval' or 'unsafe-inline' in the content security
+          policy); sets innerHTML, outerHTML or dangerouslySetInnerHTML (the pages set textContent);
+          sends anything off the browser other than to the server the person set up (analytics, a
+          crash report, a font or script from a CDN), or logs a secret, a code or a password; keeps
+          a secret, a code or a password in storage that is not session or encrypted; gives a
+          workflow job a secret, a write permission or the stores environment it does not need, or
+          interpolates ${{ }} into a run block; or downloads anything in a build or workflow without
+          pinning its SHA-256. Pass otherwise.
+      - name: Documentation kept accurate
+        mode: warning
+        instructions: >-
+          Fail if the pull request changes a command, script, check, permission, default, path or
+          release step that README.md, CLAUDE.md, CONTRIBUTING.md, SECURITY.md or docs/ describe,
+          and does not change them to match. Pass otherwise.
+chat:
+  auto_reply: true
