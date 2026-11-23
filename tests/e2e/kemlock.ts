@@ -121,6 +121,8 @@ export class Kemlock {
         // Every name goes to the fixture server, at the https port the address has
         `--host-resolver-rules=${this.site.resolverRules(realServers())}`,
         '--ignore-certificate-errors',
+        // A display scaled to 125% makes a frame the extension shows in a page lay out 1.25 times wider than its box
+        '--force-device-scale-factor=1',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-search-engine-choice-screen',

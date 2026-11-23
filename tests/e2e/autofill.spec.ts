@@ -184,10 +184,8 @@ test.describe('autofill, with access to all sites', () => {
       await expect(menu.getByText(UNKNOWN_SITE).first()).toBeVisible()
       await page.waitForTimeout(GATE_MS)
       await menuItem(menu, ORBIT.name).click()
-      // The address it would fill is shown before anything is filled
-      await expect(
-        menu.getByText(new RegExp(hosts.orbitAuth.replace(/\./g, '\\.'), 'i')).first(),
-      ).toBeVisible()
+      // The address it would fill (the site's registrable domain) is shown before anything is filled
+      await expect(menu.getByText(/orbitauth\.net/i).first()).toBeVisible()
       await expect(email(page)).toHaveValue('')
       await toggle(menu, /always suggest here/i).check()
       await page.waitForTimeout(GATE_MS)
@@ -225,6 +223,8 @@ test.describe('autofill, with access to all sites', () => {
     }) => {
       const page = await kemlock.visit(hosts.lookAlike, '/signin')
       const menu = await kemlock.openMenu(page, email(page))
+      // The guard first: "Pick a login anyway", then the login, then the address it fills
+      await control(menu, /pick a login anyway/i).click()
       await page.waitForTimeout(GATE_MS)
       await menuItem(menu, ORBIT.name).click()
       await expect(email(page)).toHaveValue('')
@@ -317,6 +317,8 @@ test.describe('autofill, with access to all sites', () => {
       await expect(page.locator('#otp')).toHaveValue('')
       await page.waitForTimeout(GATE_MS)
       await menuItem(menu, ORBIT.name).click()
+      // The fill goes through the background: it lands a moment after the click
+      await expect(page.locator('#otp')).toHaveValue(/^\d{6}$/)
       expect(totpNear(ORBIT.secret)).toContain(await page.locator('#otp').inputValue())
     })
   })
