@@ -309,9 +309,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Known vulnerabilities of high severity or more in what the change adds, and the licences that
-  # GPL-3.0-or-later cannot take in (the Licences job holds the whole tree to a list of its own).
-  # Needs the dependency graph, which a private repository has with GitHub Advanced Security
+  # Known vulnerabilities of high severity or more in what the change adds. Licences are the Licences
+  # job's: it reads every npm and pub package's own licence files, while this action can't read the
+  # licence names pub's graph reports ("bsd-3-clause") and refused the core's packages for it
   dependencies:
     name: Dependencies
     runs-on: ubuntu-24.04
@@ -322,9 +322,7 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-          deny-licenses: >-
-            GPL-2.0-only, GPL-2.0, SSPL-1.0, BUSL-1.1, Elastic-2.0, CC-BY-NC-4.0, CC-BY-NC-SA-4.0,
-            CC-BY-ND-4.0, BSD-4-Clause, Apache-1.1
+          license-check: false
 
   # Each of the pull request's commits signed off by its author, the Developer Certificate of Origin
   # (CONTRIBUTING.md). A merge group's commits were its pull requests'
