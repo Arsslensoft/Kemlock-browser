@@ -71,10 +71,13 @@ export function Switch(props: {
   onChange: (checked: boolean) => void
 }) {
   const detailId = useId()
+  const labelId = useId()
   return (
     <label class="row switch">
       <span class="grow">
-        <span class="strong">{props.label}</span>
+        <span class="strong" id={labelId}>
+          {props.label}
+        </span>
         {props.detail && (
           <span class="muted small" id={detailId}>
             {props.detail}
@@ -86,6 +89,7 @@ export function Switch(props: {
         role="switch"
         checked={props.checked}
         disabled={props.disabled}
+        aria-labelledby={labelId}
         aria-describedby={props.detail ? detailId : undefined}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
@@ -227,9 +231,8 @@ export function Ring(props: { remaining: number; period: number; warn?: boolean;
           transform="rotate(-90 15 15)"
         />
       </svg>
-      <span class="ring-number" aria-hidden="true">
-        {Math.max(0, props.remaining)}
-      </span>
+      {/* Drawn from an attribute, so the seconds are not text that runs into the digits of a code. */}
+      <span class="ring-number" aria-hidden="true" data-seconds={Math.max(0, props.remaining)} />
     </span>
   )
 }
@@ -323,6 +326,8 @@ export function Confirm(props: {
 export interface TabItem {
   id: string
   label: string
+  /** Shown beside the label but not part of the tab's name ("Codes", not "Codes 3"). */
+  count?: number
 }
 
 export function Tabs(props: {
@@ -356,6 +361,9 @@ export function Tabs(props: {
           }}
         >
           {tab.label}
+          {tab.count !== undefined && (
+            <span class="tab-count" aria-hidden="true">{` ${tab.count}`}</span>
+          )}
         </button>
       ))}
     </div>

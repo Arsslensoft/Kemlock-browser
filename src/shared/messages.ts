@@ -219,7 +219,7 @@ const otpauth = text(4096, 1)
 /** Each page request's arguments, as a spec. A method with none has `{}`. */
 type PageSpecs = { [K in keyof PageApi]: Record<string, Field> }
 const pageSpecs: PageSpecs = {
-  popup: {},
+  popup: { tabId: opt(browserId) },
   createVault: { password: req(password) },
   unlock: { password: req(password) },
   lock: {},

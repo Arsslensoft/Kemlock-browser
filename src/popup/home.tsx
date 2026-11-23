@@ -119,8 +119,8 @@ export function Home(props: {
           selected={list}
           onSelect={(id) => setList(id === 'logins' ? 'logins' : 'codes')}
           tabs={[
-            { id: 'codes', label: `${t('popup_codes')} ${vault.codes.length}` },
-            { id: 'logins', label: `${t('popup_logins')} ${vault.logins.length}` },
+            { id: 'codes', label: t('popup_codes'), count: vault.codes.length },
+            { id: 'logins', label: t('popup_logins'), count: vault.logins.length },
           ]}
         />
       )}

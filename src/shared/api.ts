@@ -216,17 +216,6 @@ export type SignInStep =
   | { step: 'firstSync'; adds: number; removes: number }
   | { step: 'error'; problem: SyncProblem; message?: string }
 
-// Added by setup
-export type ServerCheck = { ok: true } | { ok: false; problem: SyncProblem }
-
-/** The connector page of the last sign-in's security-key step, opened on the server's own address. */
-export interface SecurityKeyChallenge {
-  domain: string
-  path: string
-  data: string
-}
-// End of added by setup
-
 export type SecondMethod = 'authenticator' | 'email' | 'yubikey' | 'securityKey' | 'duo' | 'apiKey'
 
 export interface HomeView {
@@ -400,7 +389,8 @@ export interface SecurityKeyChallenge {
  * (`PageRequest`), and the answer is the method's result, or `{ error }`.
  */
 export interface PageApi {
-  popup(): Promise<PopupView>
+  /** The tab in front, or the one named (the e2e tests open the popup as a tab with ?tabId=). */
+  popup(args?: { tabId?: number }): Promise<PopupView>
   createVault(args: { password: string }): Promise<void>
   unlock(args: { password: string }): Promise<UnlockResult>
   lock(): Promise<void>
@@ -458,10 +448,6 @@ export interface PageApi {
   signInWebdav(args: WebdavSignIn): Promise<SignInStep>
   signInVaultwarden(args: VaultwardenSignIn): Promise<SignInStep>
   answerStep(args: { answer: StepAnswer }): Promise<SignInStep>
-  // Added by setup
-  checkServer(args: { place: 'kemlock' | 'vaultwarden'; server: string }): Promise<ServerCheck>
-  securityKeyChallenge(): Promise<SecurityKeyChallenge | null>
-  // End of added by setup
   syncNow(): Promise<SyncStatus>
   confirmRemovals(): Promise<SyncStatus>
   signOut(): Promise<void>
@@ -542,7 +528,9 @@ export interface ContentApi {
 }
 
 export type PageRequest = {
-  [K in keyof PageApi]: { kind: K } & (Parameters<PageApi[K]> extends [infer A] ? A : object)
+  [K in keyof PageApi]: { kind: K } & (Parameters<PageApi[K]> extends []
+    ? object
+    : NonNullable<Parameters<PageApi[K]>[0]>)
 }[keyof PageApi]
 export type ContentRequest = {
   [K in keyof ContentApi]: { kind: K } & Parameters<ContentApi[K]>[0]

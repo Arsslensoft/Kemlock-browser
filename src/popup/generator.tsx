@@ -90,7 +90,7 @@ export function Generator(props: { onBack: () => void; onRecent: () => void }) {
         </output>
         <div class="actions">
           <Button icon="refresh" onClick={() => setRound((n) => n + 1)}>
-            {t('popup_again')}
+            {t('popup_generate')}
           </Button>
           <Button
             kind="primary"

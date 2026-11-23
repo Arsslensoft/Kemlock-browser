@@ -10,11 +10,14 @@ import { Generator } from './generator'
 import { HealthPage } from './health'
 import { Home, homeStart, type HomeUi } from './home'
 import { LockScreen } from './lock'
+import { requestedTab } from './links'
 import { LoginPage } from './login-page'
 import { Recent } from './recent'
 import type { Route } from './route'
 import { ask, lockedEvent } from './send'
 import { SettingsPage } from './settings'
+
+/** `popup` as the background will take it: `PageApi.popup(args?: { tabId?: number })`. */
 
 function Unlocked(props: {
   view: PopupView
@@ -97,7 +100,9 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setView(await ask('popup'))
+      const tabId = requestedTab()
+      // Opened as a tab (the browser tests): the background answers for that tab, not the one in front.
+      setView(await ask('popup', tabId === undefined ? {} : { tabId }))
       setError(undefined)
     } catch (failure) {
       setError(errorMessage(failure))

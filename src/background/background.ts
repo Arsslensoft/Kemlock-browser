@@ -229,12 +229,15 @@ export class Background {
   private pageHandlers(): PageImpl {
     const { core, tabs, now } = this.d
     return {
-      popup: async (_message, sender): Promise<PopupView> => {
+      popup: async (message, sender): Promise<PopupView> => {
         this.check(sender, pages)
         const state = await core.state()
         if (!state.unlocked) return { state }
         await this.touch()
-        const [active] = await chrome.tabs.query({ active: true, currentWindow: true })
+        const active =
+          message.tabId !== undefined
+            ? await chrome.tabs.get(message.tabId).catch(() => undefined)
+            : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]
         const tab = await this.tabView(active)
         return tab === undefined ? { state } : { state, tab }
       },

@@ -354,6 +354,10 @@ a {
   color: var(--text-secondary);
 }
 
+.ring-number::after {
+  content: attr(data-seconds);
+}
+
 .ring.warn .ring-number {
   color: var(--warning);
 }
