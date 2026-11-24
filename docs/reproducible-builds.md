@@ -2,7 +2,7 @@
 
 The extension is built into one zip per browser, `kemlock-<version>-chrome.zip` (for Chrome
 and Edge) and `kemlock-<version>-firefox.zip`. With Docker (or Podman,
-`CONTAINER_ENGINE=podman`) installed, from a checkout of this repository:
+`CONTAINER_ENGINE=podman`) installed (the container has Node and the Dart SDK, so neither is needed), from a checkout of this repository:
 
 ```bash
 tool/build.sh v1.2.0
@@ -25,17 +25,24 @@ any machine:
 - **The source is the commit's.** The script takes the commit's files with `git archive`,
   never the working copy, so line endings a checkout converted, or files it holds and the
   commit doesn't, change nothing. Everything the build reads is in this repository, the
-  app's fonts included (`fonts/`), so the app's checkout plays no part.
+  app's fonts included (`fonts/`), so the app's checkout plays no part. The one exception is the
+  Dart core's packages, which are fetched and checked against `core/pubspec.lock` (below).
 - **The tools and packages are fixed.** It builds in
   [`tool/docker/Containerfile`](../tool/docker/Containerfile): Debian 12, pinned by its image
-  digest, with Node 26.13.0, checked against its published SHA-256. The packages are those `package-lock.json` names,
-  each checked by npm against its recorded hash.
+  digest, with Node 26.13.0 and the Dart SDK 3.13.5 (which compiles `core/` to WebAssembly), each
+  checked against its published SHA-256. The npm packages are those `package-lock.json` names, each
+  checked by npm against its recorded hash. The Dart packages are those `core/pubspec.lock` names
+  (`dart pub get --enforce-lockfile` fails when the lock and `pubspec.yaml` disagree), each with its
+  content hash, which pub checks. Kemlock-core, which pub has no hash for, is fetched from GitHub with
+  `git` at the full commit id the lock names (`resolved-ref`).
 - **The zip holds nothing of the moment.** Its entries are written in path order, each dated
   1 January 1980, with one mode and one compression level.
 
-The first run builds a container of about 440 MB. `--here` builds with the machine's own
-Node instead. On the machine the script was written on, Node 26.7.0 on Windows gave the
-same zips as the container.
+The first run builds a container of about 440 MB (it has Node, the Dart SDK and `git`). `--here`
+builds with the machine's own Node and Dart SDK instead (`dart` on the `PATH`, or `DART_SDK` set; the
+script runs `dart pub get --enforce-lockfile` in `core/` itself). It gives the same zips as the
+container only with the same Node and Dart versions, 26.13.0 and 3.13.5, so compare a release with
+the container's.
 
 The stores add their signatures to what they deliver. Firefox Add-ons adds files under
 `META-INF/`, and the Chrome Web Store adds `_metadata/` and wraps the zip in its own format.

@@ -17,7 +17,8 @@ Use a new profile for each run (`firefox -P`, Create Profile), so that nothing i
 
 ## What you need
 
-- A build: `npm ci && npm run build`, then `dist/firefox/` (or the release's
+- A build: `npm ci`, `cd core && dart pub get --enforce-lockfile` (the Dart SDK 3.13.5 compiles the
+  core), then `npm run build`, then `dist/firefox/` (or the release's
   `kemlock-<version>-firefox.zip` unzipped).
 - A sync place you can reach over https that your phone's Kemlock also uses, or a throwaway one:
   - a WebDAV folder (Nextcloud, ownCloud, Synology, Koofr, or any server with a certificate your

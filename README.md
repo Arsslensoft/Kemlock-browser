@@ -167,7 +167,7 @@ Premium check.
 | `offscreen` (Chrome and Edge)             | The clipboard from the background, which has no page of its own there. Firefox's background page does it directly.                                       |
 | Optional: all websites (`<all_urls>`)     | Kemlock's button in fields on every site, asked for at setup and in Settings › Site access. Without it nothing here changes but the button.              |
 | Optional: the sync server's address       | Asked for as soon as you type the address, before anything is sent to it: browsers send an extension no CORS headers, so it can't be reached without it. |
-| `identity` (with Kemlock Server SSO)      | The browser's own sign-in window for single sign-on (`identity.launchWebAuthFlow`).                                                                      |
+| `identity` (SSO and passkey sign-in)      | The browser's own sign-in window for single sign-on and for a passkey on the Kemlock Server (`identity.launchWebAuthFlow`).                              |
 | `web_accessible_resources`: the menu page | The in-page menu is an extension page in a frame, at an address that changes each browser session (Chrome and Edge), so a page can't find it.            |
 
 The extension installs with no access to websites. Firefox's manifest declares that it collects no data
@@ -213,8 +213,13 @@ hand there, and the store listings are drafted in [docs/store/](docs/store/).
 
 ## Building
 
+The build compiles the Dart core (`core/`) to WebAssembly, so it needs the Dart SDK 3.13.5 (the
+version CI and the release container use) beside Node 26.13.0, and `git` to fetch Kemlock-core, which
+`core/pubspec.lock` pins to a commit. `tool/build.sh` needs neither: it builds in a container that has them.
+
 ```bash
 npm ci
+(cd core && dart pub get --enforce-lockfile)   # once, and when core/pubspec.lock changes
 npm run build       # dist/chrome and dist/firefox
 npm test
 npm run test:e2e    # needs the build, see Testing
@@ -275,7 +280,8 @@ Kemlock for browsers is free software under the
 SIL Open Font License ([fonts/OFL.txt](fonts/OFL.txt)).
 
 The zips carry the licences of what is compiled or copied into them, in `licenses/`: Geist's
-(`Geist-OFL.txt`); the Dart SDK's (`dart-sdk.txt`, its runtime is in the compiled core); the licence files of every Dart package the core is compiled from, kemlock_core,
+(`Geist-OFL.txt`); Lucide's, whose icon shapes the pages draw (ISC, with the Feather parts under the MIT licence,
+`lucide.txt`, copied from `src/shared/ui/LUCIDE-LICENSE.txt`); the Dart SDK's (`dart-sdk.txt`, its runtime is in the compiled core); the licence files of every Dart package the core is compiled from, kemlock_core,
 cryptography, zxing2, http, web and what they need (`licenses/dart/<package>/`, copied from the
 packages by `tool/build.mjs`, which fails when one has none); and the notices of the data the core
 reads: the Public Suffix List (MPL-2.0, `public-suffix-list.txt`), the EFF's large word list
