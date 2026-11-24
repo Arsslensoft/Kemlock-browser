@@ -26,7 +26,9 @@ runs:
       env:
         NODE_VERSION: 26.13.0
         NODE_SHA256: d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997
-      run: |
+      # Only a fixed path under RUNNER_TEMP, built from the constant version above, reaches $GITHUB_PATH:
+      # nothing a pull request controls is written, which is what github-env guards against
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
         dest="${RUNNER_TEMP}/toolchain"
         archive="${RUNNER_TEMP}/node-${NODE_VERSION}.tar.xz"
@@ -51,7 +53,8 @@ runs:
       env:
         DART_VERSION: 3.13.5
         DART_SHA256: ea864bc64df30a6b8bdf30b2e32550f7717d9a890de8f40293aeabb924fe232b
-      run: |
+      # As above: $GITHUB_PATH, and DART_SDK in $GITHUB_ENV, get fixed paths under RUNNER_TEMP only
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
         dest="${RUNNER_TEMP}/toolchain"
         archive="${RUNNER_TEMP}/dartsdk-${DART_VERSION}.zip"
