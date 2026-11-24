@@ -104,7 +104,7 @@ export function isVisible(input: Element, geometry: Geometry): boolean {
 }
 
 /** An element's parent, across a shadow root's boundary. */
-function parentOf(element: Element): Element | null {
+export function parentOf(element: Element): Element | null {
   if (element.parentElement) return element.parentElement
   const root = element.getRootNode()
   return root instanceof ShadowRoot ? root.host : null

@@ -1,0 +1,22 @@
+name: kemlock_extension_core
+description: "The Kemlock browser extension's core: Kemlock-core's Dart, compiled to WebAssembly and run in the background behind the TypeScript CoreApi."
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  cryptography: ^2.9.0
+  crypto: ^3.0.7
+  http: ^1.6.0
+  kemlock_core:
+    git:
+      url: https://github.com/Arsslensoft/Kemlock-core.git
+      ref: b8d5d236b7292fc9f7c747b4751a0a60ed070f35
+  web: ^1.1.1
+  zxing2: ^0.2.4
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.31.1

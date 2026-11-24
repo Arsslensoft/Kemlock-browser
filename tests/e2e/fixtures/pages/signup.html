@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Create an account</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Create an account</h1>
+      <form method="post" action="/account">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" />
+        <label for="new-password">New password</label>
+        <input
+          id="new-password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          passwordrules="minlength: 14; required: lower; required: upper; required: digit; max-consecutive: 2;"
+        />
+        <label for="confirm-password">Confirm password</label>
+        <input id="confirm-password" name="confirm" type="password" autocomplete="new-password" />
+        <button type="submit">Create account</button>
+      </form>
+    </main>
+  </body>
+</html>

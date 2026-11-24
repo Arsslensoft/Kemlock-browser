@@ -1,4 +1,4 @@
 {
   "extName": "Kemlock",
-  "extDescription": "Vos codes et identifiants Kemlock dans le navigateur, synchronisés avec votre Vaultwarden ou votre dossier WebDAV."
+  "extDescription": "Vos codes et identifiants Kemlock dans le navigateur, synchronisés avec Kemlock Server, un dossier WebDAV ou votre propre Vaultwarden."
 }

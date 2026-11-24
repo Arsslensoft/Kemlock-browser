@@ -1,15 +1,15 @@
 name: Checks
 
 # The checks a change has to pass before it merges and before it is released: lint, types, the
-# tests, the build of both browsers' folders and web-ext's lint of Firefox's, actionlint and
-# ShellCheck, the dependencies it brings in, every commit signed off (DCO), the licences of the
-# packages the zips are built with, and what the change adds to the workflows' and the secrets'
-# risk. (The pull request's title is checked by title.yml.) A pull request and a merge group run
-# them; a push to main runs them through release.yml, which calls this workflow and releases only
-# when they pass (a push is not a trigger here: it would run them twice). They hold no secret, and
-# write nothing, so a fork's pull request runs them as any other does. The main ruleset requires
-# the jobs by name, all but App drift, which a change to the app can fail without any fault of the
-# extension's: keep them.
+# tests, the build of both browsers' folders and web-ext's lint of Firefox's, the extension's
+# end-to-end tests in a real Chromium, actionlint and ShellCheck, the dependencies it brings in,
+# every commit signed off (DCO), the licences of the packages the zips are built with, and what the
+# change adds to the workflows' and the secrets' risk. (The pull request's title is checked by
+# title.yml.) A pull request and a merge group run them; a push to main runs them through
+# release.yml, which calls this workflow and releases only when they pass (a push is not a trigger
+# here: it would run them twice). They hold no secret, and write nothing, so a fork's pull request
+# runs them as any other does. The main ruleset requires the jobs by name, all but App drift, which
+# a change to the app can fail without any fault of the extension's: keep them.
 
 on:
   pull_request:
@@ -61,9 +61,10 @@ jobs:
           fi
           echo "base=${merge}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
@@ -74,6 +75,14 @@ jobs:
 
       - name: Types
         run: npm run typecheck
+
+      # The Dart core (core/): its format at analysis_options.yaml's width, and the analyzer
+      - name: The core's format and analysis
+        working-directory: core
+        run: |
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed .
+          dart analyze --fatal-infos
 
       # Every finding is an annotation on its line, and only an error fails the check. Only the shell
       # files the change touches are read; with no earlier commit to compare with, every one
@@ -123,15 +132,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
 
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
       - name: Tests
         run: npm test
+
+      # The Dart core's own tests (core/test), on the VM
+      - name: The core's tests
+        working-directory: core
+        run: dart test
 
   # The whole suite again, with the Kemlock app's checkout where the tests compare the extension's
   # copies with it (tool/app.mjs): its fonts, field cases, strings, colours and logo. Not
@@ -179,9 +198,9 @@ jobs:
             mobile/test/fixtures/autofill
 
       - if: steps.app.outputs.readable == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - if: steps.app.outputs.readable == 'true'
         name: Install the packages
@@ -205,12 +224,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
 
       - name: Build
         run: npm run build
@@ -225,9 +249,66 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Known vulnerabilities of high severity or more in what the change adds, and the licences that
-  # GPL-3.0-or-later cannot take in (the Licences job holds the whole tree to a list of its own).
-  # Needs the dependency graph, which a private repository has with GitHub Advanced Security
+  # The built extension in a real Chromium, over local fixture sites and an in-memory WebDAV server
+  # (tests/e2e, playwright.config.ts): setup, the vault, sync, the popup and filling pages. The build
+  # compiles the Dart core, so this job has the Dart SDK too. Chromium runs headed, under xvfb, as a
+  # person would see it: extensions don't run in the old headless mode. The tests that need a real
+  # Kemlock Server or Vaultwarden skip themselves (KEMLOCK_SERVER_URL, VAULTWARDEN_URL)
+  #
+  # The job runs in Playwright's own image, which has the Chromium its version drives (and xvfb and
+  # the libraries), so nothing downloads a browser here. The image is pinned by its digest (the index
+  # of v1.65.1-noble, every platform) and its tag matches @playwright/test in package.json: bump
+  # both together, with the digest from `curl -sI -H 'Accept: application/vnd.oci.image.index.v1+json'
+  # https://mcr.microsoft.com/v2/playwright/manifests/<tag>` (Docker-Content-Digest). The image's
+  # Node is 26.13.1, so the toolchain action installs 26.13.0 over it, as in every other job
+  e2e:
+    name: E2E
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579
+      # The image's pwuser (1001) is the hosted runner's uid, so the files the job writes in the
+      # workspace and in the runner's temp folder, which are the runner's, are writable; root would
+      # leave root-owned files behind, and Chromium's sandbox refuses to run as root
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/toolchain
+        with:
+          node: true
+          dart: true
+
+      - name: Install the packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end tests
+        run: xvfb-run -a npm run test:e2e
+
+      # The HTML report, and each failed test's trace (open one with `npx playwright show-trace`)
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Known vulnerabilities of high severity or more in what the change adds. Licences are the Licences
+  # job's: it reads every npm and pub package's own licence files, while this action can't read the
+  # licence names pub's graph reports ("bsd-3-clause") and refused the core's packages for it
   dependencies:
     name: Dependencies
     runs-on: ubuntu-24.04
@@ -238,9 +319,7 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-          deny-licenses: >-
-            GPL-2.0-only, GPL-2.0, SSPL-1.0, BUSL-1.1, Elastic-2.0, CC-BY-NC-4.0, CC-BY-NC-SA-4.0,
-            CC-BY-ND-4.0, BSD-4-Clause, Apache-1.1
+          license-check: false
 
   # Each of the pull request's commits signed off by its author, the Developer Certificate of Origin
   # (CONTRIBUTING.md). A merge group's commits were its pull requests'
@@ -264,8 +343,9 @@ jobs:
         run: bash .github/scripts/check-dco.sh "$(git merge-base "${BASE}" "${HEAD}")" "${HEAD}"
 
   # The licence of every package in package-lock.json, the tools that build the zips as well as what
-  # the zips hold, against the list of GPL-3.0-or-later compatible ones, and the fonts' licence
-  # beside the fonts. No account and no secret: the script reads the lockfile
+  # the zips hold, and of every Dart package of the core (core/pubspec.lock, which the zips hold
+  # compiled), against the list of GPL-3.0-or-later compatible ones, and the fonts' licence beside the
+  # fonts. No account and no secret: the scripts read the lockfiles and the packages' licence files
   licences:
     name: Licences
     runs-on: ubuntu-24.04
@@ -276,12 +356,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: The packages' licences
         run: node .github/scripts/check-licences.mjs
+
+      - name: Install the core's packages
+        working-directory: core
+        run: dart pub get --enforce-lockfile
+
+      - name: The core's Dart packages' licences
+        run: node .github/scripts/check-pub-licences.mjs
 
   # What the change adds: a workflow finding zizmor does not make on the commit it starts from, a
   # secret in one of its commits, and a package with a known advisory. What main has already is a
@@ -297,9 +385,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - name: Find where the change starts
         id: range

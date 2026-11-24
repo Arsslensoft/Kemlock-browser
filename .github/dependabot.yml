@@ -25,6 +25,11 @@ updates:
       prefix: fix
       prefix-development: chore
       include: scope
+    # typescript-eslint does not support TypeScript 7 yet (typescript-eslint#10940): stay on 6
+    # until it does, then drop this.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
       dev-dependencies:
         dependency-type: development

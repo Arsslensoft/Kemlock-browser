@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>A controlled field</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Sign in</h1>
+      <p>
+        The field below keeps its value in a script, as a React form does: a value set without the
+        input event is thrown away.
+      </p>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" />
+      <p>State: <output id="state"></output></p>
+      <script>
+        const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+        const state = { email: '', password: '' }
+        for (const id of ['email', 'password']) {
+          const input = document.getElementById(id)
+          let tracked = ''
+          // As React tracks a controlled input: an assignment through the element is not a change
+          Object.defineProperty(input, 'value', {
+            get() {
+              return proto.get.call(this)
+            },
+            set(v) {
+              tracked = String(v)
+              proto.set.call(this, v)
+            },
+          })
+          const render = () => {
+            proto.set.call(input, state[id])
+            document.getElementById('state').textContent = state.email + '|' + state.password
+          }
+          input.addEventListener('input', () => {
+            const v = proto.get.call(input)
+            if (v !== tracked) {
+              tracked = v
+              state[id] = v
+            }
+            queueMicrotask(render)
+          })
+        }
+      </script>
+    </main>
+  </body>
+</html>
