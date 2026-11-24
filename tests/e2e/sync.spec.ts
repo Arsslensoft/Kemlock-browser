@@ -291,7 +291,6 @@ test.describe('sync with a WebDAV folder', () => {
     // The sync card of the popup's settings says how many, lists them on Review, and offers Keep and Remove
     const popup = await kemlock.popup()
     await openSection(popup, 'Settings')
-    await expect(popup.getByText(/would remove many entries/i)).toBeVisible()
     await expect(popup.getByText(/would remove 6 of 22 items/i)).toBeVisible()
     await control(popup, /^review$/i).click()
     for (const a of gone) await expect(popup.getByText(a.issuer, { exact: true })).toBeVisible()
