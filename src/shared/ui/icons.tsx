@@ -1,5 +1,9 @@
-// A small set of line icons, drawn on a 24-unit grid in the mockups' stroke style (Lucide's shapes). They are
-// decoration: the control carries its own accessible name.
+// A small set of line icons, drawn on a 24-unit grid in the mockups' stroke style. They are decoration: the control
+// carries its own accessible name.
+//
+// The shapes are Lucide's (https://lucide.dev, https://github.com/lucide-icons/lucide), (c) Lucide Contributors, under the
+// ISC licence (the Feather parts, Cole Bemis's, under the MIT licence), whose text is LUCIDE-LICENSE.txt beside this file.
+// The build ships it as licenses/lucide.txt.
 import type { JSX } from 'preact'
 
 const gear =
