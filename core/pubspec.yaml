@@ -13,7 +13,7 @@ dependencies:
   kemlock_core:
     git:
       url: https://github.com/Arsslensoft/Kemlock-core.git
-      ref: 53d67277fd1c0cd9d30f86fc72bab05d1c40bd63
+      ref: b8d5d236b7292fc9f7c747b4751a0a60ed070f35
   web: ^1.1.1
   zxing2: ^0.2.4
 
