@@ -29,6 +29,6 @@ describe('the core build', () => {
 
   it('pins Kemlock-core to a commit in the lock, as a release builds it', async () => {
     const lock = await readFile(join(root, 'core', 'pubspec.lock'), 'utf8')
-    expect(lock).toMatch(/kemlock_core:[\s\S]*?resolved-ref: "[0-9a-f]{40}"[\s\S]*?source: git/)
+    expect(lock).toMatch(/kemlock_core:[\s\S]*?resolved-ref: "?[0-9a-f]{40}"?[\s\S]*?source: git/)
   })
 })
