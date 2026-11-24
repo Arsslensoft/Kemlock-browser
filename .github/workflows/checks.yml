@@ -61,9 +61,10 @@ jobs:
           fi
           echo "base=${merge}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
@@ -74,10 +75,6 @@ jobs:
 
       - name: Types
         run: npm run typecheck
-
-      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
-        with:
-          sdk: 3.13.5
 
       # The Dart core (core/): its format at analysis_options.yaml's width, and the analyzer
       - name: The core's format and analysis
@@ -135,16 +132,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
-
-      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
-        with:
-          sdk: 3.13.5
 
       - name: Install the core's packages
         working-directory: core
@@ -204,9 +198,9 @@ jobs:
             mobile/test/fixtures/autofill
 
       - if: steps.app.outputs.readable == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - if: steps.app.outputs.readable == 'true'
         name: Install the packages
@@ -230,16 +224,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
-
-      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
-        with:
-          sdk: 3.13.5
 
       - name: Install the core's packages
         working-directory: core
@@ -263,34 +254,40 @@ jobs:
   # compiles the Dart core, so this job has the Dart SDK too. Chromium runs headed, under xvfb, as a
   # person would see it: extensions don't run in the old headless mode. The tests that need a real
   # Kemlock Server or Vaultwarden skip themselves (KEMLOCK_SERVER_URL, VAULTWARDEN_URL)
+  #
+  # The job runs in Playwright's own image, which has the Chromium its version drives (and xvfb and
+  # the libraries), so nothing downloads a browser here. The image is pinned by its digest (the index
+  # of v1.65.1-noble, every platform) and its tag matches @playwright/test in package.json: bump
+  # both together, with the digest from `curl -sI -H 'Accept: application/vnd.oci.image.index.v1+json'
+  # https://mcr.microsoft.com/v2/playwright/manifests/<tag>` (Docker-Content-Digest). The image's
+  # Node is 26.13.1, so the toolchain action installs 26.13.0 over it, as in every other job
   e2e:
     name: E2E
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579
+      # The image's pwuser (1001) is the hosted runner's uid, so the files the job writes in the
+      # workspace and in the runner's temp folder, which are the runner's, are writable; root would
+      # leave root-owned files behind, and Chromium's sandbox refuses to run as root
+      options: --user 1001
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
-
-      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
-        with:
-          sdk: 3.13.5
+          node: true
+          dart: true
 
       - name: Install the packages
         run: npm ci --no-audit --no-fund
 
-      # The browser Playwright's version drives, and the libraries it needs
       - name: Install the core's packages
         working-directory: core
         run: dart pub get --enforce-lockfile
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
 
       - name: Build
         run: npm run build
@@ -359,16 +356,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
+          dart: true
 
       - name: The packages' licences
         run: node .github/scripts/check-licences.mjs
-
-      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
-        with:
-          sdk: 3.13.5
 
       - name: Install the core's packages
         working-directory: core
@@ -391,9 +385,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - name: Find where the change starts
         id: range

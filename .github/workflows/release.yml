@@ -59,9 +59,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       # Prints release, version, tag and existing (the commit has its tag already) to the outputs
       - name: Work out the version
@@ -191,9 +191,9 @@ jobs:
           name: release-files
           path: files
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       # The changes since the last release, grouped by type. The script's outputs (the release before
       # this one among them) are this step's
@@ -263,9 +263,9 @@ jobs:
           path: files
 
       - if: steps.keys.outputs.ready == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       # web-ext only signs: no package's install script runs where the secrets are, and the step
       # that installs has none
@@ -325,9 +325,9 @@ jobs:
           path: files
 
       - if: steps.keys.outputs.ready == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - if: steps.keys.outputs.ready == 'true'
         name: Upload and submit
@@ -373,9 +373,9 @@ jobs:
           path: files
 
       - if: steps.keys.outputs.ready == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/toolchain
         with:
-          node-version: 26.13.0
+          node: true
 
       - if: steps.keys.outputs.ready == 'true'
         name: Upload and submit
