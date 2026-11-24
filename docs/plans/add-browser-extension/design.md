@@ -567,6 +567,8 @@ paste"), as other password managers ask.
 At install:
 
 - `storage`, `alarms`, `idle`, `contextMenus`, `activeTab`, `scripting`;
+- `identity`, for the browser's own sign-in window (`identity.launchWebAuthFlow`): single
+  sign-on and passkey sign-in on the Kemlock Server;
 - `clipboardRead` and `clipboardWrite`;
 - `offscreen` (Chrome and Edge).
 

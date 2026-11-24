@@ -61,8 +61,12 @@ reviews:
         instructions: >-
           Pass when the pull request changes only documentation, comments, CI configuration or
           pinned dependency versions. Otherwise pass only when each new or changed behaviour (a
-          feature, a message, a setting, a default, a fixed bug) comes with a Vitest test that
-          would fail without it, next to the code (src/**/*.test.ts, tool/*.test.mjs). A test for a
+          feature, a message, a setting, a default, a fixed bug) comes with a test that would fail
+          without it. Three kinds count: a Vitest test next to the code (src/**/*.test.ts,
+          tool/*.test.mjs); a Dart test in core/test, which the Test job runs with dart test; and a
+          Playwright end-to-end spec in tests/e2e, which the E2E job runs in a real Chromium. The
+          core is Dart, and its behaviour is proven in its own tests and in the browser, so a change
+          to core/ comes with a Dart test or an e2e spec, not necessarily a Vitest one. A test for a
           fix comes with the fix. Fail when it deletes, skips or weakens an existing test, or makes
           one pass by changing what it expects, without saying why in the description.
       - name: Security defaults
@@ -75,11 +79,17 @@ reviews:
           setTimeout, an inline script, 'unsafe-eval' or 'unsafe-inline' in the content security
           policy); sets innerHTML, outerHTML or dangerouslySetInnerHTML (the pages set textContent);
           sends anything off the browser other than to the server the person set up (analytics, a
-          crash report, a font or script from a CDN), or logs a secret, a code or a password; keeps
-          a secret, a code or a password in storage that is not session or encrypted; gives a
-          workflow job a secret, a write permission or the stores environment it does not need, or
-          interpolates ${{ }} into a run block; or downloads anything in a build or workflow without
-          pinning its SHA-256. Pass otherwise.
+          crash report, a font or script from a CDN), or logs a secret, a code or a password. One
+          narrow exception to the sending is allowed: an opt-in request, off by default, whose
+          purpose and recipient are shown in the setting before the person turns it on, to a named
+          k-anonymity service, which is the Pwned Passwords range API and sends only a padded
+          5-character SHA-1 prefix of the password and nothing else. Any other send off the browser
+          to anyone but the person's own server still fails, and so does this one when it is on by
+          default, its purpose or recipient is not shown first, or it sends more than the prefix.
+          Also fail if it keeps a secret, a code or a password in storage that is not session or
+          encrypted; gives a workflow job a secret, a write permission or the stores environment it
+          does not need, or interpolates ${{ }} into a run block; or downloads anything in a build or
+          workflow without pinning its SHA-256. Pass otherwise.
       - name: Documentation kept accurate
         mode: warning
         instructions: >-

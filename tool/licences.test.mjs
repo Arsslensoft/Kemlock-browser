@@ -197,6 +197,21 @@ describe('findDartSdk', () => {
   })
 })
 
+describe('the Lucide licence', () => {
+  it('is kept beside the icons it covers, with the ISC text and the Feather part, and both icon files name it', async () => {
+    const text = await readFile(join(root, 'src', 'shared', 'ui', 'LUCIDE-LICENSE.txt'), 'utf8')
+    expect(text).toContain('ISC License')
+    expect(text).toContain('Lucide')
+    expect(text).toContain('Cole Bemis')
+    expect(text).toContain('Permission to use, copy, modify, and/or distribute')
+    for (const file of [
+      join('src', 'shared', 'ui', 'icons.tsx'),
+      join('src', 'setup', 'icons.tsx'),
+    ])
+      expect(await readFile(join(root, file), 'utf8'), file).toContain('LUCIDE-LICENSE.txt')
+  })
+})
+
 describe('twoFactorLicence', () => {
   it("is the data file's own licence text under a header, and refuses a file without one", async () => {
     const directory = JSON.parse(
@@ -231,6 +246,9 @@ describe.skipIf(!existsSync(join(root, 'dist', 'chrome', 'licenses')))('a built 
           `licenses/dart/${name} holds no licence`,
         ).toBe(true)
       }
+      expect(await readFile(join(base, 'lucide.txt'), 'utf8')).toBe(
+        await readFile(join(root, 'src', 'shared', 'ui', 'LUCIDE-LICENSE.txt'), 'utf8'),
+      )
       expect(await readFile(join(base, 'public-suffix-list.txt'), 'utf8')).toContain('MPL-2.0')
       expect(await readFile(join(base, 'eff-wordlist.txt'), 'utf8')).toContain('CC BY 3.0 US')
       expect(await readFile(join(base, 'dart-sdk.txt'), 'utf8')).toContain('Dart project authors')

@@ -1,5 +1,9 @@
 // The line icons of the setup tab's mockups (24-unit grid, drawn with the stroke of the text around them). They are
 // decoration: the control or the text beside each carries the name.
+//
+// The shapes are Lucide's (https://lucide.dev, https://github.com/lucide-icons/lucide), (c) Lucide Contributors, under the
+// ISC licence (the Feather parts, Cole Bemis's, under the MIT licence), whose text is src/shared/ui/LUCIDE-LICENSE.txt.
+// The build ships it as licenses/lucide.txt.
 import type { JSX } from 'preact'
 
 const shapes = {

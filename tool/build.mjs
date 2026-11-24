@@ -292,7 +292,7 @@ export function twoFactorLicence(directory) {
 }
 
 /**
- * The licences the zip carries beside the code and the data it ships, in [outDir]/licenses: Geist's, the Dart packages' (the
+ * The licences the zip carries beside the code and the data it ships, in [outDir]/licenses: Geist's, Lucide's, the Dart packages' (the
  * core is compiled from them), and the notices of the data files in core/data (core/licenses/ holds those of the Public
  * Suffix List and the EFF's word list; the 2FA directory's text is the one its own file carries).
  */
@@ -301,6 +301,11 @@ async function writeLicences(outDir) {
   await mkdir(licenses, { recursive: true })
   // Geist's licence goes with the fonts src/shared/fonts.css bundles
   await copyFile(join(root, 'fonts', 'OFL.txt'), join(licenses, 'Geist-OFL.txt'))
+  // Lucide's licence goes with the icon shapes src/shared/ui/icons.tsx and src/setup/icons.tsx draw
+  await copyFile(
+    join(root, 'src', 'shared', 'ui', 'LUCIDE-LICENSE.txt'),
+    join(licenses, 'lucide.txt'),
+  )
   await copyDartLicences(join(root, 'core'), outDir)
   // The compiled core holds the Dart SDK's runtime and core libraries, under its licence
   await copyFile(
