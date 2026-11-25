@@ -59,7 +59,9 @@ test.describe('unlocking with a passkey', () => {
 
     // The record is ciphertext and public values: no PRF output, no private key, no password
     const record = JSON.stringify((await kemlock.storage()).backmycodes_extension_passkey_unlock)
-    expect(record).toContain(set.credentials[0]!.credentialId)
+    // The record keeps the id in standard base64, the info gives it in base64url
+    const id = set.credentials[0]!.credentialId.replace(/-/g, '+').replace(/_/g, '/')
+    expect(record).toContain(id.padEnd(Math.ceil(id.length / 4) * 4, '='))
     expect(record).not.toContain(PASSWORD)
 
     await kemlock.call('lock')
