@@ -29,9 +29,8 @@ vi.mock('./send', async (importActual) => {
   }
 })
 
-/** What a paywall, a Premium badge, or a backup-code coverage or "get new codes" tool would say. */
-const premium =
-  /premium|paywall|upgrade|subscri|purchase|get new codes|new backup codes|coverage|unlock more/i
+/** What a paywall or a Premium badge would say. The backup-code tools (coverage, adding codes) are free now. */
+const premium = /premium|paywall|upgrade|subscri|purchase|unlock more/i
 
 const everything = (root: HTMLElement): string =>
   [

@@ -1,14 +1,14 @@
 # Reproducible builds
 
 The extension is built into one zip per browser, `kemlock-<version>-chrome.zip` (for Chrome
-and Edge) and `kemlock-<version>-firefox.zip`. With Docker (or Podman,
+and Edge), `kemlock-<version>-firefox.zip` and `kemlock-<version>-safari.zip`. With Docker (or Podman,
 `CONTAINER_ENGINE=podman`) installed (the container has Node and the Dart SDK, so neither is needed), from a checkout of this repository:
 
 ```bash
 tool/build.sh v1.2.0
 ```
 
-It builds the tag (or `HEAD` when none is given) and prints the SHA-256 of both zips, to
+It builds the tag (or `HEAD` when none is given) and prints the SHA-256 of every zip, to
 compare with the published ones (`SHA256SUMS` in the release). The release workflow builds the
 commit twice, on two runners, with `tool/build.sh --version <x.y.z>`, and tags and publishes it
 only if the two are the same bytes. A release is rebuilt with `tool/build.sh v<x.y.z>`, from the
@@ -17,7 +17,7 @@ any machine:
 
 - **The version is the tag's.** A release commits no version: `manifests/base.json` keeps the
   version the repository started at. For a tag named `v<x.y.z>`, `tool/build.sh` builds with
-  `KEMLOCK_VERSION=<x.y.z>`, which `tool/build.mjs` writes into both manifests and so into the
+  `KEMLOCK_VERSION=<x.y.z>`, which `tool/build.mjs` writes into every manifest and so into the
   zips' names. The release workflow gives the same version to the commit it builds before the tag
   exists, with `--version <x.y.z>` (a tag and `--version` that differ are refused). Any other
   commit has the version of `manifests/base.json`.
@@ -43,6 +43,12 @@ builds with the machine's own Node and Dart SDK instead (`dart` on the `PATH`, o
 script runs `dart pub get --enforce-lockfile` in `core/` itself). It gives the same zips as the
 container only with the same Node and Dart versions, 26.13.0 and 3.13.5, so compare a release with
 the container's.
+
+Safari's zip is the extension's folder, and that is all that is compared. Safari runs it only from a Mac app,
+so the Xcode project that `tool/safari/convert.sh` makes from the zip (the release's
+`kemlock-<version>-safari-xcode.zip`, made on a macOS runner with the Xcode there, by `safari-project.yml`) is not reproducible, has its own sum in
+`SHA256SUMS-safari-xcode` and none in `SHA256SUMS`, and is signed by whoever uploads it (docs/store/safari.md): what the signed app
+carries of the extension is checked against the zip's SHA-256.
 
 The stores add their signatures to what they deliver. Firefox Add-ons adds files under
 `META-INF/`, and the Chrome Web Store adds `_metadata/` and wraps the zip in its own format.

@@ -1,0 +1,140 @@
+/* Notes, cards and identities: the lists beside Codes and Logins, and the pages of each (docs/plans/add-items.md). Uses the
+   popup's tokens and rows; only what they don't have is here. */
+
+/* Five lists in the tab strip: each keeps its count, so the tabs are tight and the strip scrolls only when a language needs more */
+.tabs.many {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 1px;
+}
+
+.tabs.many::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs.many .tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 3px;
+  padding: 0 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tabs.many .tab-count {
+  font-size: 11px;
+}
+
+/* A list's own header: its New button, right-aligned under the tabs */
+.items-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 8px 0;
+}
+
+.item-pin {
+  flex: none;
+  color: var(--faint);
+}
+
+.item-main .value .sub.danger-text {
+  color: var(--danger);
+}
+
+/* A page's rows are wider-labelled: "Security code" and "Code de sécurité" fit */
+.items-page .detail-label,
+.items-page .password-line .lead-label {
+  width: 96px;
+}
+
+.items-page .item-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.item-caption {
+  flex-basis: 100%;
+  padding-left: 106px;
+  margin-top: -6px;
+  font-size: 11.5px;
+}
+
+.item-secret {
+  flex-wrap: wrap;
+}
+
+.item-secret .item-caption {
+  order: 9;
+}
+
+.expired-mark {
+  margin-left: 6px;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* A note's text: as written, wrapping at the popup's edge */
+.note-text {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.note-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.note-files .label {
+  font-size: 12px;
+}
+
+/* The edit pages' small pieces */
+.brand-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.two-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.document-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.document-edit .document-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.char-count {
+  color: var(--text2);
+  font-size: 12px;
+  text-align: right;
+}
+
+.char-count.over {
+  color: var(--danger);
+}

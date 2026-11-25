@@ -1,0 +1,42 @@
+/* The unlock tab: one card in the middle of the page, on the shared tokens (light and dark follow the system). */
+
+.unlock-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.unlock-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+}
+
+.unlock-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.unlock-head h1 {
+  font-size: 18px;
+}
+
+.unlock-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text2);
+}
+
+.unlock-card > .btn {
+  align-self: flex-start;
+}

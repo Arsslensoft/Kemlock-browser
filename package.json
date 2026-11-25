@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node tool/build.mjs",
+    "build:safari": "node tool/build.mjs safari",
+    "safari:project": "bash tool/safari/convert.sh",
     "tokens": "node tool/tokens.mjs",
     "locales": "node tool/locales.mjs",
     "lint": "eslint . && prettier --check .",

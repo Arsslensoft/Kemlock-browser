@@ -3,25 +3,32 @@
 // watch forms being sent. It holds no item. Everything it needs from the page and the browser comes
 // in through `Deps`, so the tests run it over a jsdom page with a stand-in background.
 
-import type { ContentApi } from '../shared/api'
+import type { ContentApi, FormPart } from '../shared/api'
 import type { FieldKind } from '../shared/messages'
 import { Badge } from './badge'
 import { readSent, sameSent, sendsForm, formOf, type Sent } from './capture'
-import { fieldNames, isVisible, pageGeometry, type Geometry } from './dom'
+import { fieldNames, isVisible, pageGeometry, type FieldElement, type Geometry } from './dom'
 import { fillEntry, longestValue } from './fill'
+import { CardCapture, IdentityCapture } from './form-capture'
+import { fillFormEntry, longestAlternative, mostAlternatives } from './form-fill'
 import { MenuFrame, type FrameMode } from './frame'
 import { plainAt } from './gate'
 import { boundsOf, placeBadge, type Box } from './place'
 import { siteRulesOf } from './rules'
+import { strictlyVisible } from './strict'
 import { scanFrame, signatureOfReports, type Registered, type Registry } from './scan'
+import { withForms } from './scan-forms'
 
 /** What the background sends a frame of its tab (ToContent in src/shared/messages.ts). */
 export type Incoming =
-  | { kind: 'fill'; fieldId: string; value: string; origin?: string }
+  | { kind: 'fill'; fieldId: string; value: string; origin?: string; alt?: unknown }
   | { kind: 'openMenu'; fieldId: string }
   | { kind: 'closeMenus' }
   | { kind: 'contextTarget' }
   | { kind: 'savePrompt' }
+  | { kind: 'passkeyPrompt'; token: string }
+  | { kind: 'passkeyClose'; token: string }
+  | { kind: 'frameVisible'; origin: string }
 
 /** What a frame answers `contextTarget` with: the field the right-click was on. */
 export interface ContextTarget {
@@ -29,6 +36,8 @@ export interface ContextTarget {
   kind: FieldKind
   boxes?: number
   rules?: string
+  part?: FormPart
+  group?: string
 }
 
 export type Call = <K extends keyof ContentApi>(
@@ -60,7 +69,7 @@ interface Armed {
   sent: Sent
   at: number
   form: HTMLFormElement | null
-  elements: HTMLInputElement[]
+  elements: FieldElement[]
 }
 
 export const armedForMs = 10_000
@@ -79,8 +88,12 @@ export class Controller {
   private registry: Registry = new Map()
   private newPasswords: HTMLInputElement[] = []
   private manual: Registered | null = null
-  private lastContext: HTMLInputElement | null = null
+  /** The field the person last opened a menu on: what a fill of a card or an identity is near. */
+  private reach: string | null = null
+  private lastContext: FieldElement | null = null
   private lastReports: string | null = null
+  /** The secret of the passkey card on show, which the card is given and the page never is. */
+  private cardToken: string | null = null
   private buttons = false
   private scanTimer: ReturnType<typeof setTimeout> | undefined
   private placeQueued = false
@@ -89,6 +102,8 @@ export class Controller {
   private who: Promise<{ tabId: number; frameId: number }> | null = null
   private armed: Armed | null = null
   private lastSent: { sent: Sent; at: number } | null = null
+  private readonly cardCapture: CardCapture
+  private readonly identityCapture: IdentityCapture
   private stopped = false
 
   constructor(deps: Deps) {
@@ -102,6 +117,14 @@ export class Controller {
       elementsAt: (x, y) => own.elementsAt(x, y).filter((element) => !this.ownHosts.has(element)),
       viewport: () => own.viewport(),
     }
+    this.cardCapture = new CardCapture(
+      (sent) => void deps.call('cardSent', sent).catch(() => undefined),
+      () => this.geometry,
+    )
+    this.identityCapture = new IdentityCapture(
+      (sent) => void deps.call('identitySent', sent).catch(() => undefined),
+      () => this.geometry,
+    )
   }
 
   /* ------------------------------------------------------------------------------------------ */
@@ -111,7 +134,12 @@ export class Controller {
   /** Reads the frame, reports what changed, and keeps the buttons where the fields are. */
   async scan(): Promise<void> {
     if (this.stopped) return
-    const scan = scanFrame(this.doc, this.nameOf, this.geometry)
+    const scan = withForms(
+      scanFrame(this.doc, this.nameOf, this.geometry),
+      this.doc,
+      this.nameOf,
+      this.geometry,
+    )
     this.registry = scan.registry
     this.newPasswords = scan.newPasswords
     const signature = signatureOfReports(scan.reports)
@@ -126,6 +154,8 @@ export class Controller {
     } else if (this.lastReports === null) this.lastReports = ''
     this.syncBadges()
     this.flushIfGone()
+    this.cardCapture.afterScan()
+    this.identityCapture.afterScan()
   }
 
   /** A rescan soon: forms that appear later, a field that changes, a page that moves. */
@@ -145,21 +175,39 @@ export class Controller {
   }
 
   private syncBadges(): void {
-    for (const [id, badge] of this.badges)
-      if (!this.buttons || !this.registry.has(id)) {
+    for (const [id, badge] of this.badges) {
+      const entry = this.registry.get(id)
+      if (!this.buttons || entry === undefined || !this.wantsBadge(entry)) {
         this.ownHosts.delete(badge.host)
         badge.host.remove()
         this.badges.delete(id)
       }
+    }
     if (!this.buttons) return
-    for (const id of this.registry.keys()) {
-      if (this.badges.has(id)) continue
+    for (const [id, entry] of this.registry) {
+      if (this.badges.has(id) || !this.wantsBadge(entry)) continue
       const badge = new Badge(this.doc, this.deps.label, (event) => this.pressed(id, event))
       this.badges.set(id, badge)
       this.ownHosts.add(badge.host)
       this.attach(badge.host)
     }
     this.place()
+  }
+
+  /**
+   * Whether a field gets a button. A sign-in or code field always does; a card or identity form has many fields, so its button is
+   * on the first text field of the block (a select's own arrow is where the button would go) and on the field the person is in,
+   * not on all of them.
+   */
+  private wantsBadge(entry: Registered): boolean {
+    if (entry.kind !== 'card' && entry.kind !== 'identity') return true
+    const active = this.doc.activeElement
+    if (active !== null && (entry.elements as Element[]).includes(active)) return true
+    const block = [...this.registry.values()].filter(
+      (other) => other.kind === entry.kind && other.group === entry.group,
+    )
+    const first = block.find((other) => other.elements[0] instanceof HTMLInputElement) ?? block[0]
+    return first === entry
   }
 
   private attach(host: Element): void {
@@ -233,6 +281,7 @@ export class Controller {
   async openMenu(id: string, via: 'click' | 'key' | 'auto'): Promise<boolean> {
     const entry = this.registry.get(id) ?? (this.manual?.id === id ? this.manual : null)
     if (entry === null || this.stopped) return false
+    this.reach = id
     this.closeMenu(false)
     let who: { tabId: number; frameId: number }
     try {
@@ -259,6 +308,7 @@ export class Controller {
     fieldId: string,
     siteRules: string | undefined,
     anchor: () => Box | null,
+    token?: string,
   ): MenuFrame | null {
     try {
       const frame: MenuFrame = new MenuFrame(
@@ -275,10 +325,14 @@ export class Controller {
           frameId: who.frameId,
           fieldId,
           ...(siteRules !== undefined ? { siteRules } : {}),
+          ...(token !== undefined ? { token } : {}),
           anchor,
           onClose: (refocus) => {
             if (this.frame === frame) this.frame = null
-            if (this.prompt === frame) this.prompt = null
+            if (this.prompt === frame) {
+              this.prompt = null
+              this.cardToken = null
+            }
             if (refocus) this.refocus(fieldId)
           },
         },
@@ -312,6 +366,8 @@ export class Controller {
     if (!this.buttons || event.defaultPrevented) return
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
     const target = event.composedPath()[0]
+    // A select and a text area use the arrow for what they are: choosing an option, moving between lines
+    if (!(target instanceof HTMLInputElement)) return
     for (const entry of this.registry.values()) {
       if (entry.elements[0] !== target) continue
       event.preventDefault()
@@ -323,7 +379,8 @@ export class Controller {
   /** Notes the field a right-click is on, for the background's `contextTarget` that follows. */
   contextMenu(event: MouseEvent): void {
     const target = event.composedPath()[0]
-    this.lastContext = target instanceof HTMLInputElement ? target : null
+    this.lastContext =
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : null
   }
 
   /**
@@ -333,20 +390,34 @@ export class Controller {
   contextTarget(): ContextTarget | null {
     const element =
       this.lastContext ??
-      (this.doc.activeElement instanceof HTMLInputElement ? this.doc.activeElement : null)
+      (this.doc.activeElement instanceof HTMLInputElement ||
+      this.doc.activeElement instanceof HTMLTextAreaElement
+        ? this.doc.activeElement
+        : null)
     if (element === null || !element.isConnected) return null
     if (['hidden', 'checkbox', 'radio', 'file', 'submit', 'button', 'image'].includes(element.type))
       return null
     for (const entry of this.registry.values()) {
       if (entry.kind === 'manual' || !entry.elements.includes(element)) continue
-      const rules = entry.kind === 'newPassword' ? siteRulesOf(this.newPasswords) : undefined
+      this.reach = entry.id
+      // A card's or an identity's field says what it asks for, and the format it shows, instead of a site's password rules
+      const rules =
+        entry.kind === 'newPassword'
+          ? siteRulesOf(this.newPasswords)
+          : entry.format === '' || entry.format === undefined
+            ? undefined
+            : entry.format
       return {
         fieldId: entry.id,
         kind: entry.kind,
         ...(entry.elements.length > 1 ? { boxes: entry.elements.length } : {}),
         ...(rules !== undefined ? { rules } : {}),
+        ...(entry.part === undefined ? {} : { part: entry.part }),
+        ...(entry.group === undefined ? {} : { group: entry.group }),
       }
     }
+    // Any other field is a login's, and only a plain input is one
+    if (!(element instanceof HTMLInputElement)) return null
     const id = this.nameOf(element)
     this.manual = { id, kind: 'manual', elements: [element] }
     const kind: FieldKind = element.type === 'password' ? 'password' : 'username'
@@ -364,11 +435,11 @@ export class Controller {
     const { kind } = message as { kind?: unknown }
     switch (kind) {
       case 'fill': {
-        const { fieldId, value, origin } = message as Incoming & { kind: 'fill' }
+        const { fieldId, value, origin, alt } = message as Incoming & { kind: 'fill' }
         if (typeof fieldId !== 'string' || typeof value !== 'string') return { ok: false }
         // The page may have gone to another site since the background matched the item
         if (origin !== undefined && origin !== this.deps.origin) return { ok: false }
-        return { ok: this.fill(fieldId, value) }
+        return { ok: this.fill(fieldId, value, alternatives(alt)) }
       }
       case 'openMenu': {
         const { fieldId } = message as Incoming & { kind: 'openMenu' }
@@ -383,17 +454,56 @@ export class Controller {
         return this.contextTarget()
       case 'savePrompt':
         return this.showPrompt().then((ok) => ({ ok }))
+      case 'passkeyPrompt': {
+        const { token } = message as Incoming & { kind: 'passkeyPrompt' }
+        if (typeof token !== 'string' || token === '') return { ok: false }
+        return this.showPasskeyCard(token).then((ok) => ({ ok }))
+      }
+      case 'passkeyClose': {
+        const { token } = message as Incoming & { kind: 'passkeyClose' }
+        if (this.cardToken !== null && token === this.cardToken) this.prompt?.close(false)
+        return { ok: true }
+      }
+      case 'frameVisible': {
+        const { origin } = message as { origin?: unknown }
+        return { ok: this.deps.isTop && typeof origin === 'string' && this.frameVisible(origin) }
+      }
       default:
         return undefined
     }
   }
 
+  /**
+   * Whether the iframes of [origin] in this document are all in plain view: a page can fade, shrink, clip or cover a frame it
+   * embeds, and a click the person made on what they could not see must not fill it (a Firefox menu has no way to tell). False
+   * when there is no such iframe, which is also the case for a frame inside another frame, whose chain this cannot check.
+   */
+  private frameVisible(origin: string): boolean {
+    const matching = iframesOf(this.doc).filter((frame) => {
+      try {
+        return new URL(frame.src, this.doc.baseURI).origin === origin
+      } catch {
+        return false
+      }
+    })
+    return matching.length > 0 && matching.every((frame) => strictlyVisible(frame, this.geometry))
+  }
+
+  /** Where the field of the last menu is, when it is still on the page. */
+  private reachBox(): Box | undefined {
+    const element = this.reach === null ? undefined : this.registry.get(this.reach)?.elements[0]
+    return element === undefined || !element.isConnected ? undefined : this.geometry.rect(element)
+  }
+
   /** Decision 4's last steps: the field is the registered one, still there and in view; set it. */
-  fill(fieldId: string, value: string): boolean {
+  fill(fieldId: string, value: string, alt: string[] = []): boolean {
     if (value.length === 0 || value.length > longestValue) return false
     const entry = this.registry.get(fieldId) ?? (this.manual?.id === fieldId ? this.manual : null)
     if (entry === null) return false
-    const done = fillEntry(entry, value, this.geometry)
+    const done =
+      entry.kind === 'card' || entry.kind === 'identity'
+        ? fillFormEntry(entry, value, alt, this.geometry, this.reachBox())
+        : fillEntry(entry, value, this.geometry)
     if (!done) this.schedule()
     return done
   }
@@ -411,6 +521,26 @@ export class Controller {
     return this.prompt !== null
   }
 
+  /**
+   * The passkey card (docs/plans/add-passkeys.md): a page of this tab asked for a passkey, and the person is asked in a frame the page
+   * can't read, in the top frame as the save prompt is, whichever frame asked. It takes the prompt's place.
+   */
+  private async showPasskeyCard(token: string): Promise<boolean> {
+    if (!this.deps.isTop || this.stopped) return false
+    this.prompt?.close(false)
+    let who: { tabId: number; frameId: number }
+    try {
+      who = await this.identity()
+    } catch {
+      return false
+    }
+    this.prompt = this.frameFor('passkey', who, '', undefined, () => null, token)
+    this.cardToken = this.prompt === null ? null : token
+    // Never takes the keyboard: a page can ask while the person types, and their next Space or Enter must not answer the card.
+    // The person clicks into it, or tabs to it, to answer.
+    return this.prompt !== null
+  }
+
   /* ------------------------------------------------------------------------------------------ */
   /* Forms being sent                                                                            */
   /* ------------------------------------------------------------------------------------------ */
@@ -421,6 +551,8 @@ export class Controller {
     if (!(form instanceof HTMLFormElement)) return
     this.send(readSent(this.registry, form))
     this.armed = null
+    this.cardCapture.submitted(event, this.registry)
+    this.identityCapture.submitted(event, this.registry)
   }
 
   /** A press on a button: a send, if the page then navigates or the form goes. */
@@ -429,6 +561,8 @@ export class Controller {
     if (!(target instanceof Element)) return
     const button = sendsForm(target)
     if (button === null) return
+    this.cardCapture.pressed(event, this.registry, this.doc)
+    this.identityCapture.pressed(event, this.registry, this.doc)
     const form = formOf(button)
     const scope: ParentNode | null = form ?? this.doc
     const sent = readSent(this.registry, scope)
@@ -443,6 +577,8 @@ export class Controller {
   /** The page is leaving, or navigated: an armed press was a send. */
   navigated(): void {
     this.flushArmed()
+    this.cardCapture.navigated()
+    this.identityCapture.navigated()
   }
 
   /** After a rescan: an armed press whose form is gone or hidden was a send. */
@@ -488,4 +624,20 @@ export class Controller {
     for (const badge of this.badges.values()) badge.host.remove()
     this.badges.clear()
   }
+}
+
+/** The other values a fill offers a select to choose from: a few short texts, nothing else a message could carry. */
+function alternatives(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((item): item is string => typeof item === 'string' && item.length <= longestAlternative)
+    .slice(0, mostAlternatives)
+}
+
+/** Every iframe of [root], inside open shadow roots too. */
+function iframesOf(root: Document | ShadowRoot): HTMLIFrameElement[] {
+  const out: HTMLIFrameElement[] = Array.from(root.querySelectorAll('iframe'))
+  for (const element of Array.from(root.querySelectorAll('*')))
+    if (element.shadowRoot) out.push(...iframesOf(element.shadowRoot))
+  return out
 }

@@ -32,6 +32,44 @@ export interface PendingLogin {
   prompted?: boolean
 }
 
+/**
+ * A form with a card was sent, kept until the next page has loaded and the person has answered (docs/plans/add-items.md). Like a
+ * sent login it waits in memory-only session storage, is dropped after five minutes and when the vault locks.
+ */
+export interface PendingCard {
+  /** Digits only; it passed the Luhn check in the page and again here. */
+  number: string
+  holder: string
+  month?: number
+  year?: number
+  code: string
+  brand?: string
+  frameId: number
+  address: string
+  host: string
+  at: number
+  prompted?: boolean
+}
+
+/** A form with an identity was sent, kept as a sent card is (docs/plans/add-items.md). */
+export interface PendingIdentity {
+  given: string
+  family: string
+  full: string
+  email: string
+  phone: string
+  company: string
+  line1: string
+  city: string
+  postalCode: string
+  country: string
+  frameId: number
+  address: string
+  host: string
+  at: number
+  prompted?: boolean
+}
+
 /** A login with a linked code was filled: the next code field on its site offers the code. */
 export interface AfterPassword {
   loginId: string
@@ -43,6 +81,8 @@ export interface TabState {
   frames: Record<string, FrameRecord>
   menu?: MenuGrant
   pending?: PendingLogin
+  pendingCard?: PendingCard
+  pendingIdentity?: PendingIdentity
   after?: AfterPassword
 }
 
@@ -55,6 +95,8 @@ const isEmpty = (state: TabState) =>
   Object.keys(state.frames).length === 0 &&
   state.menu === undefined &&
   state.pending === undefined &&
+  state.pendingCard === undefined &&
+  state.pendingIdentity === undefined &&
   state.after === undefined
 
 export class TabStore {
@@ -98,6 +140,8 @@ export class TabStore {
       state.frames = {}
       delete state.menu
       delete state.pending
+      delete state.pendingCard
+      delete state.pendingIdentity
       delete state.after
     })
   }
@@ -110,6 +154,28 @@ export class TabStore {
     })
   }
 
+  /**
+   * Drops what has waited longer than [keepMs]: a sent login, card or identity nobody answered, and a code that was to follow a
+   * password. A card is a full number and a code, so it does not sit in memory longer than the offer to save it lives.
+   */
+  sweep(now: number): Promise<void> {
+    return this.serial(async () => {
+      const all = await this.all()
+      let changed = false
+      for (const [id, state] of Object.entries(all)) {
+        for (const key of ['pending', 'pendingCard', 'pendingIdentity', 'after'] as const) {
+          const held = state[key]
+          if (held !== undefined && now - held.at > keepMs) {
+            delete state[key]
+            changed = true
+          }
+        }
+        if (isEmpty(state)) delete all[id]
+      }
+      if (changed) await chrome.storage.session.set({ [storeKey]: all })
+    })
+  }
+
   /** Locking drops what a tab held: its menus' grants and the sent forms' passwords. */
   clearSecrets(): Promise<void> {
     return this.serial(async () => {
@@ -117,6 +183,8 @@ export class TabStore {
       for (const [id, state] of Object.entries(all)) {
         delete state.menu
         delete state.pending
+        delete state.pendingCard
+        delete state.pendingIdentity
         delete state.after
         if (isEmpty(state)) delete all[id]
       }

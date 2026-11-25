@@ -8,6 +8,7 @@ import { Icon } from '../shared/ui/icons'
 import { openSetup } from './links'
 import { ask } from './send'
 import { placeNames, savedPlace } from './sync-state'
+import { PasskeyUnlockButton } from './unlock-card'
 
 export function wrongTriesText(count: number, at: number | undefined): string {
   if (at === undefined) return t('popup_wrongCount', count)
@@ -151,6 +152,7 @@ export function LockScreen(props: {
           void unlock()
         }}
       >
+        <PasskeyUnlockButton />
         <TextField
           label={t('popup_vaultPassword')}
           type={shown ? 'text' : 'password'}

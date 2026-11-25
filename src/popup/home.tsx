@@ -16,25 +16,38 @@ import { CodeRow } from './codes'
 import { useCopy } from './copy'
 import { computable, type Vault } from './data'
 import { allTags, codeMatches, healthCounts, hostOf, loginMatches } from './format'
+import { findItems, ItemPanels } from './items-rows'
 import { useLiveCodes, secondsLeft, warnSeconds } from './live'
 import { LoginRow } from './logins'
+import { byOrder as passkeysByOrder, passkeyMatches } from './passkey-format'
+import { PasskeysEmpty, PasskeysList } from './passkeys'
 import type { Route } from './route'
 import { ask } from './send'
+import { SendsEntry } from './sends'
 import { SiteCards, siteItems } from './site'
+import { SpacesCard } from './spaces'
 import { SyncBanner, SyncFooter, useSyncStatus } from './sync-state'
 import { openSetup } from './links'
+import { ToolIcon, ToolIconButton } from './tools/icons'
+import { taggableKind } from './tools/tag-kinds'
+import { byPinnedThenOrder } from './tools/order'
+
+/** The lists Home has tabs for. */
+export type HomeList = 'codes' | 'logins' | 'passkeys' | 'notes' | 'cards' | 'identities'
+const homeLists: readonly string[] = ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities']
 
 /** What the person has chosen on Home, kept while a page is open over it. */
 export interface HomeUi {
   query: string
-  list: 'codes' | 'logins'
+  list: HomeList
   tag: string | null
 }
 
 export const homeStart: HomeUi = { query: '', list: 'codes', tag: null }
 
-const byOrder = <T extends { order: number }>(items: T[]): T[] =>
-  [...items].sort((a, b) => a.order - b.order)
+/** The vault's order, with the pinned items first (the app's custom sort). */
+const byOrder = <T extends { id: string; order: number; pinned?: boolean }>(items: T[]): T[] =>
+  byPinnedThenOrder(items)
 
 function healthLine(logins: LoginView[], breachedOn: boolean): string {
   const counts = healthCounts(logins, breachedOn)
@@ -77,6 +90,22 @@ function RecentCard(props: { entry: GeneratedPassword; onRecent: () => void; onS
   )
 }
 
+/** Added by tools: the way to the duplicate cleaner. */
+function DuplicatesCard(props: { onOpen: () => void }) {
+  return (
+    <button type="button" class="link-card hov" onClick={props.onOpen}>
+      <span class="warn-icon" aria-hidden="true">
+        <ToolIcon name="layers" size={16} weight={2} />
+      </span>
+      <span class="grow lines">
+        <span class="name">{t('tools_duplicatesTitle')}</span>
+        <span class="label">{t('tools_duplicatesCard')}</span>
+      </span>
+      <Icon name="chevron" size={16} weight={2} />
+    </button>
+  )
+}
+
 export function Home(props: {
   vault: Vault
   tab: TabView | undefined
@@ -92,8 +121,10 @@ export function Home(props: {
   useToastBottom(52)
   const [sync, setSync] = useSyncStatus()
   const recent = useLoad(() => ask('recentPasswords'))
+  const passkeysLoaded = useLoad(() => ask('passkeys'))
+  const allPasskeys = passkeysLoaded.value ?? []
   const setQuery = (next: string) => props.onUi({ ...props.ui, query: next })
-  const setList = (next: 'codes' | 'logins') => props.onUi({ ...props.ui, list: next })
+  const setList = (next: HomeList) => props.onUi({ ...props.ui, list: next })
   const setTag = (next: string | null) => props.onUi({ ...props.ui, tag: next })
 
   const needle = query.trim()
@@ -105,10 +136,27 @@ export function Home(props: {
   const logins: LoginView[] = byOrder(vault.logins).filter(
     (login) => loginMatches(login, needle) && inTag(login),
   )
-  const tags = allTags(vault.codes, vault.logins)
+  const passkeys = passkeysByOrder(allPasskeys).filter(
+    (passkey) => passkeyMatches(passkey, needle) && inTag({ tags: passkey.tags ?? [] }),
+  )
+  // The Passkeys tab is there once the vault holds one (a passkey is made when a site asks for one)
+  const hasPasskeys = allPasskeys.length > 0
+  const found = findItems(vault, needle, tag)
+  const tags = allTags(
+    vault.codes,
+    vault.logins,
+    vault.notes,
+    vault.cards,
+    vault.identities,
+    allPasskeys.map((passkey) => ({ tags: passkey.tags ?? [] })),
+  )
   const items = siteItems(tab, vault)
-  const showCodes = searching || list === 'codes'
-  const showLogins = searching || list === 'logins'
+  // The last passkey went: its tab with it, and the list falls back to the codes
+  const shownList = list === 'passkeys' && !hasPasskeys ? 'codes' : list
+  const showCodes = searching || shownList === 'codes'
+  const showLogins = searching || shownList === 'logins'
+  const showPasskeys = searching ? passkeys.length > 0 : shownList === 'passkeys'
+  const openPasskey = (id: string) => props.onRoute({ name: 'passkey', id })
   const tickIds = [
     ...items.shownCodes.map((code) => code.id),
     ...(showCodes ? computable(codes).map((code) => code.id) : []),
@@ -125,7 +173,12 @@ export function Home(props: {
   const timedEntry = timed === undefined ? undefined : live.entries[timed.id]
   const timedLeft = timedEntry === undefined ? undefined : secondsLeft(timedEntry, live.now)
 
-  const nothingAtAll = vault.codes.length === 0 && vault.logins.length === 0
+  const nothingAtAll =
+    vault.codes.length === 0 &&
+    vault.logins.length === 0 &&
+    vault.notes.length === 0 &&
+    vault.cards.length === 0 &&
+    vault.identities.length === 0
   const first = vault.backups[0]
   const backupsSub =
     vault.backups.length === 0 || first === undefined
@@ -180,6 +233,11 @@ export function Home(props: {
           onClick={() => props.onRoute({ name: 'generator' })}
         />
         <IconButton
+          icon="shieldCheck"
+          label={t('keys_open')}
+          onClick={() => props.onRoute({ name: 'keys' })}
+        />
+        <IconButton
           icon="settings"
           label={t('popup_settings')}
           onClick={() => props.onRoute({ name: 'settings' })}
@@ -219,20 +277,62 @@ export function Home(props: {
       </div>
 
       <div class="scroll">
-        {!searching && <SiteCards tab={tab} vault={vault} live={live} onOpenLogin={open} />}
+        {!searching && (
+          <SiteCards
+            tab={tab}
+            vault={vault}
+            live={live}
+            onOpenLogin={open}
+            passkeys={allPasskeys}
+            onOpenPasskey={openPasskey}
+          />
+        )}
+
+        {!searching && <SpacesCard onOpen={() => props.onRoute({ name: 'spaces' })} />}
 
         {!searching && (
           <div class="tabs-row">
             <Tabs
               label={t('popup_listsLabel')}
-              selected={list}
-              onSelect={(id) => setList(id === 'logins' ? 'logins' : 'codes')}
+              selected={shownList}
+              class="many"
+              onSelect={(id) => setList(homeLists.includes(id) ? (id as HomeList) : 'codes')}
               tabs={[
                 { id: 'codes', label: t('popup_codes'), count: vault.codes.length },
                 { id: 'logins', label: t('popup_logins'), count: vault.logins.length },
+                ...(hasPasskeys
+                  ? [{ id: 'passkeys', label: t('passkeys_tab'), count: allPasskeys.length }]
+                  : []),
+                { id: 'notes', label: t('items_notes'), count: vault.notes.length },
+                { id: 'cards', label: t('items_cards'), count: vault.cards.length },
+                { id: 'identities', label: t('items_identities'), count: vault.identities.length },
               ]}
             />
-            {list === 'codes' && timedLeft !== undefined && timed !== undefined && (
+            {/* Added by tools: tags and order */}
+            <span class="tab-tools">
+              {/* Where the core doesn't tag what the list holds, there is nothing to tag */}
+              {taggableKind(shownList) !== undefined && (
+                <ToolIconButton
+                  icon="tag"
+                  label={t('tools_tagsTitle')}
+                  onClick={() => props.onRoute({ name: 'tags' })}
+                />
+              )}
+              {/* Only codes and logins have an order of their own to change */}
+              {(shownList === 'codes' || shownList === 'logins') && (
+                <ToolIconButton
+                  icon="reorder"
+                  label={t(shownList === 'codes' ? 'tools_reorderCodes' : 'tools_reorderLogins')}
+                  onClick={() =>
+                    props.onRoute({
+                      name: 'reorder',
+                      kind: shownList === 'codes' ? 'code' : 'login',
+                    })
+                  }
+                />
+              )}
+            </span>
+            {shownList === 'codes' && timedLeft !== undefined && timed !== undefined && (
               <span class="tab-timer mono">
                 <Ring
                   remaining={timedLeft}
@@ -295,7 +395,7 @@ export function Home(props: {
                 <p class="empty muted">{t('popup_noneInTag')}</p>
               ))
             )}
-            {!searching && tag === null && vault.backups.length > 0 && (
+            {!searching && tag === null && (
               <button
                 type="button"
                 class="link-card hov"
@@ -303,10 +403,15 @@ export function Home(props: {
               >
                 <span class="grow lines">
                   <span class="name">{t('popup_backupCodes')}</span>
-                  <span class="label">{backupsSub}</span>
+                  <span class="label">
+                    {vault.backups.length === 0 ? t('tools_addServiceCodes') : backupsSub}
+                  </span>
                 </span>
                 <Icon name="chevron" size={16} weight={2} />
               </button>
+            )}
+            {!searching && tag === null && vault.codes.length > 1 && (
+              <DuplicatesCard onOpen={() => props.onRoute({ name: 'duplicates' })} />
             )}
           </div>
         )}
@@ -341,6 +446,9 @@ export function Home(props: {
                 </span>
                 <Icon name="chevron" size={16} weight={2} />
               </button>
+            )}
+            {!searching && vault.logins.length > 1 && (
+              <DuplicatesCard onOpen={() => props.onRoute({ name: 'duplicates' })} />
             )}
             {logins.length > 0 ? (
               <ul class="list">
@@ -377,14 +485,46 @@ export function Home(props: {
           </div>
         )}
 
-        {searching && codes.length === 0 && logins.length === 0 && (
-          <div class="empty-state" role="status">
-            <div class="empty-words">
-              <p class="empty-title">{t('popup_nothingMatches', needle)}</p>
-              <p class="empty-rest">{t('popup_searchHelp')}</p>
-            </div>
+        {showPasskeys && (
+          <div
+            class="panel"
+            role={searching ? undefined : 'tabpanel'}
+            id="panel-passkeys"
+            aria-labelledby={searching ? undefined : 'tab-passkeys'}
+          >
+            {searching && <h2 class="label-caps list-title">{t('passkeys_tab')}</h2>}
+            {passkeys.length > 0 ? (
+              <PasskeysList passkeys={passkeys} onOpen={openPasskey} />
+            ) : (
+              <PasskeysEmpty />
+            )}
           </div>
         )}
+
+        <ItemPanels
+          vault={vault}
+          found={found}
+          list={shownList}
+          searching={searching}
+          onRoute={props.onRoute}
+        />
+
+        {!searching && <SendsEntry onOpen={() => props.onRoute({ name: 'sends' })} />}
+
+        {searching &&
+          codes.length === 0 &&
+          logins.length === 0 &&
+          passkeys.length === 0 &&
+          found.notes.length === 0 &&
+          found.cards.length === 0 &&
+          found.identities.length === 0 && (
+            <div class="empty-state" role="status">
+              <div class="empty-words">
+                <p class="empty-title">{t('popup_nothingMatches', needle)}</p>
+                <p class="empty-rest">{t('popup_searchHelp')}</p>
+              </div>
+            </div>
+          )}
       </div>
 
       {sync === null && nothingAtAll && (

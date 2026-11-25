@@ -28,6 +28,7 @@ export function stageOf(screen: ScreenName): number {
     case 'access':
       return 1
     case 'form':
+    case 'register':
     case 'second':
     case 'approval':
     case 'masterPassword':
@@ -36,6 +37,7 @@ export function stageOf(screen: ScreenName): number {
     case 'noHome':
     case 'passphrase':
     case 'firstSync':
+    case 'move':
       return 3
     default:
       return -1

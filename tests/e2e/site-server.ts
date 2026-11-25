@@ -35,6 +35,10 @@ const pages = new Set([
   'controlled',
   'welcome',
   'qr',
+  'passkey',
+  'checkout',
+  'checkout-frame',
+  'address',
 ])
 
 /** Where a form's post goes next. */
@@ -44,6 +48,8 @@ const after: Record<string, string> = {
   '/account': '/welcome',
   '/password': '/welcome',
   '/code': '/welcome',
+  '/pay': '/welcome',
+  '/deliver': '/welcome',
 }
 
 export interface Post {

@@ -34,10 +34,15 @@ export function loginMatches(login: LoginView, query: string): boolean {
   return needle === '' || contains([login.name, login.username, ...login.websites], needle)
 }
 
-/** The vault's tags over codes and logins, sorted, for the filter. */
-export function allTags(codes: CodeView[], logins: LoginView[]): string[] {
+/** The vault's tags over codes, logins and the other kinds of item, sorted, for the filter. */
+export function allTags(
+  codes: { tags: string[] }[],
+  logins: { tags: string[] }[],
+  ...others: { tags: string[] }[][]
+): string[] {
   const tags = new Set<string>()
-  for (const item of [...codes, ...logins]) for (const tag of item.tags) tags.add(tag)
+  for (const item of [...codes, ...logins, ...others.flat()])
+    for (const tag of item.tags) tags.add(tag)
   return [...tags].sort((a, b) => a.localeCompare(b))
 }
 

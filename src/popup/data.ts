@@ -1,5 +1,13 @@
 // What the unlocked popup holds: the vault's lists as the background shows them (no secrets).
-import type { BackupCodeView, CodeView, LoginView, Settings } from '../shared/api'
+import type {
+  BackupCodeView,
+  CardView,
+  CodeView,
+  IdentityView,
+  LoginView,
+  NoteView,
+  Settings,
+} from '../shared/api'
 import { ask } from './send'
 
 export interface VaultData {
@@ -7,6 +15,9 @@ export interface VaultData {
   logins: LoginView[]
   backups: BackupCodeView[]
   settings: Settings
+  notes: NoteView[]
+  cards: CardView[]
+  identities: IdentityView[]
 }
 
 export interface Vault extends VaultData {
@@ -15,13 +26,16 @@ export interface Vault extends VaultData {
 }
 
 export async function loadVault(): Promise<VaultData> {
-  const [codes, logins, backups, settings] = await Promise.all([
+  const [codes, logins, backups, settings, notes, cards, identities] = await Promise.all([
     ask('codes'),
     ask('logins'),
     ask('backupCodes'),
     ask('settings'),
+    ask('notes'),
+    ask('cards'),
+    ask('identities'),
   ])
-  return { codes, logins, backups, settings }
+  return { codes, logins, backups, settings, notes, cards, identities }
 }
 
 /** The codes that are computed here: a code kept on a security key is named, never computed. */

@@ -111,7 +111,7 @@ describe('the Codes list', () => {
     expect(asked).not.toContain('c2')
   })
 
-  it('shows the tags as filters and the backup codes as a page of their own, and no control that changes order or tags', async () => {
+  it('shows the tags as filters and the backup codes as a page of their own', async () => {
     background.reset(unlockedHandlers(world({ backups: [backup()] })))
     const root = await openPopup()
     expect(text(root)).toContain('Work')
@@ -120,6 +120,7 @@ describe('the Codes list', () => {
     await click(link)
     expect(root.querySelector('article[aria-label="Orbit Cloud"]')).not.toBeNull()
     expect(text(root)).toContain(message('en', 'popup_backupCount', ['8', '10']))
+    // The list itself changes nothing: its tools are on pages of their own
     expect(root.querySelectorAll('[draggable="true"]')).toHaveLength(0)
     expect(root.querySelectorAll('input[type="text"], textarea')).toHaveLength(0)
   })

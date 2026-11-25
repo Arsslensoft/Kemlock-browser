@@ -1172,3 +1172,31 @@ button:disabled {
     flex: 1 1 40%;
   }
 }
+
+/* The Kemlock Server account: opening with a Recovery Kit, and the move into Kemlock Server */
+
+.kit-option {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--divider);
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+.move-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.move-lists h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.move-lists .facts li {
+  justify-content: space-between;
+}

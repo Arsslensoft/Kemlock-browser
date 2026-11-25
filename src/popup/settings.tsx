@@ -1,6 +1,6 @@
 // Settings: locking, the clipboard, pages, breached passwords, sync, site access and removal.
 import { useState } from 'preact/hooks'
-import type { Settings as SettingsValue } from '../shared/api'
+import type { Settings as SettingsValue, TabView } from '../shared/api'
 import {
   Button,
   Group,
@@ -15,16 +15,25 @@ import {
 import { errorMessage, t } from '../shared/ui/i18n'
 import type { Vault } from './data'
 import { openSetup } from './links'
+import { PasskeySettings } from './passkeys'
 import { RemoveKemlock } from './lock'
 import { ask } from './send'
 import { SyncCard } from './sync-card'
+import { PasskeyUnlockCard } from './unlock-card'
+import { TransferCard } from './transfer-card'
 
 const allSites = { origins: ['<all_urls>'] }
 
 const lockOptions = [1, 5, 15, 60] as const
 const clipboardOptions = [10, 30, 60, 120] as const
 
-export function SettingsPage(props: { vault: Vault; onBack: () => void; onRemoved: () => void }) {
+export function SettingsPage(props: {
+  vault: Vault
+  /** The tab in front, for the settings of its site. */
+  tab?: TabView
+  onBack: () => void
+  onRemoved: () => void
+}) {
   const say = useToast()
   const [settings, setSettings] = useState<SettingsValue>(props.vault.settings)
   const [error, setError] = useState<string | undefined>()
@@ -104,6 +113,8 @@ export function SettingsPage(props: { vault: Vault; onBack: () => void; onRemove
           </Group>
         </Section>
 
+        <PasskeyUnlockCard />
+
         <Section title={t('popup_sectionPages')}>
           <Group>
             <Switch
@@ -131,7 +142,16 @@ export function SettingsPage(props: { vault: Vault; onBack: () => void; onRemove
           </Group>
         </Section>
 
+        <PasskeySettings
+          settings={settings}
+          tab={props.tab}
+          onSave={save}
+          onGranted={() => setGrantedNow(true)}
+        />
+
         <SyncCard />
+
+        <TransferCard />
 
         <Section title={t('popup_siteAccess')}>
           <Group pad>

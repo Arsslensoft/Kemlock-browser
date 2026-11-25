@@ -31,13 +31,15 @@ concurrency:
 
 jobs:
   # Everything a pull request passes, again on what main is now. The App drift job, which only
-  # says that the Kemlock app has moved on from the copies, is left out
+  # says that the Kemlock app has moved on from the copies, is left out, and so is the Safari (macOS)
+  # job: safari-project.yml makes the Xcode project of the release's own Safari zip, after this workflow
   checks:
     name: Checks
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/checks.yml
     with:
       app-drift: false
+      safari-project: false
     permissions:
       contents: read
 
@@ -172,7 +174,8 @@ jobs:
           git tag -a "${TAG}" -m "Kemlock for browsers ${VERSION}"
           git push origin "refs/tags/${TAG}"
 
-  # The GitHub release: both zips, their sums, and the changes since the last release
+  # The GitHub release: the three zips (Chrome's, Firefox's and Safari's), their sums, and the changes
+  # since the last release
   release:
     name: GitHub release
     needs: [version, compare, tag]

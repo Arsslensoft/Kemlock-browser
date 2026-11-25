@@ -60,6 +60,9 @@ export interface ChromeMock {
   clipboard: string
   /** `runtime.sendMessage` calls (the background to its own pages). */
   runtimeMessages: unknown[]
+  /** The notifications shown (by id), and the addresses `tabs.create` opened. */
+  notifications: Map<string, chrome.notifications.NotificationCreateOptions>
+  createdTabs: string[]
   /** What `identity.launchWebAuthFlow` answers (an address), or throws when it is an Error. */
   authReply: string | Error | undefined
   authCalls: { url: string; interactive: boolean }[]
@@ -123,6 +126,8 @@ export function installChromeMock(): ChromeMock {
     offscreen: { open: false, created: 0 },
     clipboard: '',
     runtimeMessages: [] as unknown[],
+    notifications: new Map<string, chrome.notifications.NotificationCreateOptions>(),
+    createdTabs: [] as string[],
     authReply: undefined as string | Error | undefined,
     authCalls: [] as { url: string; interactive: boolean }[],
     captured: 'data:image/png;kemlock-fake-qr,',
@@ -219,6 +224,17 @@ export function installChromeMock(): ChromeMock {
         return mock.tabReply(sent)
       },
       captureVisibleTab: async () => mock.captured,
+      create: async ({ url }: { url?: string }) => {
+        mock.createdTabs.push(url ?? '')
+        return { id: 100 + mock.createdTabs.length }
+      },
+    },
+    notifications: {
+      create: async (id: string, options: chrome.notifications.NotificationCreateOptions) => {
+        mock.notifications.set(id, options)
+        return id
+      },
+      clear: async (id: string) => mock.notifications.delete(id),
     },
     scripting: {
       executeScript: async (injection: {

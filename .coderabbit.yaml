@@ -83,9 +83,14 @@ reviews:
           narrow exception to the sending is allowed: an opt-in request, off by default, whose
           purpose and recipient are shown in the setting before the person turns it on, to a named
           k-anonymity service, which is the Pwned Passwords range API and sends only a padded
-          5-character SHA-1 prefix of the password and nothing else. Any other send off the browser
-          to anyone but the person's own server still fails, and so does this one when it is on by
-          default, its purpose or recipient is not shown first, or it sends more than the prefix.
+          5-character SHA-1 prefix of the password and nothing else. A second is allowed on the same
+          terms: an opt-in check, off by default, whose purpose and recipient are shown in the setting
+          before the person turns it on, at most once a day, for breaches newer than the list the
+          extension ships, by plain GETs of Have I Been Pwned's public breach list
+          (haveibeenpwned.com/api/v3/latestbreach and /api/v3/breaches) that carry nothing from the
+          vault, no account and no key. Any other send off the browser to anyone but the person's own
+          server still fails, and so does either of these when it is on by default, its purpose or
+          recipient is not shown first, or it sends more than it is allowed to.
           Also fail if it keeps a secret, a code or a password in storage that is not session or
           encrypted; gives a workflow job a secret, a write permission or the stores environment it
           does not need, or interpolates ${{ }} into a run block; or downloads anything in a build or

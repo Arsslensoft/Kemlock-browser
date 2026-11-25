@@ -10,6 +10,7 @@ import {
   button,
   change,
   click,
+  code,
   input,
   installChrome,
   message,
@@ -139,6 +140,44 @@ describe('the lock screen', () => {
     unlocked = false
     await act(() => {
       window.dispatchEvent(new Event(lockedEvent))
+    })
+    await settle()
+    expect(root.querySelector('input[type="password"]')).not.toBeNull()
+  })
+
+  it('shows the lock screen at once when the background broadcasts that the vault locked', async () => {
+    let unlocked = true
+    background.reset({
+      ...unlockedHandlers({ codes: [code({ issuer: 'Orbit Cloud' })] }),
+      popup: () => ({ state: vaultState({ unlocked }) }),
+    })
+    const root = await openPopup()
+    expect(text(root)).toContain('Orbit Cloud')
+    // The page does not wait for the answer to its next question: the broadcast alone replaces what it showed
+    background.reset({
+      ...unlockedHandlers({ codes: [code({ issuer: 'Orbit Cloud' })] }),
+      popup: () => new Promise(() => undefined) as never,
+    })
+    unlocked = false
+    await act(() => {
+      fake.lock()
+    })
+    expect(root.querySelector('input[type="password"]')).not.toBeNull()
+    expect(text(root)).not.toContain('Orbit Cloud')
+  })
+
+  it('asks the background when it comes to the front, and locks if the vault is not open', async () => {
+    let unlocked = true
+    background.reset({
+      ...unlockedHandlers({ codes: [code({ issuer: 'Orbit Cloud' })] }),
+      popup: () => ({ state: vaultState({ unlocked }) }),
+      pageState: () => vaultState({ unlocked }),
+    })
+    const root = await openPopup()
+    unlocked = false
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    await act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
     })
     await settle()
     expect(root.querySelector('input[type="password"]')).not.toBeNull()

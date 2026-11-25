@@ -1,0 +1,50 @@
+/* Unlocking with a passkey: the lock screen's button and Settings › Security. On the shared tokens, so both themes follow. */
+
+.passkey-lock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passkey-lock .btn {
+  width: 100%;
+}
+
+.passkey-or {
+  text-align: center;
+}
+
+.passkey-note {
+  margin-bottom: 4px;
+}
+
+.passkey-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+}
+
+.passkey-none {
+  padding: 0 14px 12px;
+}
+
+.passkey-item > .stack,
+.passkey-item > .confirm {
+  padding: 12px 14px;
+}
+
+.passkey-row {
+  padding: 8px 8px 8px 14px;
+}
+
+.passkey-name {
+  overflow-wrap: anywhere;
+}
+
+.passkey-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+}

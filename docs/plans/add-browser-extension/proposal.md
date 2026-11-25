@@ -64,20 +64,21 @@ https://claude.ai/artifact/DBRz5HrXKCHC4zCsHPLz5Y.
   website and an offer to link it to that site's login.
 - **Free.** Nothing in the extension needs Premium or shows a paywall:
   - sync is free;
-  - the lists follow the vault's own order and tags, shown but not
-    changed;
+  - the lists follow the vault's own order and tags, which the extension
+    also changes (`docs/plans/add-vault-tools.md`);
   - accounts whose code is on a security key are listed by name only;
-  - Premium's backup-code tools stay on the phone.
+  - the backup-code tools, once Premium's, are free and in the extension
+    (`docs/plans/add-vault-tools.md`).
 
-  The owner settled this on 2026-11-21.
+  The owner settled this on 2026-11-21, and made Kemlock free on
+  2026-11-23.
 
 Not in this change:
 
 - Safari.
-- Editing tags or the account order, and the backup-code tools.
 - Shared spaces in the browser: their items stay on the phones.
-- Passkeys as a browser credential provider.
-- Biometric or security-key unlock of the browser's vault.
+- Passkeys as a browser credential provider. (Taken up later by `docs/plans/add-passkeys.md`, which
+  supersedes this line: the extension lists the vault's passkeys and answers the browser's requests.)
 - Importing into the extension.
 - A desktop app.
 

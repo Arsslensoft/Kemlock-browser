@@ -1,6 +1,7 @@
 // The vault's items as the TypeScript side sees them (`CodeView`, `LoginView`, … in src/shared/api.ts): plain JSON, with no
 // secret. A code's secret never leaves the core, and a password leaves only through `revealLogin`.
 import 'package:kemlock_core/features/accounts/otp.dart';
+import 'package:kemlock_core/features/backup/backup_codes.dart' show isLow;
 import 'package:kemlock_core/models/backup_service.dart';
 import 'package:kemlock_core/models/key_account.dart';
 import 'package:kemlock_core/models/login.dart';
@@ -10,7 +11,13 @@ import 'health.dart';
 
 /// [account] as a `CodeView`. [order] is its place in the vault's list, for an account with none of its own; [loginId] is the
 /// login linked to it.
-Map<String, Object?> codeView(OtpAccount account, {required int order, String? loginId, int? backupCodesLeft}) => {
+Map<String, Object?> codeView(
+  OtpAccount account, {
+  required int order,
+  String? loginId,
+  int? backupCodesLeft,
+  Map<String, Object?>? space,
+}) => {
   'id': account.id,
   'issuer': account.issuer,
   'account': account.label,
@@ -19,10 +26,12 @@ Map<String, Object?> codeView(OtpAccount account, {required int order, String? l
   'period': account.kind == OtpType.hotp ? 0 : account.period,
   'tags': account.tags ?? const <String>[],
   'order': account.order ?? order,
+  'pinned': ?(account.pinned == true ? true : null),
   'onSecurityKey': false,
   'websites': [for (final rule in account.rules) ?rule.host],
   'loginId': ?loginId,
   'backupCodesLeft': ?backupCodesLeft,
+  'space': ?space,
 };
 
 /// What the vault remembers of an account on a security key: named, never computed or filled.
@@ -48,8 +57,15 @@ Map<String, Object?> liveCode(OtpAccount account, int nowMs) {
   return {'id': account.id, 'code': code, 'expiresAt': windowEnd * 1000};
 }
 
-/// [login] as a `LoginView`, with no password.
-Map<String, Object?> loginView(Login login, {required int order, required LoginHealth health}) {
+/// [login] as a `LoginView`, with no password. When [hidden] (its password is hidden from this account in a shared space) the view has
+/// no `strength` either: how strong a password is would tell what it is.
+Map<String, Object?> loginView(
+  Login login, {
+  required int order,
+  required LoginHealth health,
+  Map<String, Object?>? space,
+  bool hidden = false,
+}) {
   final warnings = health.of(login.id);
   final password = login.password ?? '';
   return {
@@ -59,12 +75,14 @@ Map<String, Object?> loginView(Login login, {required int order, required LoginH
     'websites': [for (final rule in login.rules) ?rule.host],
     'tags': login.tags ?? const <String>[],
     'order': order,
+    'pinned': ?(login.isPinned ? true : null),
     'note': ?login.note,
     'hasPassword': password.isNotEmpty,
-    'strength': password.isEmpty ? 0 : strengthLevel(password),
+    'strength': ?(hidden ? null : (password.isEmpty ? 0 : strengthLevel(password))),
     'passwordChangedAt': ?login.passwordChangedAt,
     'previousPasswords': login.previousPasswords?.length ?? 0,
     'codeId': ?login.accountId,
+    'space': ?space,
     'health': {
       'reused': warnings.contains(LoginWarning.reused),
       'weak': warnings.contains(LoginWarning.weak),
@@ -76,9 +94,11 @@ Map<String, Object?> loginView(Login login, {required int order, required LoginH
 }
 
 /// A service's backup codes as a `BackupCodeView`: one row per service.
-Map<String, Object?> backupView(BackupService service) => {
+Map<String, Object?> backupView(BackupService service, {Map<String, Object?>? space}) => {
   'serviceId': service.id,
   'issuer': service.serviceName,
   'total': service.codes.length,
   'left': service.codes.where((code) => !code.used).length,
+  'space': ?space,
+  'low': isLow(service),
 };

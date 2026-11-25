@@ -384,6 +384,13 @@ body {
   flex: 1;
 }
 
+/* Added by tools: the tag and reorder buttons at the end of the tabs' row */
+.tab-tools {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
 .tab-timer {
   display: inline-flex;
   align-items: center;

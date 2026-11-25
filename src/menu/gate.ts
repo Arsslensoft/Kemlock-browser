@@ -73,6 +73,11 @@ export class Gate {
     else if (this.since === null || moved) this.since = at
   }
 
+  /** The half second starts again from [at], if the menu is in plain view now. */
+  restart(at: number): void {
+    if (this.ok()) this.since = at
+  }
+
   verdict(at: number): Verdict {
     if (!this.seen || this.page === null || at - this.pageAt > this.stale)
       return { ok: false, why: 'silent' }

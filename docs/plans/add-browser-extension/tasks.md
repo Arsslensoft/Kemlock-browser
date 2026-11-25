@@ -119,11 +119,11 @@ one, they are skipped, and the task leaves a `- Not done:` note.
 
 - [ ] 6.1 The Codes and Logins lists per the canvas:
   - live codes, the shared ring, the warning colour and next code in the last five seconds, and HOTP's next-code button;
-  - the vault's order and tags as a filter, read-only;
+  - the vault's order and tags as a filter (changed on their own pages: `docs/plans/add-vault-tools.md`);
   - "On your security key" for accounts kept on a key;
   - search.
 
-  Verify Vitest component tests for each, and that no control changes order or tags.
+  Verify Vitest component tests for each.
 
 - [ ] 6.2 The site card: the background matches the active tab, there is a card per match, and Fill code and Fill login act on the tab. Verify Playwright: a fixture page on a mapped orbit-cloud.com shows the card, and Fill login fills it.
 - [ ] 6.3 Copying, and clearing only an unchanged clipboard, per design decision 14: the offscreen document in Chrome and the event page in Firefox. Verify Playwright with clipboard permissions: after 30 seconds the clipboard is empty; text copied meanwhile stays.
@@ -157,13 +157,17 @@ one, they are skipped, and the task leaves a `- Not done:` note.
 - [ ] 7.3 The button and the menu frame: a web-accessible page with a dynamic address, a closed shadow host on the top layer, placement under the field, the down arrow and Escape, the unlock prompt while locked, and the "Button in sign-in and code fields" switch. Verify Playwright: the page's script can't reach the menu's text; turning the switch off removes the buttons.
 - [ ] 7.4 The click gate of design decision 9. Verify Playwright: a menu faded to opacity 0, covered by another element, moved under the pointer, or clicked within 500 ms fills nothing; a plain click after the delay fills.
 - [ ] 7.5 The fill path of design decision 4: the background checks the frame's site again, a single-frame send, the content script's checks, the value setter and events, and boxes one character each. Verify Playwright on fixture pages: a React-controlled field keeps the value; six boxes get their digits; a field in a cross-origin frame is matched by that frame.
-- [ ] 7.6 Matching in the core (design decision 8). Then the picker with search, its address line and "Always suggest here" (remembered in this browser, not synced), and the guard. Verify Dart tests:
+- [x] 7.6 Matching in the core (design decision 8). Then the picker with search, its address line and "Always suggest here" (remembered in this browser, not synced), and the guard. Verify Dart tests:
   - accounts.x and app.x match;
   - shared suffixes and tenant hosts match only exactly;
   - orbit-c1oud.com and a Cyrillic look-alike get the guard;
   - gitlab.com against github.com gets the picker.
 
   Also verify Playwright for the picker remembering a pick on id.orbitauth.net.
+  - Done 2026-11-24. The matching, the picker, its "Always suggest here" and the guard were built with the menu; what was left was the website rules'
+    cases. `core/test/website_rules_test.dart` runs the app's `rules.json` (copied to `test/fixtures/websites/`, held by `tool/copies.test.mjs`)
+    through Kemlock-core's `fillsOn` and `phoneDomains` and through the extension's matcher, for logins and codes. Cards and identities
+    carry no websites in Kemlock-core's models, so there is nothing of theirs to match (`docs/plans/add-items.md`, decision 1).
 
 - [ ] 7.7 The code after the password, behind its switch, and the right-click menu (Fill login, Fill code, New password) reaching the tab through `activeTab`. Verify Playwright: after a login fills, the next page's code field opens its menu and stays empty until picked; right-clicking an unrecognised field fills it.
 - [ ] 7.8 The optional all-sites permission at setup and in Settings › Site access, with content scripts registered only when it is granted. Verify Playwright: refused, pages have no button and the popup's Fill login still fills the tab; granted later, the next page load has buttons.

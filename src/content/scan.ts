@@ -2,8 +2,9 @@
 // elements behind each name, and the report the background gets. A fill later names a field by this
 // registry, and only a field still in it, connected and visible, takes a value.
 
+import type { FormPart } from '../shared/api'
 import type { FieldReport } from '../shared/messages'
-import { readFields, type Geometry } from './dom'
+import { readFields, type FieldElement, type Geometry } from './dom'
 import { findCodeFields, findLoginFields, type FieldDescription } from './fields'
 import { siteRulesOf } from './rules'
 
@@ -12,7 +13,12 @@ export interface Registered {
   id: string
   /** `manual`: a field the person right-clicked, which no rule found. */
   kind: FieldReport['kind'] | 'manual'
-  elements: HTMLInputElement[]
+  elements: FieldElement[]
+  /** A card or identity field: what it asks for, and the block it is in (src/content/scan-forms.ts). */
+  part?: FormPart
+  group?: string
+  /** The format the field shows (`len:5;year:2`), which only shapes the text put in it. */
+  format?: string
 }
 
 export type Registry = Map<string, Registered>
@@ -95,4 +101,9 @@ export function scanFrame(
 
 /** A string that changes when the report does, so an unchanged frame says nothing again. */
 export const signatureOfReports = (reports: Reported[]) =>
-  reports.map((r) => `${r.id}:${r.kind}:${r.boxes ?? ''}:${r.rules ?? ''}`).join('|')
+  reports
+    .map(
+      (r) =>
+        `${r.id}:${r.kind}:${r.boxes ?? ''}:${r.rules ?? ''}:${r.part ?? ''}:${r.group ?? ''}:${r.focus === true ? 'f' : ''}`,
+    )
+    .join('|')

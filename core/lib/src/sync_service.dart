@@ -9,20 +9,33 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:kemlock_core/core/ids.dart';
+import 'package:kemlock_core/crypto/account/bundle.dart' show KeyBundle;
 import 'package:kemlock_core/crypto/account/encoding.dart';
 import 'package:kemlock_core/crypto/account/keys.dart';
 import 'package:kemlock_core/crypto/account/kx1.dart';
 import 'package:kemlock_core/crypto/account/prf_wrap.dart' show prfEvalInput;
 import 'package:kemlock_core/crypto/account/sealed_box.dart';
 import 'package:kemlock_core/crypto/bytes.dart';
+import 'package:kemlock_core/features/duplicates/duplicate_normalise.dart' show SiteResolver;
+import 'package:kemlock_core/features/spaces/space_head_store.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_account.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_api.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_approvals.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_auth_api.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_dedup_api.dart' show KmHints;
 import 'package:kemlock_core/features/sync/kemlock/km_device_key.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_dpop.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_failover.dart' show KmHomeAway;
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show KmFileStore;
 import 'package:kemlock_core/features/sync/kemlock/km_host.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_models.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_end.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_old_store.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_plan.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_record.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_server.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_move_source.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_passkey.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_phrase.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_session.dart';
@@ -43,9 +56,16 @@ import 'package:kemlock_core/features/sync/vaultwarden/vw_webauthn.dart';
 import 'package:kemlock_core/features/sync/webdav.dart';
 import 'package:kemlock_core/vault/vault_store.dart';
 
+import 'account/kit.dart' show openKitRoot;
+import 'account/kit_pieces.dart' show PieceError;
+import 'account/register.dart';
 import 'failure.dart';
 import 'generate.dart' show parseWordList;
+import 'matching.dart' show isSharedHost;
+import 'spaces_service.dart';
 import 'vault_service.dart';
+
+part 'account/sync_account.dart';
 
 /// Why [address] can't be signed in to before anything is sent, or null when it is an https address: the sync problem's name
 /// (`insecure` for http, [other] for anything else that isn't a URL with a host). The engines check again; this keeps a
@@ -234,7 +254,7 @@ class _PendingVw extends _Pending {
 }
 
 /// Sync for the open vault.
-class SyncService {
+class SyncService implements SpacesHost {
   SyncService(this._vault);
 
   final VaultService _vault;
@@ -254,6 +274,13 @@ class SyncService {
   final Map<String, KmDpop> _dpops = {};
   KmHost? _kemlock;
   VaultwardenBackend? _vaultwarden;
+
+  /// The vault's shared spaces, which run as scopes after the vault's own (docs/plans/add-spaces.md).
+  late final SpacesService spaces = SpacesService(_vault, this);
+  SyncedSpaceAnchorStore? _anchorStore;
+
+  /// What the account's own flows hold between calls (account/sync_account.dart).
+  final _accountState = AccountState();
 
   CoreDataAccess get _data => CoreDataAccess(_vault);
 
@@ -288,6 +315,12 @@ class SyncService {
           if (value is Map<String, Object?>) key: ScopeState.fromJson(value),
     };
     _status.clear();
+    // Whether a move that stopped is waiting, which the status says (it can't read the record itself)
+    try {
+      _accountState.moveUnfinished = kmMoveUnfinished(await KmMoveStore(SealedValues(_store, session)).load());
+    } catch (_) {
+      _accountState.moveUnfinished = false;
+    }
     _loaded = true;
   }
 
@@ -298,11 +331,14 @@ class SyncService {
     _states = {};
     _status.clear();
     _removalChoice = null;
+    kemlockHints = null;
     _dropPending();
+    _accountState.reset();
     _kemlock?.dispose();
     _kemlock = null;
     _vaultwarden = null;
     _dpops.clear();
+    spaces.unload();
   }
 
   void _dropPending() {
@@ -362,6 +398,8 @@ class SyncService {
     final status = _status[scope];
     final lastSync = status?.lastSyncAt ?? _states[scope]?.lastSyncAt;
     final problem = status?.problem;
+    // A move that stopped keeps the vault's own entries from syncing, and the status says so
+    final stopped = place == 'kemlock' && _accountState.moveUnfinished;
     return {
       'place': place,
       'server': server,
@@ -369,7 +407,7 @@ class SyncService {
       'deviceName': ?device,
       'lastSync': ?lastSync,
       'running': _running,
-      'problem': ?problem?.name,
+      'problem': ?(stopped ? 'moveUnfinished' : problem?.name),
       'pendingRemovals': ?(problem == SyncProblem.removals ? status?.count : null),
       'scopeSize': ?(problem == SyncProblem.removals && (status?.scope ?? 0) > 0 ? status?.scope : null),
       'pendingRemovalItems': ?(problem == SyncProblem.removals && (status?.items.isNotEmpty ?? false)
@@ -533,7 +571,7 @@ class SyncService {
     switch (step) {
       case KmSecondStep():
         pending.second = step;
-        return _secondStepOfKemlock(step);
+        return _secondStepOfKemlock(step, enrolling: pending.signIn.enrolling);
       case KmSignedIn():
         pending.signed = step;
         var account = step.account;
@@ -552,17 +590,22 @@ class SyncService {
     }
   }
 
-  Map<String, Object?> _secondStepOfKemlock(KmSecondStep step) => {
+  /// The second step as data. A Compatible account's enrolment ([enrolling]) is answered by an authenticator code only, the one
+  /// `twoFactorCode` its last message takes, so no other method is offered for it.
+  Map<String, Object?> _secondStepOfKemlock(KmSecondStep step, {bool enrolling = false}) => {
     'step': 'second',
-    'methods': [for (final method in step.methods) ?_secondMethods[method]],
+    // The account's recovery code is taken whatever methods it has, so it is always there, but for an enrolment
+    'methods': enrolling
+        ? [if (step.methods.contains('totp')) 'authenticator']
+        : [for (final method in step.methods) ?_secondMethods[method], 'recoveryCode'],
     'unsupported': [
       for (final method in step.methods)
-        if (!_secondMethods.containsKey(method)) method,
+        if (!(enrolling ? method == 'totp' : _secondMethods.containsKey(method))) method,
       ...step.unsupported,
     ],
   };
 
-  static const _secondMethods = {'totp': 'authenticator', 'email': 'email', 'webauthn': 'securityKey'};
+  static const _secondMethods = {'totp': 'authenticator', 'email': 'email', 'webauthn': 'securityKey', 'recovery': 'recoveryCode'};
 
   /// An account that signed in and doesn't open yet: an approval from another device, the five words of which both show, or
   /// the master password.
@@ -584,14 +627,37 @@ class SyncService {
     return _Approval(privateKey: pair.privateKey, ticket: ticket, phrase: phrase, startedAt: _clock());
   }
 
+  /// The security key as a second step: the server's options for the account's keys, the key asked in the page of the extension that
+  /// the passkey sign-in uses (the server's own connector page, which sets the relying party), and its credential sent as the answer.
+  Future<Map<String, Object?>> _answerSecurityKey(_PendingKemlock pending) async {
+    final asserter = _vault.platform.passkeys;
+    if (asserter == null) throw const CoreFailure(CoreFailure.unavailable, 'the browser gave no passkey page');
+    final options = await pending.signIn.securityKeyOptions();
+    final assertion = await asserter.assertion(options, prfEvalInput, pending.server);
+    final prf = assertion.prfOutput;
+    if (prf != null) wipe(prf);
+    return _afterKemlock(pending, await pending.signIn.securityKeyStep(kmPasskeyCredential(assertion)));
+  }
+
   Future<Map<String, Object?>> _answerKemlock(_PendingKemlock pending, Map<String, Object?> answer) async {
     switch (answer['step']) {
       case 'second':
         final method = _secondMethods.entries.where((entry) => entry.value == answer['method']).firstOrNull?.key;
         if (method == null) throw const CoreFailure(CoreFailure.invalid, 'a second step the server does not offer here');
-        return _afterKemlock(pending, await pending.signIn.secondStep(method, (answer['code'] as String? ?? '').trim()));
-      case 'securityKey':
-        return _afterKemlock(pending, await pending.signIn.secondStep('webauthn', answer['assertion'] as String? ?? ''));
+        final code = (answer['code'] as String? ?? '').trim();
+        // A Compatible account's enrolment takes an authenticator code and nothing else
+        if (pending.signIn.enrolling && method != 'totp') {
+          throw const CoreFailure(CoreFailure.invalid, 'this sign-in is answered by an authenticator code only');
+        }
+        if (method == 'webauthn') return _answerSecurityKey(pending);
+        if (method == 'email' && code.isEmpty) {
+          // Asking for the code: the server mails it, and the step is the same
+          await pending.signIn.sendEmailCode();
+          return _secondStepOfKemlock(pending.second!);
+        }
+        return _afterKemlock(pending, await pending.signIn.secondStep(method, code));
+      case 'recoveryKit':
+        return _openWithKit(this, pending, [for (final piece in answer['pieces'] as List<Object?>? ?? const []) piece as String]);
       case 'masterPassword':
         // The master password opens the account: a sign-in again, which opens it by the password
         pending.approval?.close();
@@ -678,6 +744,9 @@ class SyncService {
     );
     pending.close();
     _pending = null;
+    // A vault that syncs with Vaultwarden on this server, or with WebDAV, moves into Kemlock Server before the old store is let go
+    final move = await _holdForMove(this, target);
+    if (move != null) return move;
     await _forgetScope(kemlockScope);
     await _replacePlaces(_settings.copyWith(personal: null, vaultwarden: null, kemlock: target));
     return _done();
@@ -974,13 +1043,115 @@ class SyncService {
     values: SealedValues(_store, _vault.requireSession()),
     clientFor: _vault.platform.clientFor,
     proofsFor: _proofsFor,
+    // The anchors of the account's spaces travel with the vault's own scope, as the phone's do
+    anchors: kmAnchorsOf(anchors, _vault.requireSession()),
     clock: _clock,
+    // Server matching (the duplicate cleaner): how a login's site is read for its `cred` tags, what the server suggested, and the
+    // switch following the server's
+    dedupSites: () async => SiteResolver(registrable: _vault.matcher.registrable, isShared: isSharedHost),
+    onHints: (hints) => kemlockHints = hints,
+    onMatching: _followMatching,
   );
+
+  // ─── Spaces (docs/plans/add-spaces.md) ──────────────────────────────
+
+  @override
+  KemlockTarget? get kemlockTarget => _settings.kemlock;
+
+  @override
+  SyncSettings get syncSettings => _settings;
+
+  @override
+  Future<void> saveSyncSettings(SyncSettings next) => _saveSettings(next);
+
+  @override
+  Map<String, ScopeState> get scopeStates => _states;
+
+  @override
+  Future<void> saveScopeStates() => _saveStates();
+
+  @override
+  Future<T> withAccount<T>(Future<T> Function(KmConnection connection, KmAccount account) action) {
+    final target = _settings.kemlock;
+    if (target == null) throw const CoreFailure(CoreFailure.invalid, 'the vault does not sync with Kemlock Server');
+    return _kmHost().withAccount(target, action);
+  }
+
+  @override
+  String? homeAway() {
+    final target = _settings.kemlock;
+    if (target == null) return null;
+    try {
+      _kmHost().requireHome(target);
+      return null;
+    } on KmHomeAway {
+      // The name of the home, which is what the person waits for, not of the replica in use
+      return _kmHost().homeUrl(target).host;
+    }
+  }
+
+  @override
+  Uri homeUrl() => _kmHost().homeUrl(_settings.kemlock ?? (throw const CoreFailure(CoreFailure.invalid, 'no Kemlock Server account')));
+
+  @override
+  Future<KeyBundle?> ownBundle() => _kmHost().ownBundle();
+
+  @override
+  SpaceAnchorStorage get anchors =>
+      _anchorStore ??= SyncedSpaceAnchorStore(_store, syncs: () => _settings.personal != null || _settings.kemlock != null);
+
+  @override
+  http.Client clientFor() => _vault.platform.clientFor(null);
+
+  /// Runs the spaces' scopes alone (a vault that syncs nowhere else, or the person's "Refresh").
+  Future<void> syncSpacesNow() async {
+    _vault.requireSession();
+    if (_running) {
+      _again = true;
+      await _current;
+      return;
+    }
+    final run = _current = _runLoop();
+    await run;
+  }
+
+  /// Added by sends. What Sends need of the sync (sends.dart): Kemlock Server's host and target, or null when the vault doesn't
+  /// sync with one (or sync isn't loaded).
+  ({KmHost host, KemlockTarget target})? get kemlockPlace {
+    final target = _settings.kemlock;
+    return !_loaded || target == null ? null : (host: _kmHost(), target: target);
+  }
+
+  /// Added by sends. The place the vault's own entries sync with, by the name `status` gives it, or null when sync is off.
+  String? get syncPlace {
+    if (!_loaded) return null;
+    if (_settings.kemlock != null) return 'kemlock';
+    if (_settings.vaultwarden != null) return 'vaultwarden';
+    return _settings.personal != null ? 'webdav' : null;
+  }
+
+  /// The server's groups of the vault's logins as the last run on the home read them, or null before one, with matching off, and
+  /// once the vault locks. The cleaner opens the items and compares them before it shows any (tools).
+  KmHints? kemlockHints;
+
+  /// The host that runs Kemlock Server's calls for the open vault, for what happens outside a sync run (tools).
+  KmHost kemlockHost() => _kmHost();
+
+  /// Keeps [next] as the Kemlock Server settings (tools: the matching switch).
+  Future<void> saveKemlockTarget(KemlockTarget next) => _saveSettings(_settings.copyWith(kemlock: next));
+
+  /// Matching turned off on another device is off here too: the phone's switch follows the server's.
+  void _followMatching(bool enabled) {
+    final target = _settings.kemlock;
+    if (!enabled && target != null && target.matching) {
+      unawaited(_saveSettings(_settings.copyWith(kemlock: target.copyWith(matching: false))));
+    }
+  }
 
   /// Runs the vault's sync once: the place the settings name, then whatever changed meanwhile.
   Future<Map<String, Object?>> syncNow() async {
     _vault.requireSession();
-    if (!_settings.syncsOwnEntries) throw const CoreFailure(CoreFailure.invalid, 'sync is off');
+    if (!_settings.syncsOwnEntries && _settings.spaces.isEmpty) throw const CoreFailure(CoreFailure.invalid, 'sync is off');
     if (_running) {
       _again = true;
       await _current;
@@ -997,6 +1168,8 @@ class SyncService {
       do {
         _again = false;
         await _runOnce();
+        // The spaces go after the vault's own scope; one the person changed under is run again with the rest
+        if (!_again && await spaces.runAll()) _again = true;
       } while (_again);
     } finally {
       _running = false;
@@ -1008,6 +1181,8 @@ class SyncService {
   Future<void> _runOnce() async {
     final settings = _settings;
     final session = _vault.requireSession();
+    // While a move is unfinished the vault's own entries don't sync: the move runs the old store's last run itself
+    if (settings.kemlock != null && await _moveUnfinished(this, session)) return;
     final String key;
     final Future<({SyncDoc doc, List<String> known, Map<String, Object?> state, int skipped})> Function(Lists, ScopeState, int) run;
     http.Client? client;
@@ -1063,8 +1238,12 @@ class SyncService {
       lists = applyScope(lists, null, result.doc);
       final at = _clock().millisecondsSinceEpoch;
       final known = keptOut.isEmpty ? result.known : [...result.known.where((id) => !keptOut.contains(id))];
+      // The vault's write lock checks the revision again once this has its turn: a save ahead of it makes the run out of date too
+      if (!sameLists(lists, _vault.lists) && !await _vault.applySynced(lists, ifRevision: revision)) {
+        _again = true;
+        return;
+      }
       _states[key] = ScopeState(known: known, lastSyncAt: at, extra: result.state);
-      if (!sameLists(lists, _vault.lists)) await _vault.applySynced(lists);
       await _saveStates();
       _status[key] = ScopeStatus(lastSyncAt: at);
       _removalChoice = null;
@@ -1192,6 +1371,7 @@ class SyncService {
     final session = _vault.requireSession();
     final settings = _settings;
     _dropPending();
+    _accountState.reset();
     if (settings.kemlock case final target?) {
       try {
         // Ends this device's session on the server; one that can't be reached throws, and the session is forgotten here anyway
@@ -1200,7 +1380,7 @@ class SyncService {
         // Forgotten here all the same
       }
       final values = SealedValues(_store, session);
-      for (final key in [keyKemlockSession, keyKemlockAccount, keyKemlockCache]) {
+      for (final key in [keyKemlockSession, keyKemlockAccount, keyKemlockCache, keyKemlockMove]) {
         values.remove(key);
       }
       final tag = deviceKeyTag(_vault.registry.active);

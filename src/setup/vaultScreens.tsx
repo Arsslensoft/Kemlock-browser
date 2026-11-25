@@ -27,7 +27,7 @@ interface Props {
 const levels = ['veryweak', 'weak', 'fair', 'strong', 'verystrong']
 
 /** The app's meter: five bars, and the level in words read out as it changes. */
-function Strength({ password }: { password: string }) {
+export function Strength({ password }: { password: string }) {
   const { level, bars } = passwordStrength(password)
   const { passed } = passwordScore(password)
   return (

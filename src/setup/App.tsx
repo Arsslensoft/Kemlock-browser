@@ -1,8 +1,9 @@
 // The setup tab: first run, "Set up again" (#again), "Sign in again" (#signin) and "Remove Kemlock
 // from this browser" (#remove). The steps are flow.ts's; each screen asks the background.
-import { useEffect, useReducer } from 'preact/hooks'
+import { useEffect, useReducer, useRef } from 'preact/hooks'
 import { initialState, reduce, type FlowState, type Mode, type ProblemInfo } from './flow'
 import { t } from './i18n'
+import { heldMoveStep, MoveScreen, RegisterScreen } from './accountScreens'
 import { AccessScreen, AddressScreen, FormScreen, PlaceScreen } from './placeScreens'
 import { ask } from './send'
 import {
@@ -83,6 +84,10 @@ function Step({ state, dispatch }: { state: FlowState; dispatch: Dispatch }) {
       return <AccessScreen {...props} />
     case 'form':
       return <FormScreen {...props} />
+    case 'register':
+      return <RegisterScreen {...props} />
+    case 'move':
+      return <MoveScreen {...props} />
     case 'second':
       return <SecondScreen {...props} />
     case 'approval':
@@ -108,6 +113,16 @@ function Step({ state, dispatch }: { state: FlowState; dispatch: Dispatch }) {
 
 export function App() {
   const [state, dispatch] = useReducer(reduce, initialState)
+  const looked = useRef(false)
+
+  // A sign-in held for a move (setup was left, or the browser stopped, before the answer) is shown again before any place is chosen
+  useEffect(() => {
+    if (state.screen.name !== 'place' || looked.current) return
+    looked.current = true
+    void heldMoveStep().then((step) => {
+      if (step !== null) dispatch({ type: 'step', step })
+    })
+  }, [state.screen.name])
 
   useEffect(() => {
     document.title = t('setup_title')

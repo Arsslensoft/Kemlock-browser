@@ -8,7 +8,7 @@
 <h3 align="center">Kemlock for browsers</h3>
 
 <p align="center">
-  Your Kemlock codes and logins in Chrome, Edge and Firefox.
+  Your Kemlock codes and logins in Chrome, Edge, Firefox and Safari.
 </p>
 
 <p align="center">
@@ -24,6 +24,7 @@
   <img alt="Chrome" src="https://img.shields.io/badge/Chrome-supported-4285F4?logo=googlechrome&logoColor=white">
   <img alt="Edge" src="https://img.shields.io/badge/Edge-supported-0078D7?logo=microsoftedge&logoColor=white">
   <img alt="Firefox" src="https://img.shields.io/badge/Firefox-supported-FF7139?logo=firefoxbrowser&logoColor=white">
+  <img alt="Safari" src="https://img.shields.io/badge/Safari-supported-006CFF?logo=safari&logoColor=white">
   <img alt="Manifest V3" src="https://img.shields.io/badge/manifest-V3-555555">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white">
   <img alt="Preact" src="https://img.shields.io/badge/Preact-11-673AB8?logo=preact&logoColor=white">
@@ -57,14 +58,18 @@ websites. It syncs with your own Vaultwarden or WebDAV folder, as the
 
 ## Using the extension
 
-**Install.** Take `kemlock-<version>-chrome.zip` (Chrome and Edge) or `kemlock-<version>-firefox.zip`
-from the [latest release](https://github.com/Arsslensoft/Kemlock-browser/releases/latest), or build
+**Install.** Take `kemlock-<version>-chrome.zip` (Chrome and Edge), `kemlock-<version>-firefox.zip` or
+`kemlock-<version>-safari.zip` (Safari: see below) from the [latest release](https://github.com/Arsslensoft/Kemlock-browser/releases/latest), or build
 one (below). To load a build unzipped:
 
 - Chrome: `chrome://extensions`, turn on Developer mode, Load unpacked, pick `dist/chrome`.
 - Edge: `edge://extensions`, the same, with `dist/chrome`.
 - Firefox: `about:debugging#/runtime/this-firefox`, Load Temporary Add-on, pick
   `dist/firefox/manifest.json`. Firefox keeps a temporary add-on until it restarts.
+- Safari: it runs an extension only from a Mac app. On a Mac with Xcode, `npm run build:safari`, then
+  `npm run safari:project` makes the Xcode project (`dist/safari-xcode`, or the release's
+  `kemlock-<version>-safari-xcode.zip`); run it from Xcode and turn Kemlock on in Safari › Settings ›
+  Extensions. Signing for the App Store is the owner's: [docs/store/safari.md](docs/store/safari.md).
 
 **First run.** Click the toolbar icon: the setup tab opens.
 
@@ -113,6 +118,26 @@ builds, or the id of their own build.
 
 Without the id on the list, SSO is refused and everything else keeps working.
 
+**The Kemlock Server account.** From the popup's sync card, Account and devices opens one tab for what
+the account does beyond syncing ([the plan](docs/plans/add-browser-account.md)):
+
+- Create an account on a server from the setup tab, and sign in as this browser.
+- Approve or deny a device that is signing in: the five words are worked out here from its key, never
+  taken from the server, and a notification tells you of a request within a minute (the live socket
+  can't carry it to a browser, so the extension reads the requests while the vault is open).
+- The device list, and signing another device out.
+- Emergency access: name a trusted contact after comparing their fingerprint, answer their requests,
+  or ask for access to the account that named you. The server's part ends at releasing the sealed key,
+  so the extension says whether it opens and goes no further.
+- The Recovery Kit (three pieces, any two open the account; printed from the tab) and the recovery
+  code, and opening an account with two pieces at sign-in.
+- The authenticator app and the mailed code as second steps. Security keys, YubiKeys and Duo are set up
+  in the web vault.
+- Moving a vault off Vaultwarden or WebDAV into Kemlock Server, with the phone's steps and checks. It
+  runs once, resumes where it stopped (the vault doesn't sync meanwhile, and the sync card says so), can be
+  abandoned before its last step, and is refused when notes have attached files,
+  which a browser doesn't keep.
+
 ## What the extension keeps, and where it goes
 
 Kemlock is free: sync, the vault's order and tags, and everything else in it, with no paywall and no
@@ -148,33 +173,48 @@ Premium check.
 - Password health and the generator's work: worked out in the browser. Nothing about them is stored in
   the sync file or sent anywhere.
 - No telemetry, no analytics, no account of ours. The extension talks to the sync place you chose and to
-  nothing else, with one opt-in exception: "Check for breached passwords", off by default, asks Pwned
-  Passwords about a password by the first five characters of its SHA-1, with padding, and nothing else.
+  nothing else, with two opt-in exceptions, both off by default and both to Have I Been Pwned:
+  "Check for breached passwords" asks Pwned Passwords about a password by the first five characters of
+  its SHA-1, with padding, and nothing else; and "Look for newer breaches online" (Service breaches)
+  asks once a day for breaches newer than the list the extension ships. The same requests go from
+  everyone and carry nothing from your vault.
+- The order you give your logins in the extension is kept in the sealed vault, for this browser only
+  (the app sorts logins by name). Your codes' order, tags and pins are the app's own and sync.
 - Copied codes and passwords are cleared from the clipboard after the chosen time (10, 30, 60 or 120
   seconds, 30 by default), only if the clipboard still holds the same value.
 
 **Permissions, and why.** Each one in the manifests (`manifests/`):
 
-| Permission                                | Why                                                                                                                                                      |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `storage`                                 | The sealed vault, the sync state and the settings, in the extension's own storage, and the unlocked keys in its memory-only session one.                 |
-| `alarms`                                  | The idle auto-lock, and sync every five minutes while the vault is open.                                                                                 |
-| `idle`                                    | Lock the vault when the computer sleeps or its screen locks (Settings can turn it off).                                                                  |
-| `contextMenus`                            | The right-click menu: Fill login, Fill code, New password, and "Add code to Kemlock" on an image.                                                        |
-| `activeTab`                               | Fill, and read a setup QR code, in the tab in front when you ask from the popup or the right-click menu, with no standing access to it.                  |
-| `scripting`                               | Put the content script in that tab for that use, and register it for all sites when you grant them.                                                      |
-| `clipboardWrite`, `clipboardRead`         | Copy a code or a password, and clear the clipboard later only if it still holds that value, which means reading it.                                      |
-| `offscreen` (Chrome and Edge)             | The clipboard from the background, which has no page of its own there. Firefox's background page does it directly.                                       |
-| Optional: all websites (`<all_urls>`)     | Kemlock's button in fields on every site, asked for at setup and in Settings › Site access. Without it nothing here changes but the button.              |
-| Optional: the sync server's address       | Asked for as soon as you type the address, before anything is sent to it: browsers send an extension no CORS headers, so it can't be reached without it. |
-| `identity` (SSO and passkey sign-in)      | The browser's own sign-in window for single sign-on and for a passkey on the Kemlock Server (`identity.launchWebAuthFlow`).                              |
-| `web_accessible_resources`: the menu page | The in-page menu is an extension page in a frame, at an address that changes each browser session (Chrome and Edge), so a page can't find it.            |
+| Permission                                | Why                                                                                                                                                                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`                                 | The sealed vault, the sync state and the settings, in the extension's own storage, and the unlocked keys in its memory-only session one.                                                                              |
+| `alarms`                                  | The idle auto-lock, and sync every five minutes while the vault is open.                                                                                                                                              |
+| `idle`                                    | Lock the vault when the computer sleeps or its screen locks (Settings can turn it off).                                                                                                                               |
+| `contextMenus`                            | The right-click menu: Fill login, Fill code, New password, and "Add code to Kemlock" on an image.                                                                                                                     |
+| `activeTab`                               | Fill, and read a setup QR code, in the tab in front when you ask from the popup or the right-click menu, with no standing access to it.                                                                               |
+| `scripting`                               | Put the content script in that tab for that use, and register it for all sites when you grant them.                                                                                                                   |
+| `clipboardWrite`, `clipboardRead`         | Copy a code or a password, and clear the clipboard later only if it still holds that value, which means reading it.                                                                                                   |
+| `offscreen` (Chrome and Edge)             | The clipboard from the background, which has no page of its own there. Firefox's background page does it directly.                                                                                                    |
+| Optional: all websites (`<all_urls>`)     | Kemlock's button in fields on every site, asked for at setup and in Settings › Site access. Without it nothing here changes but the button.                                                                           |
+| Optional: `webNavigation`                 | Passkeys: to tell whether a frame that asks for one is of another site than the page, asked for together with all websites when you turn the passkey switch on. Without it only the page's own top frame is answered. |
+| Optional: the sync server's address       | Asked for as soon as you type the address, before anything is sent to it: browsers send an extension no CORS headers, so it can't be reached without it.                                                              |
+| `identity` (SSO and passkey sign-in)      | The browser's own sign-in window for single sign-on and for a passkey on the Kemlock Server (`identity.launchWebAuthFlow`).                                                                                           |
+| `notifications`                           | Tell you that another device is waiting to sign in to your Kemlock account, so you can approve or deny it. Nothing else raises one.                                                                                   |
+| `web_accessible_resources`: the menu page | The in-page menu is an extension page in a frame, at an address that changes each browser session (Chrome and Edge), so a page can't find it.                                                                         |
 
 The extension installs with no access to websites. Firefox's manifest declares that it collects no data
 (`data_collection_permissions`: `none`).
 
-**Minimum browsers.** Chrome and Edge 119, Firefox 140: the Dart core is compiled to WebAssembly with
-WasmGC, which older versions lack.
+**Safari.** Its manifest drops `idle`, `identity` and `clipboardRead` (Safari has none of them) and adds
+`nativeMessaging`, to the Mac app's own extension handler, which writes and clears the clipboard without a click
+and says whether the screen is locked. What Safari can't do: single sign-on and passkey sign-in to Kemlock
+Server (no `identity.launchWebAuthFlow`), locking the instant the screen locks (it is asked once a minute), and keeping
+the open vault across the background unloading (the vault locks then, until Safari's session storage is known to be
+closed to content scripts). [docs/plans/add-safari.md](docs/plans/add-safari.md) says why.
+
+**Minimum browsers.** Chrome and Edge 119, Firefox 140, Safari 18.4 (a first value, from what the core needs:
+[docs/safari-checklist.md](docs/safari-checklist.md) step 1 finds the real one). The Dart core is compiled to
+WebAssembly with WasmGC, which older versions lack.
 
 ## Testing
 
@@ -209,7 +249,8 @@ VAULTWARDEN_PASSWORD='master password' npm run test:e2e -- vaultwarden
 ```
 
 Firefox can't run them: [docs/firefox-checklist.md](docs/firefox-checklist.md) lists what is checked by
-hand there, and the store listings are drafted in [docs/store/](docs/store/).
+hand there, and [docs/safari-checklist.md](docs/safari-checklist.md) what is checked by hand on a Mac for
+Safari. The store listings are drafted in [docs/store/](docs/store/).
 
 ## Building
 
@@ -220,7 +261,7 @@ version CI and the release container use) beside Node 26.13.0, and `git` to fetc
 ```bash
 npm ci
 (cd core && dart pub get --enforce-lockfile)   # once, and when core/pubspec.lock changes
-npm run build       # dist/chrome and dist/firefox
+npm run build       # dist/chrome, dist/firefox and dist/safari
 npm test
 npm run test:e2e    # needs the build, see Testing
 npm run lint
@@ -243,8 +284,10 @@ release: the version is its tag's (`v0.2.0`), and the build puts it in the manif
 The commit is built twice, on two runners, with `tool/build.sh --version`, and it is tagged and
 released only if the two builds are the same bytes. Each
 [release](https://github.com/Arsslensoft/Kemlock-browser/releases) holds `kemlock-<version>-chrome.zip`
-(for Chrome and Edge), `kemlock-<version>-firefox.zip` and `SHA256SUMS`, with the changes since the
-last release in its notes. To check one, run `tool/build.sh v<version>` and compare the sums
+(for Chrome and Edge), `kemlock-<version>-firefox.zip`, `kemlock-<version>-safari.zip`,
+`kemlock-<version>-safari-xcode.zip` (the Safari zip in an unsigned Xcode project, made on a Mac runner by
+[`safari-project.yml`](.github/workflows/safari-project.yml) after the release, with its sum in
+`SHA256SUMS-safari-xcode`) and `SHA256SUMS`, with the changes since the last release in its notes. To check one, run `tool/build.sh v<version>` and compare the sums
 ([docs/reproducible-builds.md](docs/reproducible-builds.md)).
 
 The stores are off. A job each for Firefox Add-ons, the Chrome Web Store and Edge Add-ons is in

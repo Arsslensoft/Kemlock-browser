@@ -323,6 +323,35 @@ describe('the menu frame', () => {
     expect(await top.handle({ kind: 'savePrompt' })).toEqual({ ok: true })
     expect(top.handle({ kind: 'closeMenus' })).toEqual({ ok: true })
   })
+
+  it('shows the passkey card in the top frame only, whichever frame asked, and closes it with the menus', async () => {
+    expect(await make(false).handle({ kind: 'passkeyPrompt', token: 'abc' })).toEqual({ ok: false })
+    const top = make(true)
+    // A card with no secret to give it is none
+    expect(await top.handle({ kind: 'passkeyPrompt' })).toEqual({ ok: false })
+    expect(await top.handle({ kind: 'passkeyPrompt', token: '' })).toEqual({ ok: false })
+    expect(await top.handle({ kind: 'passkeyPrompt', token: 'abc' })).toEqual({ ok: true })
+    expect(calls.some((c) => c.kind === 'frame')).toBe(true)
+    // A second request takes the card's place
+    expect(await top.handle({ kind: 'passkeyPrompt', token: 'def' })).toEqual({ ok: true })
+    expect(top.handle({ kind: 'closeMenus' })).toEqual({ ok: true })
+  })
+
+  it('closes the passkey card by its own secret, and no other prompt', async () => {
+    const top = make(true)
+    expect(await top.handle({ kind: 'passkeyPrompt', token: 'abc' })).toEqual({ ok: true })
+    const card = (top as unknown as { prompt: { isOpen: boolean } | null }).prompt!
+    // Another request's secret closes nothing
+    expect(top.handle({ kind: 'passkeyClose', token: 'other' })).toEqual({ ok: true })
+    expect(card.isOpen).toBe(true)
+    expect(top.handle({ kind: 'passkeyClose', token: 'abc' })).toEqual({ ok: true })
+    expect(card.isOpen).toBe(false)
+    // A save prompt is not a passkey card: its close is not the card's to ask
+    expect(await top.handle({ kind: 'savePrompt' })).toEqual({ ok: true })
+    const prompt = (top as unknown as { prompt: { isOpen: boolean } | null }).prompt!
+    expect(top.handle({ kind: 'passkeyClose', token: 'abc' })).toEqual({ ok: true })
+    expect(prompt.isOpen).toBe(true)
+  })
 })
 
 describe('forms being sent', () => {

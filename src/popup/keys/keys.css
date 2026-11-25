@@ -1,0 +1,100 @@
+/* The keys screens, on the popup's look (src/popup/popup.css, src/shared/ui/ui.css). */
+
+.keys-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.keys-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keys-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keys-text textarea {
+  min-height: 104px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+/* A private key on show: set apart, since it stays on the screen until it is hidden */
+.keys-block.secret .keys-text .box {
+  border-color: var(--warnLine);
+  background: var(--warnSoft);
+}
+
+.keys-form .actions {
+  margin-top: 4px;
+}
+
+.keys-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.keys-fingerprint {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.keys-found {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.keys-aside {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--text2);
+  font-size: 12px;
+}
+
+.keys-aside .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.keys-people {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.keys-people legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.keys-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Home's bar has one more button since Keys and PGP: its gaps close up so the brand keeps its room */
+.home-bar {
+  gap: 4px;
+}

@@ -730,7 +730,8 @@ describe('buttons in fields', () => {
     expect(await h.ok({ kind: 'allSitesGranted' })).toBe(false)
     h.mock.granted.add('<all_urls>')
     expect(await h.ok({ kind: 'allSitesGranted' })).toBe(true)
-    expect(h.mock.registered.size).toBe(1)
+    // Only the content script: the passkey provider's two want webNavigation too (docs/plans/add-passkeys.md)
+    expect([...h.mock.registered.keys()]).toEqual(['kemlock-content'])
     h.mock.granted.clear()
     await h.bg.onPermissionsChanged()
     expect(h.mock.registered.size).toBe(0)
@@ -767,13 +768,15 @@ describe('the right-click menu', () => {
       (sent.message as { kind: string }).kind === 'contextTarget' ? target : undefined
   })
 
-  it('is made with Fill login, Fill code and New password under Kemlock, for editable fields', async () => {
+  it('is made with Fill login, Fill code, New password, Fill card and Fill identity under Kemlock, for editable fields', async () => {
     await h.bg.setup()
     expect([...h.mock.menus.values()].map((m) => [m.id, m.parentId, m.title, m.contexts])).toEqual([
       ['kemlock', undefined, 'extName', ['editable']],
       ['kemlock-fill-login', 'kemlock', 'bgMenuFillLogin', ['editable']],
       ['kemlock-fill-code', 'kemlock', 'bgMenuFillCode', ['editable']],
       ['kemlock-new-password', 'kemlock', 'bgMenuNewPassword', ['editable']],
+      ['kemlock-fill-card', 'kemlock', 'bgMenuFillCard', ['editable']],
+      ['kemlock-fill-identity', 'kemlock', 'bgMenuFillIdentity', ['editable']],
     ])
   })
 
@@ -1205,8 +1208,10 @@ describe("the browser's events", () => {
   it('make the menu and register the script held by the access on install', async () => {
     h.mock.granted.add('<all_urls>')
     await h.bg.setup()
-    expect(h.mock.menus.size).toBe(4)
-    expect(h.mock.registered.size).toBe(1)
+    // The parent and its five entries: login, code, new password, card and identity
+    expect(h.mock.menus.size).toBe(6)
+    // Only the content script: the passkey provider's two want webNavigation too (docs/plans/add-passkeys.md)
+    expect([...h.mock.registered.keys()]).toEqual(['kemlock-content'])
   })
 })
 

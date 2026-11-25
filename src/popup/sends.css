@@ -1,0 +1,8 @@
+/* A Send's page in the popup: its text, shown only when asked, keeps its line breaks and breaks long words. */
+.send-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 13px;
+  user-select: text;
+}

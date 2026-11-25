@@ -1,4 +1,4 @@
-// Builds the extension into dist/chrome and dist/firefox (design decision 3):
+// Builds the extension into dist/chrome, dist/firefox and dist/safari (design decision 3):
 // the pages and the background as ES modules, the content script as one
 // classic script (content scripts can't be modules), the manifest merged
 // from manifests/base.json and the browser's own (its version is
@@ -15,7 +15,9 @@ import { build } from 'vite'
 import { languages, toBrowserMessage } from './locales.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const browsers = process.argv.slice(2).length ? process.argv.slice(2) : ['chrome', 'firefox']
+/** The browsers the extension is built for, and the engine each build is compiled for (docs/plans/add-safari.md). */
+export const targets = { chrome: 'chrome119', firefox: 'firefox131', safari: 'safari18' }
+const browsers = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(targets)
 
 const readJson = async (path) => JSON.parse(await readFile(join(root, path), 'utf8'))
 
@@ -32,6 +34,28 @@ export function mergeManifest(base, extra) {
 }
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * Takes out what a browser's manifest lists under `$remove`, as { key: [names] }: the names from the merged list at that key
+ * (Safari has no idle, identity or clipboardRead, which the base manifest asks for), and the `$remove` key itself. A name the
+ * list doesn't hold, or a key that isn't a list, is an error: a removal that removes nothing is a typo.
+ */
+export function applyRemovals(manifest) {
+  const { $remove: removals, ...rest } = manifest
+  if (removals === undefined) return rest
+  if (!isObject(removals)) throw new Error('$remove is not an object of lists')
+  for (const [key, names] of Object.entries(removals)) {
+    const list = rest[key]
+    if (!Array.isArray(list) || !Array.isArray(names))
+      throw new Error(`$remove ${key}: both it and the manifest's ${key} must be lists`)
+    for (const name of names) {
+      if (!list.includes(name))
+        throw new Error(`$remove ${key} names ${name}, which the manifest doesn't have`)
+    }
+    rest[key] = list.filter((name) => !names.includes(name))
+  }
+  return rest
+}
 
 /**
  * The version a build carries: `KEMLOCK_VERSION` when it is set, which is how a
@@ -292,6 +316,26 @@ export function twoFactorLicence(directory) {
 }
 
 /**
+ * The breach list's licence as the file licenses/hibp-breaches.txt: the notice its data file carries in `license` (the data is Have I
+ * Been Pwned's, under Creative Commons Attribution 4.0), under a header that says what it is.
+ */
+export function breachLicence(list) {
+  if (typeof list.license !== 'string' || !list.license.includes('Creative Commons'))
+    throw new Error('core/data/breaches.json carries no licence notice in its "license"')
+  return [
+    "Have I Been Pwned's list of breaches",
+    '====================================',
+    '',
+    "Kemlock ships a trimmed copy of Have I Been Pwned's list of data breaches (https://haveibeenpwned.com) in",
+    "core/data/breaches.json, and the extension reads it to tell which of the person's services were breached. The data's",
+    "notice is the data file's own `license`, as follows.",
+    '',
+    list.license.trim(),
+    '',
+  ].join('\n')
+}
+
+/**
  * The licences the zip carries beside the code and the data it ships, in [outDir]/licenses: Geist's, Lucide's, the Dart packages' (the
  * core is compiled from them), and the notices of the data files in core/data (core/licenses/ holds those of the Public
  * Suffix List and the EFF's word list; the 2FA directory's text is the one its own file carries).
@@ -316,6 +360,8 @@ async function writeLicences(outDir) {
     await copyFile(join(root, 'core', 'licenses', file), join(licenses, file))
   const directory = await readJson(join('core', 'data', 'two_factor_directory.json'))
   await writeFile(join(licenses, '2fa-directory.txt'), twoFactorLicence(directory))
+  const breaches = await readJson(join('core', 'data', 'breaches.json'))
+  await writeFile(join(licenses, 'hibp-breaches.txt'), breachLicence(breaches))
 }
 
 const shared = (browser) => ({
@@ -337,7 +383,13 @@ async function buildBrowser(browser, coreOut) {
   const pages = {
     popup: 'src/popup/index.html',
     setup: 'src/setup/index.html',
+    account: 'src/account/index.html',
     menu: 'src/menu/index.html',
+    unlock: 'src/unlock/index.html',
+    // The offscreen document is Chrome's: Firefox's and Safari's background pages have a DOM and a clipboard of their own
+    sends: 'src/sends/index.html',
+    keys: 'src/keys/index.html',
+    transfer: 'src/transfer/index.html',
     ...(browser === 'chrome' ? { offscreen: 'src/offscreen/index.html' } : {}),
   }
   await build({
@@ -345,7 +397,7 @@ async function buildBrowser(browser, coreOut) {
     build: {
       outDir,
       emptyOutDir: false,
-      target: browser === 'chrome' ? 'chrome119' : 'firefox131',
+      target: targets[browser],
       modulePreload: { polyfill: false },
       rollupOptions: {
         input: { background: 'src/background/index.ts', ...pages },
@@ -361,7 +413,7 @@ async function buildBrowser(browser, coreOut) {
     build: {
       outDir,
       emptyOutDir: false,
-      target: browser === 'chrome' ? 'chrome119' : 'firefox131',
+      target: targets[browser],
       lib: {
         entry: 'src/content/index.ts',
         formats: ['iife'],
@@ -370,9 +422,27 @@ async function buildBrowser(browser, coreOut) {
       },
     },
   })
-  const manifest = mergeManifest(
-    await readJson('manifests/base.json'),
-    await readJson(`manifests/${browser}.json`),
+  // The passkey provider's two scripts (docs/plans/add-passkeys.md): the page's own world, and the bridge. Each is one classic
+  // script, registered by src/background/passkey-scripts.ts at document_start
+  for (const [entry, name, file] of [
+    ['src/content/passkey-page.entry.ts', 'kemlockPasskeyPage', 'passkey-main.js'],
+    ['src/content/passkey-bridge.entry.ts', 'kemlockPasskeyBridge', 'passkey-bridge.js'],
+  ]) {
+    await build({
+      ...shared(browser),
+      build: {
+        outDir,
+        emptyOutDir: false,
+        target: targets[browser],
+        lib: { entry, formats: ['iife'], name, fileName: () => file },
+      },
+    })
+  }
+  const manifest = applyRemovals(
+    mergeManifest(
+      await readJson('manifests/base.json'),
+      await readJson(`manifests/${browser}.json`),
+    ),
   )
   manifest.version = releaseVersion(process.env, manifest)
   await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
@@ -391,6 +461,10 @@ async function buildBrowser(browser, coreOut) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  for (const browser of browsers) {
+    if (!(browser in targets))
+      throw new Error(`Unknown browser ${browser}: one of ${Object.keys(targets).join(', ')}`)
+  }
   const coreOut = await compileCore()
   for (const browser of browsers) await buildBrowser(browser, coreOut)
 }

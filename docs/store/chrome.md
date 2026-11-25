@@ -99,8 +99,10 @@ Logiciel libre (GPL-3.0-or-later) : https://github.com/Arsslensoft/Kemlock-brows
   - `clipboardRead`: Reads the clipboard only to clear a copied code or password after the chosen time, and only if it still holds that value, so other text the person copied is never erased.
   - `offscreen`: Gives the background service worker a document to use the clipboard from (Chrome has none for it).
   - Optional host permission, all sites (`<all_urls>`): Asked for at setup and in Settings, only for Kemlock's button in sign-in and code fields. Refused, the extension keeps working through the popup and the right-click menu.
+  - Optional permission, `webNavigation`: Asked for together with all sites when the person turns on passkeys in Settings, to read a frame's ancestors (`webNavigation.getAllFrames`) and so say in a passkey's client data whether the frame that asks is of another site than the page. Refused, passkey requests from embedded frames go to the browser and the rest of the extension is unchanged.
   - Optional host permission, the sync server: Asked for the one address the person types, before any request to it. Browsers send an extension no CORS headers, so the server can't be reached without it.
   - `identity` (with Kemlock Server single sign-on): Opens the browser's own sign-in window for the server's SSO (`identity.launchWebAuthFlow`).
+  - `notifications`: Tells the person that another device is waiting to sign in to their Kemlock account, to approve or deny it. No other notification is shown.
   - `web_accessible_resources` (the menu page): Shows the in-page menu as an extension page in a frame, at an address that changes each browser session, so a page can't read it.
 
 - **Remote code**: No. All code is in the package. The Dart core is compiled to WebAssembly and bundled

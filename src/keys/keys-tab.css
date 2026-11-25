@@ -1,0 +1,24 @@
+/* The keys tab: the popup's screens in a page of the whole window, as wide as a form is readable. */
+
+html {
+  min-width: 0;
+  height: 100%;
+}
+
+body.keys-tab {
+  width: auto;
+  max-width: 760px;
+  height: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  border-inline: 1px solid var(--line);
+}
+
+body.keys-tab .keys-locked {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+body.keys-tab .keys-text textarea {
+  min-height: 160px;
+}

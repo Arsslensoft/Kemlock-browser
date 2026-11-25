@@ -1,10 +1,12 @@
 // The fill path (design decision 4): a click goes to the background, which checks that the frame's
 // site still matches the item, and sends the value to that tab and frame only. The content script
 // checks the field again. A code's secret never leaves the core: only the digits travel.
-import type { PageApi } from '../shared/api'
+import type { CardFull, IdentityFull, PageApi } from '../shared/api'
 import { fillRefused, type FieldReport, type ToContent } from '../shared/messages'
 import { BackgroundError } from './errors'
+import { formValues } from './forms'
 import { rememberPick } from './picks'
+import { refuseHidden } from './spaces'
 import { injectContentScript } from './site-access'
 import { hostOf, siteMatch } from './site'
 import type { Deps } from './deps'
@@ -40,6 +42,8 @@ export class Filler {
    */
   async fill(args: FillArgs, confirmed: boolean): Promise<void> {
     if (args.newPassword !== undefined) await this.fillNewPassword(args)
+    else if (args.cardId !== undefined || args.identityId !== undefined)
+      await this.fillForm(args, confirmed)
     else if (args.loginId === undefined && args.codeId === undefined)
       throw new BackgroundError('badRequest')
     else {
@@ -96,10 +100,22 @@ export class Filler {
       )
   }
 
-  private async send(tabId: number, entry: Entry, fieldId: string, value: string): Promise<void> {
+  private async send(
+    tabId: number,
+    entry: Entry,
+    fieldId: string,
+    value: string,
+    alt?: string[],
+  ): Promise<void> {
     const origin = originOf(entry.frame.address)
     if (origin === null) throw new BackgroundError('noMatch')
-    const message: ToContent = { kind: 'fill', fieldId, value, origin }
+    const message: ToContent = {
+      kind: 'fill',
+      fieldId,
+      value,
+      origin,
+      ...(alt === undefined ? {} : { alt }),
+    }
     const options =
       entry.frame.documentId === undefined
         ? { frameId: entry.frameId }
@@ -136,6 +152,8 @@ export class Filler {
         if (args.fieldId !== undefined) throw new BackgroundError('noMatch')
         continue
       }
+      // The picker names every login: one whose password a grant hides is never put on a site the person chose (docs/plans/add-spaces.md)
+      if (!offered) await refuseHidden(core, loginId)
       const target = this.field(entry, args.fieldId)
       const fields = entry.frame.fields
       const username =
@@ -203,6 +221,91 @@ export class Filler {
     }
     if (filled === 0)
       throw new BackgroundError(args.fieldId === undefined ? 'noMatch' : 'unknownField')
+  }
+
+  /**
+   * A card or an identity (docs/plans/add-items.md, decision 1). Neither belongs to a website, so the frame is what is checked:
+   * it fills by itself only in the tab's top frame over https. Any other frame (a payment provider's iframe) and any http page
+   * fills only after the person confirmed it in the menu (`confirmed`), which showed them the frame's own address; the popup
+   * and the right-click menu can't confirm, and are told so. Only one block of a frame is filled: the named field's, else the one
+   * the person is in, else the first.
+   */
+  private async fillForm(args: FillArgs, confirmed: boolean): Promise<void> {
+    const { core } = this.d
+    const cardId = args.cardId
+    const identityId = args.identityId
+    const kind = cardId !== undefined ? 'card' : 'identity'
+    const entries = await this.entries(args)
+    let item: CardFull | IdentityFull | undefined
+    let filled = 0
+    let blocked: 'confirm' | 'insecure' | undefined
+    for (const entry of entries) {
+      const address = entry.frame.address
+      if (address === null) continue
+      const target = this.field(entry, args.fieldId)
+      const ofKind = entry.frame.fields.filter(
+        (field) => field.kind === kind && field.part !== undefined,
+      )
+      // One block: the field named's, else the one the person is in, else the first (never every block of the frame)
+      const block =
+        target?.group ?? (ofKind.find((field) => field.focus === true) ?? ofKind[0])?.group
+      const fields = ofKind.filter((field) => field.group === block)
+      if (fields.length === 0) continue
+      const secure = address.startsWith('https://')
+      if (!confirmed && !(entry.frameId === 0 && secure)) {
+        blocked ??= secure ? 'confirm' : 'insecure'
+        continue
+      }
+      // A frame the page embeds is drawn by the page, which may fade or cover it: the top frame says it is in plain view
+      if (confirmed && entry.frameId !== 0 && !(await this.topSees(args.tabId, address)))
+        throw new BackgroundError('unverified')
+      if (item === undefined && cardId !== undefined) item = await core.revealCard(cardId)
+      if (item === undefined && identityId !== undefined)
+        item = await core.revealIdentity(identityId)
+      if (item === undefined) throw new BackgroundError('badRequest')
+      const values = formValues(
+        kind === 'card' ? { card: item as CardFull } : { identity: item as IdentityFull },
+        fields.flatMap((field) =>
+          field.part === undefined
+            ? []
+            : [
+                {
+                  id: field.id,
+                  part: field.part,
+                  ...(field.rules === undefined ? {} : { rules: field.rules }),
+                },
+              ],
+        ),
+      )
+      let here = 0
+      for (const { fieldId, value, alt } of values) {
+        try {
+          await this.send(args.tabId, entry, fieldId, value, alt)
+          here++
+        } catch (error) {
+          // A field that went away or has no such option: the others still fill
+          if (!(error instanceof BackgroundError) || error.code !== 'failed') throw error
+        }
+      }
+      filled += here
+    }
+    if (filled === 0) {
+      if (blocked !== undefined) throw new BackgroundError(blocked)
+      throw new BackgroundError(args.fieldId === undefined ? 'noMatch' : 'unknownField')
+    }
+  }
+
+  /** Whether the tab's top frame draws the frame at [address] in plain view; false when it can't be asked. */
+  private async topSees(tabId: number, address: string): Promise<boolean> {
+    const origin = originOf(address)
+    if (origin === null) return false
+    const message: ToContent = { kind: 'frameVisible', origin }
+    try {
+      const answer = await chrome.tabs.sendMessage(tabId, message, { frameId: 0 })
+      return (answer as { ok?: unknown } | undefined)?.ok === true
+    } catch {
+      return false
+    }
   }
 
   /** A suggested password: kept under Recently generated first, then in the field and its confirmation. */

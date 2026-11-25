@@ -15,6 +15,12 @@ export type ErrorCode =
   /** The frame, field or tab is not one the background knows. */
   | 'unknownField'
   | 'securityKey'
+  /** A card or identity may fill that frame only after the person confirms it in the menu (items, decision 1). */
+  | 'confirm'
+  /** A card or identity won't fill an http page without that confirmation. */
+  | 'insecure'
+  /** The top frame could not vouch that the frame to fill is in plain view (a page may hide a frame it embeds). */
+  | 'unverified'
   | 'noPermission'
   | 'cancelled'
   | 'badRequest'

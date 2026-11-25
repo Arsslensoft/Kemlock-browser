@@ -25,6 +25,16 @@ export type Screen =
   | { name: 'second'; methods: SecondMethod[]; unsupported: string[] }
   | { name: 'approval'; phrase: string[]; requestId: string }
   | { name: 'masterPassword' }
+  /** Kemlock Server: making an account (account/accountScreens.tsx). */
+  | { name: 'register' }
+  /** Kemlock Server: the vault moves off Vaultwarden or WebDAV into it, once the person says so. */
+  | {
+      name: 'move'
+      source: 'vaultwarden' | 'webdav'
+      counts: Record<string, number>
+      files: number
+      resumed: boolean
+    }
   | { name: 'homes'; homes: HomeView[] }
   | { name: 'noHome' }
   | { name: 'passphrase' }
@@ -70,6 +80,7 @@ export type FlowEvent =
   | { type: 'wrongPassword'; wrongPasswords: number }
   | { type: 'created' }
   | { type: 'place'; place: SyncPlace }
+  | { type: 'register' }
   | { type: 'address'; text: string }
   /** The security key's page is on another address: start again at the address, with it typed. */
   | { type: 'useAddress'; address: string }
@@ -144,6 +155,14 @@ function stepped(state: FlowState, step: SignInStep): FlowState {
       return withScreen(state, { name: 'approval', phrase: step.phrase, requestId: step.requestId })
     case 'masterPassword':
       return withScreen(state, { name: 'masterPassword' })
+    case 'move':
+      return withScreen(state, {
+        name: 'move',
+        source: step.source,
+        counts: step.counts,
+        files: step.files,
+        resumed: step.resumed,
+      })
     case 'homes':
       return withScreen(
         state,
@@ -165,6 +184,8 @@ function back(state: FlowState): FlowState {
     case 'access':
     case 'form':
       return withScreen(state, { name: 'address' })
+    case 'register':
+      return withScreen(state, { name: 'form' })
     case 'second':
     case 'approval':
     case 'masterPassword':
@@ -193,6 +214,8 @@ export function reduce(state: FlowState, event: FlowEvent): FlowState {
         { ...state, place: event.place, address: '', addressError: null },
         { name: 'address' },
       )
+    case 'register':
+      return withScreen(state, { name: 'register' })
     case 'address': {
       const parsed = parseAddress(event.text)
       if (!parsed.ok) return { ...state, addressError: parsed.reason, error: null }
@@ -239,6 +262,7 @@ export function progressOf(state: FlowState): { step: number; total: number } | 
       case 'access':
         return 2
       case 'form':
+      case 'register':
       case 'second':
       case 'approval':
       case 'masterPassword':
@@ -247,6 +271,7 @@ export function progressOf(state: FlowState): { step: number; total: number } | 
       case 'noHome':
       case 'passphrase':
       case 'firstSync':
+      case 'move':
         return 4
       default:
         return 0

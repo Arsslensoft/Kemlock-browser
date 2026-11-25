@@ -164,6 +164,28 @@ const shapes: Record<string, () => JSX.Element> = {
       <path d="m12 5 7 7-7 7" />
     </>
   ),
+  // Notes, cards and identities: Lucide's file-text, credit-card and user-round
+  note: () => (
+    <>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+    </>
+  ),
+  card: () => (
+    <>
+      <rect width="20" height="14" x="2" y="5" rx="2" />
+      <path d="M2 10h20" />
+    </>
+  ),
+  user: () => (
+    <>
+      <circle cx="12" cy="8" r="5" />
+      <path d="M20 21a8 8 0 0 0-16 0" />
+    </>
+  ),
 }
 
 export type IconName =
@@ -193,6 +215,9 @@ export type IconName =
   | 'folder'
   | 'cloudOff'
   | 'arrowRight'
+  | 'note'
+  | 'card'
+  | 'user'
 
 /** An icon at `size` px; `weight` is the stroke width (the mockups use 1.8, and 2 or more for small marks). */
 export function Icon({

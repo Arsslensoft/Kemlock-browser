@@ -70,6 +70,9 @@ Not in this plan:
 - Making an account. Accounts are made in the web vault or the app.
 - Sends, emergency access and account recovery.
 
+Of these, `docs/plans/add-browser-account.md` takes up approving other devices, making an account, emergency
+access, account recovery and the move off Vaultwarden or WebDAV.
+
 ## Decisions
 
 The owner answered D1, D2, D3 and the server changes on 23 November 2026. D4 to D6 were not

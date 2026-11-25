@@ -32,6 +32,9 @@ class CoreFailure implements Exception {
   /// The vault needs more to open than a password, which the extension's own vault never does.
   static const keyNeeded = 'keyNeeded';
 
+  /// What the call works on changed since the page looked (a sync, another page): look again, then ask again.
+  static const stale = 'stale';
+
   /// Anything else; [message] says what.
   static const failed = 'failed';
 

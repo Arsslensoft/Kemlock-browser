@@ -1,6 +1,7 @@
 // Where the browser syncs: the place, its address, the access to that address, and the sign-in.
 import { useState } from 'preact/hooks'
 import type { SignInStep, SyncPlace } from '../shared/api'
+import { detect } from '../shared/capabilities'
 import { parseAddress } from './address'
 import type { FlowState } from './flow'
 import { t } from './i18n'
@@ -272,6 +273,9 @@ export function FormScreen({ state, dispatch }: Props) {
     })
   }
 
+  // The browser's sign-in window is what SSO and a passkey go through; Safari has none (docs/plans/add-safari.md)
+  const windowWays = detect().identity
+
   // SSO or a passkey, then the same steps (approval, master password, first sync). The email is optional: it is only what the
   // steps name.
   const signInWith = (kind: Way) => {
@@ -365,7 +369,8 @@ export function FormScreen({ state, dispatch }: Props) {
           </button>
         </Actions>
       </form>
-      {place === 'kemlock' ? (
+      {place === 'kemlock' && !windowWays ? <p class="hint">{t('safari_noWays')}</p> : null}
+      {place === 'kemlock' && windowWays ? (
         <div class="ways">
           <p class="or">{t('setup_form_or')}</p>
           <div class="way-buttons">
@@ -386,6 +391,16 @@ export function FormScreen({ state, dispatch }: Props) {
             >
               <Glyph name="key" />
               {t('setup_form_passkey')}
+            </button>
+          </div>
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="secondary small"
+              disabled={busy}
+              onClick={() => dispatch({ type: 'register' })}
+            >
+              {t('account_register_link')}
             </button>
           </div>
         </div>

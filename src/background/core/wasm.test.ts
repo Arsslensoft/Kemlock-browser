@@ -8,7 +8,7 @@ const loader = vi.hoisted(() => ({
 }))
 vi.mock('./loader', () => loader)
 
-const { loadCore } = await import('./wasm')
+const { browserHint, loadCore } = await import('./wasm')
 
 const ok = (value: unknown) => JSON.stringify({ ok: true, value })
 const failed = (code: unknown, message = '') =>
@@ -178,6 +178,35 @@ describe('loadCore', () => {
     expect((vi.mocked(bridge.init).mock.calls[0]?.[0] as { sessionKey: string }).sessionKey).toBe(
       'a2V5',
     )
+  })
+
+  it('tells the core it runs in Safari when the build is for Safari, and leaves the others to the user agent', async () => {
+    for (const [built, expected] of [
+      ['safari', 'safari'],
+      ['chrome', undefined],
+      ['firefox', undefined],
+    ] as const) {
+      browser({})
+      vi.stubGlobal('__BROWSER__', built)
+      const { bridge } = bridgeWith(() => ok(null))
+      loader.compileStreaming.mockResolvedValue({
+        instantiate: async () => ({
+          invokeMain: () => {
+            ;(globalThis as { kemlockCore?: CoreBridge }).kemlockCore = bridge
+          },
+        }),
+      })
+      await loadCore()
+      const host = vi.mocked(bridge.init).mock.calls[0]?.[0] as { browser?: string }
+      expect(host.browser, built).toBe(expected)
+    }
+  })
+
+  it('names Safari only for the Safari build', () => {
+    expect(browserHint('safari')).toEqual({ browser: 'safari' })
+    expect(browserHint('chrome')).toEqual({})
+    expect(browserHint('firefox')).toEqual({})
+    expect(browserHint(undefined)).toEqual({})
   })
 
   it('compiles from the bytes when the file is not served as WebAssembly', async () => {

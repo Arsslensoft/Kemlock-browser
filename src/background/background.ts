@@ -7,6 +7,7 @@ import type {
   CodeView,
   ContentApi,
   CoreApi,
+  FormGate,
   GeneratedPassword,
   MenuLogin,
   MenuView,
@@ -17,8 +18,14 @@ import type {
   SignInStep,
   SiteMatch,
   TabView,
+  VaultState,
 } from '../shared/api'
-import { parseContextTarget, type ContentMessage, type ToContent } from '../shared/messages'
+import {
+  parseContextTarget,
+  type ContentMessage,
+  type ContextTarget,
+  type ToContent,
+} from '../shared/messages'
 import {
   chromeAutoLockHost,
   defaultAutoLockSettings,
@@ -26,21 +33,34 @@ import {
   idleAlarm,
   beatAlarm,
 } from './autolock'
+import { AccountManager } from './account'
+import { offerForCard, pendingCardOf, saveCard } from './cards'
+import { offerForIdentity, pendingIdentityOf, saveIdentityFrom } from './identities'
 import { ClipboardManager, directBackend, type ClipboardBackend } from './clipboard'
 import type { Deps } from './deps'
 import { BackgroundError } from './errors'
 import { Filler, recentKey } from './fill'
 import { browserExtensionId } from './identity'
+import { copyText, itemCopies, itemHandlers } from './items'
 import { createMenus, menuItems, type MenuAction } from './menus'
+import { passkeyUnlockHandlers } from './passkey-unlock'
+import { keysPageHandlers } from './keys'
+import { PasskeyProvider } from './passkey-provider'
+import { isOffHere, mirrorPasskeyPrefs, setOffHere } from './passkey-prefs'
+import { syncPasskeyScripts } from './passkey-scripts'
 import { forgetPick, pickedHosts } from './picks'
 import { isNeverSave, mirrorPrefs, neverSave, readPrefs } from './prefs'
 import type { Handlers } from './router'
 import { frameAddress, type ContentSender, type ExtensionPage, type PageSender } from './senders'
+import { sendsHandlers } from './sends'
 import { allSitesGranted, injectContentScript, syncContentScripts } from './site-access'
+import { refuseHidden, spacePageHandlers } from './spaces'
 import { hostOf, siteMatch } from './site'
 import { SyncScheduler } from './sync'
 import { keepMs, TabStore, type PendingLogin } from './tabs'
 import { Toolbar } from './toolbar'
+import { toolsHandlers } from './tools'
+import { transferHandlers } from './transfer'
 import { VaultSession } from './vault'
 
 type PageImpl = {
@@ -58,6 +78,16 @@ type ContentImpl = {
 
 const pagesAndMenu: readonly ExtensionPage[] = ['popup', 'setup', 'menu']
 const pages: readonly ExtensionPage[] = ['popup', 'setup']
+/** The extension's own pages that hold what they decrypted and ask whether the vault is still open. */
+const stateAskers: readonly ExtensionPage[] = [
+  'popup',
+  'setup',
+  'account',
+  'unlock',
+  'sends',
+  'keys',
+  'transfer',
+]
 const menuAndPopup: readonly ExtensionPage[] = ['popup', 'menu']
 const menuOnly: readonly ExtensionPage[] = ['menu']
 
@@ -67,18 +97,37 @@ const touchEveryMs = 5000
 /** The wait after a form is sent before a prompt on a page that didn't navigate. */
 const promptAfterMs = 2500
 
+/** What a tab offers to save: its kind, when it was sent, whether the prompt was shown already, and what the prompt says. */
+interface Offer {
+  kind: 'login' | 'card' | 'identity'
+  at: number
+  prompted: boolean
+  offer: PendingSave
+}
+
 const backupKey = 'kemlock_backup_used'
 const unknownMatch = (site: string): SiteMatch => ({ site, logins: [], codes: [] })
 
 export class Background {
   readonly handlers: Handlers
   private readonly filler: Filler
+  private readonly passkeys: PasskeyProvider
+  /** The account's own calls and its approval watcher (account.ts). */
+  private readonly account: AccountManager
   private lastTouch = 0
   /** Tabs that are loading a page right now. */
   private readonly loading = new Set<number>()
 
   constructor(private readonly d: Deps) {
     this.filler = new Filler(d)
+    // Locking ends every request that waits for the person
+    d.vault.afterLock = () => this.passkeys.locked()
+    this.passkeys = new PasskeyProvider(d, {
+      needOpen: () => this.needOpen(),
+      touch: () => this.touch(),
+      changed: () => this.changed(),
+    })
+    this.account = new AccountManager(d)
     this.handlers = { content: this.contentHandlers(), page: this.pageHandlers() }
   }
 
@@ -124,7 +173,10 @@ export class Background {
   /** What opening the vault does besides the core's. */
   private async opened(): Promise<void> {
     await this.d.vault.opened()
-    await mirrorPrefs(await this.d.core.settings())
+    const settings = await this.d.core.settings()
+    await mirrorPrefs(settings)
+    await mirrorPasskeyPrefs(settings)
+    await syncPasskeyScripts().catch(() => false)
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     if (tab?.id !== undefined) void this.refreshBadge(tab.id)
   }
@@ -273,6 +325,11 @@ export class Background {
         return tab === undefined ? { state } : { state, tab }
       },
 
+      pageState: async (_message, sender) => {
+        this.check(sender, stateAskers)
+        return core.state()
+      },
+
       createVault: async ({ password }, sender) => {
         this.check(sender, pages)
         await core.createVault(password)
@@ -347,6 +404,7 @@ export class Background {
         this.check(sender, pages)
         await this.needOpen()
         await this.touch()
+        await refuseHidden(core, id)
         return (await core.revealLogin(id)).password
       },
       backupCodes: async (_message, sender) => {
@@ -371,15 +429,27 @@ export class Background {
         return this.recent()
       },
 
-      copy: async ({ what, id, value }, sender) => {
+      // Notes, cards and identities (items.ts)
+      ...itemHandlers({
+        core,
+        check: (sender, allowed) => this.check(sender, allowed),
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        changed: () => this.changed(),
+      }),
+
+      copy: async ({ what, id, value, documentId }, sender) => {
         this.check(sender, pages)
         await this.needOpen()
         await this.touch()
         let text: string | undefined
         if (what === 'username') text = (await core.revealLogin(id)).username
-        else if (what === 'password') text = (await core.revealLogin(id)).password
-        else if (what === 'code') text = (await core.liveCodes([id], now()))[0]?.code
+        else if (what === 'password') {
+          await refuseHidden(core, id)
+          text = (await core.revealLogin(id)).password
+        } else if (what === 'code') text = (await core.liveCodes([id], now()))[0]?.code
         else if (what === 'backupCode') text = await this.backupCode(id)
+        else if (itemCopies.has(what)) text = await copyText(core, what, id, documentId)
         else text = value
         if (text === undefined || text === '') throw new BackgroundError('failed')
         await this.d.clipboard.copy(text, await this.clipboardSeconds())
@@ -397,6 +467,8 @@ export class Background {
             ...(message.fieldId === undefined ? {} : { fieldId: message.fieldId }),
             ...(message.loginId === undefined ? {} : { loginId: message.loginId }),
             ...(message.codeId === undefined ? {} : { codeId: message.codeId }),
+            ...(message.cardId === undefined ? {} : { cardId: message.cardId }),
+            ...(message.identityId === undefined ? {} : { identityId: message.identityId }),
             ...(message.newPassword === undefined ? {} : { newPassword: message.newPassword }),
             ...(message.remember === undefined ? {} : { remember: message.remember }),
           },
@@ -555,6 +627,7 @@ export class Background {
         await core.signOut()
         await this.d.sync.showIcon()
       },
+      account: ({ request }, sender) => this.account.handle(request, sender),
 
       settings: async (_message, sender) => {
         this.check(sender, pages)
@@ -566,12 +639,15 @@ export class Background {
         await this.needOpen()
         const saved = await core.saveSettings(settings)
         await mirrorPrefs(saved)
+        await mirrorPasskeyPrefs(saved)
+        await syncPasskeyScripts()
         // The idle time may be another now
         await this.d.autoLock.used()
         return saved
       },
       allSitesGranted: async (_message, sender) => {
         this.check(sender, pages)
+        await syncPasskeyScripts()
         return syncContentScripts()
       },
 
@@ -583,12 +659,43 @@ export class Background {
       pendingSave: async ({ tabId }, sender): Promise<PendingSave | null> => {
         this.check(sender, menuAndPopup)
         this.authorizeTab(sender, tabId)
-        const pending = (await tabs.get(tabId)).pending
-        return pending === undefined ? null : this.offerFor(pending)
+        // A tab may hold a sent login, card and identity: the newest is the one the prompt shows
+        return (await this.offersIn(tabId))[0]?.offer ?? null
       },
-      answerSave: async ({ tabId, save, never }, sender) => {
+      answerSave: async ({ tabId, save, never, card, identity }, sender) => {
         this.check(sender, menuAndPopup)
         this.authorizeTab(sender, tabId)
+        // The answer says which offer it is for, and only that one is acted on
+        if (card === true) {
+          const sent = (await tabs.get(tabId)).pendingCard
+          if (sent === undefined) return
+          const offered = (await offerForCard(core, sent, now())) !== null
+          await tabs.update(tabId, (state) => {
+            delete state.pendingCard
+          })
+          if (offered && never === true) await neverSave(sent.host)
+          if (offered && save) {
+            await this.needOpen()
+            await saveCard(core, sent)
+            await this.changed()
+          }
+          return
+        }
+        if (identity === true) {
+          const sent = (await tabs.get(tabId)).pendingIdentity
+          if (sent === undefined) return
+          const offered = (await offerForIdentity(core, sent, now())) !== null
+          await tabs.update(tabId, (state) => {
+            delete state.pendingIdentity
+          })
+          if (offered && never === true) await neverSave(sent.host)
+          if (offered && save) {
+            await this.needOpen()
+            await saveIdentityFrom(core, sent)
+            await this.changed()
+          }
+          return
+        }
         const pending = (await tabs.get(tabId)).pending
         if (pending === undefined) return
         await tabs.update(tabId, (state) => {
@@ -597,6 +704,94 @@ export class Background {
         if (never === true) await neverSave(pending.host)
         if (save) await this.save(pending)
       },
+
+      // Added by unlock: the credentials that open the vault beside its password
+      ...passkeyUnlockHandlers(this.d, {
+        check: (sender, allowed) => this.check(sender, allowed),
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        opened: () => this.opened(),
+      }),
+      // Shared spaces (docs/plans/add-spaces.md)
+      ...spacePageHandlers(this.d, {
+        check: (sender, allowed) => this.check(sender, allowed),
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        changed: () => this.changed(),
+      }),
+      // Added by tools: docs/plans/add-vault-tools.md
+      ...toolsHandlers({
+        d: this.d,
+        check: (sender, allowed) => this.check(sender, allowed),
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        changed: () => this.changed(),
+      }),
+      // Added by sends (begin)
+      ...sendsHandlers({
+        core,
+        clipboard: this.d.clipboard,
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        clipboardSeconds: () => this.clipboardSeconds(),
+        changed: () => this.changed(),
+        now: () => this.d.now(),
+        onLock: (forget) => {
+          this.d.vault.forgetters.add(forget)
+        },
+      }),
+      // Added by sends (end)
+      // Keys, contacts and the PGP tools (keys.ts)
+      ...keysPageHandlers(this.d, {
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        changed: () => this.changed(),
+      }),
+      // Passkeys (docs/plans/add-passkeys.md)
+      passkeys: async (_message, sender) => {
+        this.check(sender, pages)
+        await this.needOpen()
+        await this.touch()
+        return core.passkeys()
+      },
+      deletePasskey: async ({ id }, sender) => {
+        this.check(sender, pages)
+        await this.needOpen()
+        await core.deletePasskey(id)
+        await this.changed()
+      },
+      passkeyHere: async ({ host }, sender) => {
+        this.check(sender, pages)
+        return isOffHere(host)
+      },
+      passkeyHereSet: async ({ host, off }, sender) => {
+        this.check(sender, pages)
+        await setOffHere(host, off)
+      },
+      passkeyPrompt: async ({ tabId, token }, sender) => {
+        this.check(sender, menuOnly)
+        this.authorizeTab(sender, tabId)
+        return this.passkeys.prompt(tabId, token)
+      },
+      passkeyAnswer: async ({ tabId, token, action, passkeyId }, sender) => {
+        this.check(sender, menuOnly)
+        this.authorizeTab(sender, tabId)
+        await this.passkeys.answer(tabId, token, action, passkeyId)
+      },
+      passkeyChoose: async ({ tabId, frameId, fieldId, passkeyId }, sender) => {
+        this.check(sender, menuOnly)
+        await this.authorizeMenu(sender, tabId, frameId, fieldId)
+        const documentId = (await tabs.get(tabId)).frames[frameId]?.documentId
+        await this.passkeys.choose(tabId, frameId, documentId, passkeyId)
+      },
+      // Added by transfer: the transfer tab's import and export (transfer.ts)
+      ...transferHandlers({
+        core,
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        opened: () => this.opened(),
+        changed: () => this.changed(),
+      }),
     }
   }
 
@@ -612,18 +807,25 @@ export class Background {
     const host = frame.address === null ? null : hostOf(frame.address)
     if (!state.unlocked || frame.address === null)
       return { state, match: unknownMatch(host ?? ''), logins: [], codes: [], field: kind }
+    if (field.kind === 'card' || field.kind === 'identity')
+      return this.formView(tabId, frameId, frame.address, state, kind, field.kind)
     const match = await siteMatch(core, frame.address)
     const [allLogins, allCodes] = await Promise.all([core.logins(), core.codes()])
     const offered = match.logins.length + match.codes.length > 0
+    // The picker lists every login, and a password a grant hides is not to be put on a site the person picks
+    const hidden = offered ? [] : ((await core.hiddenLoginIds?.()) ?? [])
     // The note stays in the vault and the popup: the menu is a page of the site's frame and lists names only
     const logins: MenuLogin[] = (
-      offered ? allLogins.filter((login) => match.logins.includes(login.id)) : allLogins
+      offered
+        ? allLogins.filter((login) => match.logins.includes(login.id))
+        : allLogins.filter((login) => !hidden.includes(login.id))
     ).map(({ note: _note, ...rest }) => rest)
     const codes: CodeView[] = offered
       ? allCodes.filter((code) => match.codes.includes(code.id))
       : allCodes
     const view: MenuView = { state, match, logins, codes, field: kind }
     if (['signedOut', 'sessionEnded'].includes(state.sync?.problem ?? '')) view.signInAgain = true
+    await this.passkeys.addTo(view, tabId, frameId, frame.documentId)
     if (field.kind === 'newPassword') {
       const siteRules = field.rules
       view.suggestions = [
@@ -631,6 +833,65 @@ export class Background {
         await core.generate({ mode: 'passphrase', words: 5, ...(siteRules ? { siteRules } : {}) }),
       ]
     }
+    return view
+  }
+
+  /**
+   * The menu's list on a card or identity field (docs/plans/add-items.md): the items by name, pinned first, and where they would
+   * fill. A frame other than the tab's top frame, or an http one, is filled only after the person confirms, and the menu says so.
+   */
+  private async formView(
+    tabId: number,
+    frameId: number,
+    address: string,
+    state: VaultState,
+    kind: MenuView['field'],
+    which: 'card' | 'identity',
+  ): Promise<MenuView> {
+    const { core } = this.d
+    const url = new URL(address)
+    const top = frameId === 0
+    const secure = url.protocol === 'https:'
+    const tabUrl = top ? undefined : (await chrome.tabs.get(tabId).catch(() => undefined))?.url
+    const topSite = tabUrl === undefined ? null : hostOf(tabUrl)
+    const form: FormGate = {
+      origin: url.origin,
+      top,
+      secure,
+      confirm: !(top && secure),
+      ...(topSite === null ? {} : { topSite }),
+    }
+    const view: MenuView = {
+      state,
+      match: unknownMatch(hostOf(address) ?? ''),
+      logins: [],
+      codes: [],
+      field: kind,
+      form,
+    }
+    const first = <T extends { pinned: boolean; order: number }>(items: T[]): T[] =>
+      [...items].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.order - b.order)
+    if (which === 'card')
+      view.cards = first(await core.cards()).map((card) => ({
+        id: card.id,
+        name: card.name,
+        brand: card.brand,
+        lastFour: card.lastFour,
+        expMonth: card.expMonth,
+        expYear: card.expYear,
+        expired: card.expired,
+        cardholder: card.cardholder,
+        pinned: card.pinned,
+      }))
+    else
+      view.identities = first(await core.identities()).map((identity) => ({
+        id: identity.id,
+        name: identity.name,
+        fullName: identity.fullName,
+        email: identity.email,
+        company: identity.company,
+        pinned: identity.pinned,
+      }))
     return view
   }
 
@@ -696,6 +957,40 @@ export class Background {
         }, promptAfterMs)
       },
 
+      cardSent: async (sent, sender) => {
+        const address = frameAddress(sender)
+        const host = address === null ? null : hostOf(address)
+        if (address === null || host === null) return
+        // A full number and a code are never kept while the vault is locked
+        if (!(await this.d.core.state()).unlocked) return
+        if (!(await readPrefs()).offerToSave) return
+        const pending = pendingCardOf(sent, { frameId: sender.frameId, address, host }, now())
+        if (pending === null) return
+        await tabs.update(sender.tabId, (state) => {
+          state.pendingCard = pending
+        })
+        // As for a login: a page that doesn't go on to another is asked soon, one that does when it has loaded
+        setTimeout(() => {
+          if (!this.loading.has(sender.tabId)) void this.promptIfDue(sender.tabId)
+        }, promptAfterMs)
+      },
+
+      identitySent: async (sent, sender) => {
+        const address = frameAddress(sender)
+        const host = address === null ? null : hostOf(address)
+        if (address === null || host === null) return
+        if (!(await this.d.core.state()).unlocked) return
+        if (!(await readPrefs()).offerToSave) return
+        const pending = pendingIdentityOf(sent, { frameId: sender.frameId, address, host }, now())
+        if (pending === null) return
+        await tabs.update(sender.tabId, (state) => {
+          state.pendingIdentity = pending
+        })
+        setTimeout(() => {
+          if (!this.loading.has(sender.tabId)) void this.promptIfDue(sender.tabId)
+        }, promptAfterMs)
+      },
+
       openMenu: async ({ fieldId }, sender) => {
         const state = await tabs.get(sender.tabId)
         if (!state.frames[sender.frameId]?.fields.some((field) => field.id === fieldId))
@@ -705,6 +1000,11 @@ export class Background {
         })
         await this.touch()
       },
+
+      // Passkeys (docs/plans/add-passkeys.md)
+      passkeyBegin: async (message, sender) => this.passkeys.begin(sender, message),
+      passkeyCancel: async ({ id }, sender) => this.passkeys.cancel(sender, id),
+      passkeyStatus: async (_message, sender) => ({ active: await this.passkeys.status(sender) }),
     }
   }
 
@@ -754,7 +1054,11 @@ export class Background {
     if (same.length === 0) return { site, username: pending.username }
     for (const login of same)
       if ((await core.revealLogin(login.id)).password === pending.password) return null
-    return { site, username: pending.username, updateOf: same[0].id }
+    // A login of a space the person may only view is not theirs to update (docs/plans/add-spaces.md)
+    const editable = same.filter((login) => login.space?.canEdit !== false)
+    return editable[0] === undefined
+      ? null
+      : { site, username: pending.username, updateOf: editable[0].id }
   }
 
   /** Saves or updates, from what the vault holds now and not from what the prompt said. */
@@ -787,23 +1091,73 @@ export class Background {
     await this.changed()
   }
 
-  /** The form was sent and the page has gone on (or gone quiet): "Save to Kemlock?" if it is due. */
-  private async promptIfDue(tabId: number): Promise<void> {
-    const { tabs } = this.d
-    const pending = (await tabs.get(tabId)).pending
-    if (pending === undefined || pending.prompted === true) return
-    // A first step with the username alone waits for the password
-    if (this.d.now() - pending.at > keepMs || pending.password === '') return
-    const state = await this.d.core.state()
-    if (!state.unlocked) return
-    if ((await this.offerFor(pending)) === null) {
-      await tabs.update(tabId, (s) => {
-        delete s.pending
-      })
-      return
+  /**
+   * The offers a tab holds as they stand now, newest first: a sent login, card and identity the vault has something to say to. One
+   * that has waited too long, or that the vault already holds, is dropped. Nothing is dropped, or offered, while the vault is
+   * locked: locking has cleared them already.
+   */
+  private async offersIn(tabId: number): Promise<Offer[]> {
+    const { tabs, core, now } = this.d
+    if (!(await core.state()).unlocked) return []
+    const held = await tabs.get(tabId)
+    const offers: Offer[] = []
+    const drop: ('pending' | 'pendingCard' | 'pendingIdentity')[] = []
+    if (held.pending !== undefined) {
+      // A first step with the username alone waits for the password
+      if (now() - held.pending.at > keepMs) drop.push('pending')
+      else if (held.pending.password !== '') {
+        const offer = await this.offerFor(held.pending)
+        if (offer === null) drop.push('pending')
+        else
+          offers.push({
+            kind: 'login',
+            at: held.pending.at,
+            prompted: held.pending.prompted === true,
+            offer,
+          })
+      }
     }
-    await tabs.update(tabId, (s) => {
-      if (s.pending !== undefined) s.pending.prompted = true
+    if (held.pendingCard !== undefined) {
+      const offer = await offerForCard(core, held.pendingCard, now())
+      if (offer === null) drop.push('pendingCard')
+      else
+        offers.push({
+          kind: 'card',
+          at: held.pendingCard.at,
+          prompted: held.pendingCard.prompted === true,
+          offer,
+        })
+    }
+    if (held.pendingIdentity !== undefined) {
+      const offer = await offerForIdentity(core, held.pendingIdentity, now())
+      if (offer === null) drop.push('pendingIdentity')
+      else
+        offers.push({
+          kind: 'identity',
+          at: held.pendingIdentity.at,
+          prompted: held.pendingIdentity.prompted === true,
+          offer,
+        })
+    }
+    if (drop.length > 0)
+      await tabs.update(tabId, (state) => {
+        for (const key of drop) delete state[key]
+      })
+    return offers.sort((a, b) => b.at - a.at)
+  }
+
+  /** A form was sent and the page has gone on (or gone quiet): the prompt for the newest offer not asked yet, if there is one. */
+  private async promptIfDue(tabId: number): Promise<void> {
+    const next = (await this.offersIn(tabId)).find((offer) => !offer.prompted)
+    if (next === undefined) return
+    await this.d.tabs.update(tabId, (state) => {
+      const held =
+        next.kind === 'login'
+          ? state.pending
+          : next.kind === 'card'
+            ? state.pendingCard
+            : state.pendingIdentity
+      if (held !== undefined) held.prompted = true
     })
     const message: ToContent = { kind: 'savePrompt' }
     await chrome.tabs.sendMessage(tabId, message, { frameId: 0 }).catch(() => undefined)
@@ -817,6 +1171,7 @@ export class Background {
   async setup(): Promise<void> {
     await createMenus()
     await syncContentScripts()
+    await syncPasskeyScripts().catch(() => false)
   }
 
   async onAlarm(alarm: { name: string }): Promise<void> {
@@ -824,6 +1179,14 @@ export class Background {
       await this.d.autoLock.alarm(alarm.name)
     await this.d.sync.alarm(alarm.name)
     await this.d.clipboard.alarm(alarm.name)
+    await this.account.alarm(alarm.name)
+    // What a tab kept to offer to save does not outlast the offer (a card is a full number and a code)
+    await this.d.tabs.sweep(this.d.now())
+  }
+
+  /** A notification about a device waiting for approval was clicked. */
+  onNotificationClicked(id: string): Promise<void> {
+    return this.account.notificationClicked(id)
   }
 
   onIdle(state: string): Promise<void> {
@@ -834,9 +1197,14 @@ export class Background {
     if (change.status === 'loading') {
       this.loading.add(tabId)
       // Another page: what its frames reported before is not its any more
-      if (change.url !== undefined) await this.d.tabs.forgetFrames(tabId)
+      if (change.url !== undefined) {
+        await this.d.tabs.forgetFrames(tabId)
+        // Requests of a document that is gone are over; a single-page site's, whose document stays, are not
+        await this.passkeys.reap(tabId)
+      }
     } else if (change.status === 'complete') {
       this.loading.delete(tabId)
+      await this.passkeys.reap(tabId)
       void this.refreshBadge(tabId)
       await this.promptIfDue(tabId)
     }
@@ -849,11 +1217,13 @@ export class Background {
   async onTabRemoved(tabId: number): Promise<void> {
     this.loading.delete(tabId)
     await this.d.tabs.remove(tabId)
+    await this.passkeys.forgetTab(tabId)
   }
 
   /** The permissions changed: the content script follows the access to all sites. */
   async onPermissionsChanged(): Promise<void> {
     await syncContentScripts()
+    await syncPasskeyScripts().catch(() => false)
   }
 
   /** A right-click menu item was used on an editable field. */
@@ -887,6 +1257,48 @@ export class Background {
     }
   }
 
+  /**
+   * Fill card or Fill identity on a field: the card fields of that frame, or the identity fields of it, as the menu would offer
+   * them. With one card (or identity) it fills, under the frame gate (decision 1); otherwise, or when the gate asks the person,
+   * it opens the menu on the field.
+   */
+  private async rightClickForm(
+    action: 'card' | 'identity',
+    tabId: number,
+    frameId: number,
+    target: ContextTarget,
+    unlocked: boolean,
+  ): Promise<void> {
+    const { core, tabs } = this.d
+    const fields = ((await tabs.get(tabId)).frames[frameId]?.fields ?? []).filter(
+      (field) => field.kind === action,
+    )
+    // The field right-clicked, when it is one of the form's; else the form's first
+    const own = fields.find((field) => field.id === target.fieldId) ?? fields[0]
+    if (own === undefined) return
+    const open = () =>
+      chrome.tabs.sendMessage(tabId, { kind: 'openMenu', fieldId: own.id } satisfies ToContent, {
+        frameId,
+      })
+    if (!unlocked) return void (await open())
+    await this.touch()
+    try {
+      const items = action === 'card' ? await core.cards() : await core.identities()
+      if (items.length === 1) {
+        const base = { tabId, frameId, fieldId: own.id }
+        return await this.filler.fill(
+          action === 'card'
+            ? { ...base, cardId: items[0].id }
+            : { ...base, identityId: items[0].id },
+          false,
+        )
+      }
+    } catch {
+      // The gate asked for the person's confirmation, or the page went on: the menu lets them choose
+    }
+    await open()
+  }
+
   private async rightClick(
     action: MenuAction,
     tabId: number,
@@ -911,6 +1323,8 @@ export class Background {
           kind: target.kind,
           ...(target.boxes === undefined ? {} : { boxes: target.boxes }),
           ...(target.rules === undefined ? {} : { rules: target.rules }),
+          ...(target.part === undefined ? {} : { part: target.part }),
+          ...(target.group === undefined ? {} : { group: target.group }),
         },
       ]
       state.frames[frameId] = frame
@@ -923,6 +1337,8 @@ export class Background {
           frameId,
         },
       )
+    if (action === 'card' || action === 'identity')
+      return this.rightClickForm(action, tabId, frameId, target, (await core.state()).unlocked)
     if (!(await core.state()).unlocked) return void (await openMenu())
     await this.touch()
     const match = await siteMatch(core, address)
@@ -952,6 +1368,8 @@ export interface BackgroundOptions {
   now?: () => number
   /** Where the clipboard is: the offscreen document (Chrome, Edge) unless told otherwise (Firefox). */
   clipboard?: ClipboardBackend
+  /** Whether the screen is locked, from a browser with no `idle` API to hear it from (Safari). */
+  screenLocked?: () => Promise<boolean>
 }
 
 /** Builds the background over the core and takes an open vault back from the session. */
@@ -968,7 +1386,9 @@ export async function createBackground(
   const clipboard = new ClipboardManager(backend, now)
   const vault = new VaultSession(core, toolbar, sync, tabs)
   const autoLock = new AutoLock(
-    chromeAutoLockHost,
+    options.screenLocked === undefined
+      ? chromeAutoLockHost
+      : { ...chromeAutoLockHost, screenLocked: options.screenLocked },
     async () => {
       try {
         const settings = await core.settings()

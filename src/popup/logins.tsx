@@ -7,6 +7,7 @@ import { Icon } from '../shared/ui/icons'
 import { useCopy, useFlash } from './copy'
 import { hostOf, healthTags, type HealthTag } from './format'
 import { ask } from './send'
+import { SpaceBadge } from './spaces'
 
 const tagText: Record<HealthTag, string> = {
   breached: 'popup_tagBreached',
@@ -38,7 +39,7 @@ export function LoginRow(props: {
         class="item-main hov"
         aria-label={t('popup_copyPasswordOf', login.name)}
         title={t('popup_copyPasswordOf', login.name)}
-        disabled={!login.hasPassword}
+        disabled={!login.hasPassword || login.space?.passwordHidden === true}
         onClick={() =>
           void copy('password', login.id).then((ok) => {
             if (ok) flash()
@@ -49,6 +50,7 @@ export function LoginRow(props: {
         <span class="grow lines">
           <span class="name ellipsis">{login.name}</span>
           {detail !== '' && <span class="label ellipsis">{detail}</span>}
+          <SpaceBadge space={login.space} />
         </span>
         <span class="value">
           <span class="secret-dots" aria-hidden="true">
@@ -106,6 +108,13 @@ export function PasswordLine(props: { login: LoginView; variant?: 'inline' | 'de
     return (
       <div class={`password-line ${variant}`}>
         <span class="muted">{t('popup_noPassword')}</span>
+      </div>
+    )
+  // A grant that hides passwords: no Show and no Copy; filling still works (docs/plans/add-spaces.md)
+  if (login.space?.passwordHidden === true)
+    return (
+      <div class={`password-line ${variant}`}>
+        <span class="muted">{t('spaces_passwordHidden')}</span>
       </div>
     )
 

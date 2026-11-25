@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks'
 import type { SyncStatus } from '../shared/api'
 import { Button, Confirm, Group, Notice, Section, useLoad, useToast } from '../shared/ui/components'
 import { errorMessage, formatDateTime, problemMessage, t } from '../shared/ui/i18n'
+import { AccountActions } from './account-actions'
 import { openSetup } from './links'
 import { ask } from './send'
 import { placeNames, rememberPlace, signInProblems } from './sync-state'
@@ -140,6 +141,8 @@ export function SyncCard() {
         </dl>
 
         <div class="sync-body">
+          <AccountActions place={shown.place} problem={shown.problem} />
+
           {(shown.loginsNotSynced === true || shown.place === 'vaultwarden') && (
             <Notice>{t('popup_loginsNotSynced')}</Notice>
           )}

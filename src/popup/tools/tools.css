@@ -1,0 +1,202 @@
+/* The vault tools' pages (docs/plans/add-vault-tools.md): tags, order, backup codes, duplicates and breaches. They use the popup's own
+   tokens and classes; what is here is only what those pages add. */
+
+/* The tag editor */
+
+.tag-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-editor-label {
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--accentSoft);
+  box-shadow: inset 0 0 0 1px var(--accentLine);
+  color: var(--accentText);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* 28px: more than the 24px WCAG 2.2 asks of a target */
+.tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tag-remove:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.tag-input {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line2);
+  border-radius: 15px;
+  background: var(--paper);
+}
+
+.tag-input:focus-within {
+  border-color: var(--accentLine);
+}
+
+.tag-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.tag-suggestions {
+  padding: 0;
+}
+
+/* Tags page rows */
+
+.tag-row {
+  padding: 4px 8px 4px 14px;
+}
+
+.tag-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.pad-row {
+  padding: 8px 8px 8px 14px;
+}
+
+/* Reorder */
+
+.reorder-list {
+  gap: 4px;
+}
+
+.reorder-row {
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.reorder-row.dragging {
+  opacity: 0.5;
+}
+
+.reorder-row[draggable='true'] {
+  cursor: grab;
+}
+
+.drag-handle {
+  display: inline-flex;
+  flex: none;
+  color: var(--faint);
+}
+
+/* Backup codes */
+
+.backup-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.backup-code-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  border-top: 1px solid var(--line);
+}
+
+.backup-code-row:first-child {
+  border-top: 0;
+}
+
+.backup-code-row .code-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.backup-code-row .code-text.used {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.backup-code-row .confirm {
+  flex: 1;
+}
+
+.code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.code-chip {
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: var(--raised);
+  font-size: 12px;
+}
+
+/* Duplicates and breaches */
+
+.dup-reason,
+.breach-title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.dup-group,
+.breach-card {
+  gap: 10px;
+}
+
+.choice {
+  cursor: pointer;
+}
+
+.choice input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accentText);
+}

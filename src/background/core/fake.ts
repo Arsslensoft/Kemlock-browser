@@ -2,20 +2,36 @@
 // the `__FAKE_CORE__` define): a vault with a password, a count of wrong passwords, codes that
 // compute real TOTP, logins matched by an approximation of the registrable domain, the generator,
 // health and a pretend sync. It follows `CoreApi`'s contract, not the app's formats.
+import type { AccountRequest, AccountResult } from '../../shared/account'
+import { FakeAccount } from './fake-account'
 import type {
   BackupCodeView,
+  CardFull,
+  CardInput,
+  CardView,
   CodeType,
   CodeView,
   CoreApi,
   GeneratedPassword,
   GeneratorOptions,
   HealthReport,
+  IdentityFull,
+  IdentityInput,
+  IdentityView,
   KemlockSignIn,
   LiveCode,
   LoginHealth,
   LoginInput,
   LoginSecret,
   LoginView,
+  NewPasskey,
+  PasskeyEnrolOptions,
+  PasskeyUnlockAnswer,
+  PasskeyUnlockInfo,
+  PasskeyUnlockResult,
+  NoteFull,
+  NoteInput,
+  NoteView,
   Settings,
   SignInStep,
   RemovalItem,
@@ -30,6 +46,30 @@ import type {
   VaultwardenSignIn,
   WebdavSignIn,
 } from '../../shared/api'
+import { FakeSends } from './fake-sends'
+import type {
+  NewSendInput,
+  ReceivedSendView,
+  SendDetail,
+  SendPatch,
+  SendResult,
+  SendsListing,
+} from '../../shared/sends'
+
+import { forgetPasskeys, passkeysOf } from './fake-passkey'
+import { KeysFake } from './fake-keys'
+import type { ToolsCoreApi } from '../../shared/tools-api'
+import { fakeToolsMethods } from './fake-tools'
+import type {
+  CreatedPasskey,
+  PasskeyCreationOptions,
+  PasskeyCredentialJson,
+  PasskeyView,
+} from '../../shared/passkeys'
+import * as fakePasskeys from './fake-passkeys'
+import type { StoredPasskey } from './fake-passkeys'
+import { FakeTransfer } from './fake-transfer'
+import { emptyItems, FakeItems, type ItemsDisk } from './fake-items'
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Codes                                                                                             */
@@ -257,7 +297,7 @@ export function strengthOf(password: string): number {
 /* The fake's disk and parts                                                                         */
 /* ----------------------------------------------------------------------------------------------- */
 
-interface StoredLogin {
+export interface StoredLogin {
   id: string
   name: string
   username: string
@@ -270,9 +310,10 @@ interface StoredLogin {
   passwordChangedAt?: number
   previous: string[]
   ignored: boolean
+  pinned?: boolean
 }
 
-interface StoredCode {
+export interface StoredCode {
   id: string
   issuer: string
   account: string
@@ -287,13 +328,22 @@ interface StoredCode {
   onSecurityKey: boolean
   websites: string[]
   loginId?: string
+  pinned?: boolean
+  /** The service gives no backup codes (the app's `noBackupCodes`). */
+  noBackupCodes?: boolean
+  /** Breaches marked dealt with. */
+  breachesDismissed?: string[]
 }
 
-interface StoredBackup {
+export interface StoredBackup {
   serviceId: string
   issuer: string
   codes: string[]
   used: number
+  /** Which codes are used, when the tools changed one by index; `used` is its count. */
+  flags?: boolean[]
+  note?: string
+  breachesDismissed?: string[]
 }
 
 /** What survives a restart of the background: the same disk given to a new `FakeCore`. */
@@ -308,10 +358,22 @@ export interface FakeDisk {
   settings: Settings
   recent: GeneratedPassword[]
   picks: Record<string, string[]>
+  /** Added by passkeys. */
+  passkeys?: StoredPasskey[]
   sync: SyncStatus | null
   /** The sealed keys of the open vault: what the browser's session storage would hold. */
   session: string | null
   nextId: number
+  /** What the vault tools keep (src/background/core/fake-tools.ts). */
+  tools?: {
+    refreshOn?: boolean
+    dismissed?: string[]
+    merges?: { id: string; at: number; label: string; kept: unknown; removed: unknown[] }[]
+    matching?: boolean
+    listCheckedAt?: number
+  }
+  /** Notes, cards and identities (fake-items.ts). */
+  items: ItemsDisk
 }
 
 export const defaultSettings: Settings = {
@@ -335,9 +397,11 @@ export function emptyDisk(): FakeDisk {
     settings: { ...defaultSettings },
     recent: [],
     picks: {},
+    passkeys: [],
     sync: null,
     session: null,
     nextId: 1,
+    items: emptyItems(),
   }
 }
 
@@ -378,6 +442,8 @@ const parseOtpauth = (link: string) => {
   }
 }
 
+// The vault tools' methods join the class through the interface of the same name at the end of this file
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class FakeCore implements CoreApi {
   readonly disk: FakeDisk
   private unlocked = false
@@ -397,10 +463,59 @@ export class FakeCore implements CoreApi {
   waysStep: SignInStep | undefined
   /** Calls made, by name, for the tests. */
   readonly calls: string[] = []
+  /** Sends (src/background/core/fake-sends.ts): its Sends, and what a test plants in it. */
+  readonly sends = new FakeSends({
+    need: () => void this.need(),
+    place: () => this.disk.sync?.place ?? null,
+    now: () => this.now(),
+  })
+
+  // Added by transfer (begin): import and export (fake-transfer.ts)
+  private readonly transfer = new FakeTransfer({
+    need: () => this.need(),
+    now: () => this.now(),
+    id: (prefix) => this.id(prefix),
+    addCode: (link) => void this.newCode(link, []),
+    hasCode: (link) => {
+      const secret = parseOtpauth(link).secret
+      return this.need().codes.some((c) => bytesEqual(c.secret, secret))
+    },
+    clearCodes: () => {
+      const disk = this.need()
+      disk.codes = []
+      for (const login of disk.logins) login.codeId = undefined
+    },
+    codeLink: (index) => {
+      const code = this.need().codes[index]
+      const issuer = encodeURIComponent(code.issuer)
+      const scheme = code.type === 'hotp' ? 'hotp' : 'totp'
+      return `otpauth://${scheme}/${issuer}:${encodeURIComponent(code.account)}?secret=${FakeTransfer.secretOf(code.secret)}&issuer=${issuer}`
+    },
+  })
+  transferOpen: CoreApi['transferOpen'] = (data) => this.transfer.transferOpen(data)
+  transferOpenQr: CoreApi['transferOpenQr'] = (images) => this.transfer.transferOpenQr(images)
+  transferPreview: CoreApi['transferPreview'] = (token, password) =>
+    this.transfer.transferPreview(token, password)
+  transferPreviewKit: CoreApi['transferPreviewKit'] = (token, pieces) =>
+    this.transfer.transferPreviewKit(token, pieces)
+  transferPlan: CoreApi['transferPlan'] = (token, options) =>
+    this.transfer.transferPlan(token, options)
+  transferApply: CoreApi['transferApply'] = (token, options) =>
+    this.transfer.transferApply(token, options)
+  transferCancel: CoreApi['transferCancel'] = (token) => this.transfer.transferCancel(token)
+  transferExportInfo: CoreApi['transferExportInfo'] = () => this.transfer.transferExportInfo()
+  transferExport: CoreApi['transferExport'] = (request) => this.transfer.transferExport(request)
+  transferExportQr: CoreApi['transferExportQr'] = (request) =>
+    this.transfer.transferExportQr(request)
+  // End of added by transfer
+
+  /** The account's own calls (devices, approvals, emergency access, the Recovery Kit, second steps, the move). */
+  readonly accounts: FakeAccount
 
   constructor(options: FakeCoreOptions = {}) {
     this.disk = options.disk ?? emptyDisk()
     this.now = options.now ?? (() => Date.now())
+    this.accounts = new FakeAccount(this.now)
     if (options.sample === true && !this.disk.exists) this.seed()
   }
 
@@ -482,6 +597,7 @@ export class FakeCore implements CoreApi {
     if (this.disk.exists) throw new FakeError('exists')
     Object.assign(this.disk, emptyDisk(), { exists: true, password })
     this.unlocked = true
+    passkeysOf(this.disk, this.now).passwordUsed()
   }
 
   async unlock(password: string): Promise<UnlockResult> {
@@ -491,6 +607,7 @@ export class FakeCore implements CoreApi {
     if (password === this.disk.password) {
       this.disk.wrongPasswords = 0
       this.unlocked = true
+      passkeysOf(this.disk, this.now).passwordUsed()
       return { ok: true, wrongPasswords: before }
     }
     this.disk.wrongPasswords = before + 1
@@ -501,11 +618,14 @@ export class FakeCore implements CoreApi {
   async lock(): Promise<void> {
     this.log('lock')
     this.unlocked = false
+    this.sends.unload()
+    this.transfer.forget()
     this.disk.session = null
   }
 
   async removeVault(): Promise<void> {
     this.log('removeVault')
+    forgetPasskeys(this.disk)
     Object.assign(this.disk, emptyDisk())
     this.unlocked = false
   }
@@ -535,6 +655,7 @@ export class FakeCore implements CoreApi {
       period: code.period,
       tags: [...code.tags],
       order: code.order,
+      ...(code.pinned === true ? { pinned: true } : {}),
       onSecurityKey: code.onSecurityKey,
       websites: [...code.websites],
       ...(code.loginId === undefined ? {} : { loginId: code.loginId }),
@@ -610,6 +731,7 @@ export class FakeCore implements CoreApi {
       websites: [...login.websites],
       tags: [...login.tags],
       order: login.order,
+      ...(login.pinned === true ? { pinned: true } : {}),
       ...(login.note === undefined ? {} : { note: login.note }),
       hasPassword: login.password !== '',
       strength: strengthOf(login.password),
@@ -691,6 +813,7 @@ export class FakeCore implements CoreApi {
       issuer: b.issuer,
       total: b.codes.length,
       left: b.codes.length - b.used,
+      low: b.codes.length > 0 && b.codes.length - b.used <= 2,
     }))
   }
 
@@ -699,7 +822,10 @@ export class FakeCore implements CoreApi {
     const backup = this.need().backups.find((b) => b.serviceId === serviceId)
     if (backup === undefined || backup.used >= backup.codes.length)
       throw new FakeError('noBackupCodes')
-    return backup.codes[backup.used++]
+    const index = backup.flags === undefined ? backup.used : backup.flags.indexOf(false)
+    if (backup.flags !== undefined) backup.flags[index] = true
+    backup.used++
+    return backup.codes[index]
   }
 
   async addCode(otpauth: string, website?: string, linkTo?: string): Promise<CodeView> {
@@ -746,6 +872,69 @@ export class FakeCore implements CoreApi {
     }
   }
 
+  /* Notes, cards and identities (fake-items.ts) --------------------------------------------- */
+
+  private items(): FakeItems {
+    const disk = this.need()
+    return new FakeItems(() => disk.items, this.now, (word) => new FakeError(word))
+  }
+
+  async notes(): Promise<NoteView[]> {
+    return this.items().notes()
+  }
+
+  async revealNote(id: string): Promise<NoteFull> {
+    return this.items().revealNote(id)
+  }
+
+  async saveNote(id: string | null, input: NoteInput): Promise<NoteView> {
+    this.log('saveNote')
+    return this.items().saveNote(id, input)
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    this.log('deleteNote')
+    return this.items().deleteNote(id)
+  }
+
+  async cards(): Promise<CardView[]> {
+    return this.items().cards()
+  }
+
+  async revealCard(id: string): Promise<CardFull> {
+    this.log('revealCard')
+    return this.items().revealCard(id)
+  }
+
+  async saveCard(id: string | null, input: CardInput): Promise<CardView> {
+    this.log('saveCard')
+    return this.items().saveCard(id, input)
+  }
+
+  async deleteCard(id: string): Promise<void> {
+    this.log('deleteCard')
+    return this.items().deleteCard(id)
+  }
+
+  async identities(): Promise<IdentityView[]> {
+    return this.items().identities()
+  }
+
+  async revealIdentity(id: string): Promise<IdentityFull> {
+    this.log('revealIdentity')
+    return this.items().revealIdentity(id)
+  }
+
+  async saveIdentity(id: string | null, input: IdentityInput): Promise<IdentityView> {
+    this.log('saveIdentity')
+    return this.items().saveIdentity(id, input)
+  }
+
+  async deleteIdentity(id: string): Promise<void> {
+    this.log('deleteIdentity')
+    return this.items().deleteIdentity(id)
+  }
+
   /* Remembered picks, recent passwords (the optional parts of CoreApi) ----------------------- */
 
   async rememberPick(host: string, itemId: string): Promise<void> {
@@ -769,6 +958,65 @@ export class FakeCore implements CoreApi {
     const picks = this.need().picks
     picks[host] = (picks[host] ?? []).filter((id) => id !== itemId)
     if (picks[host].length === 0) delete picks[host]
+  }
+
+  /* Passkeys (docs/plans/add-passkeys.md) ---------------------------------------------------- */
+
+  private passkeyList(): StoredPasskey[] {
+    const disk = this.need()
+    return (disk.passkeys ??= [])
+  }
+
+  async passkeys(): Promise<PasskeyView[]> {
+    return this.passkeyList().map((passkey, order) => fakePasskeys.view(passkey, order))
+  }
+
+  async deletePasskey(id: string): Promise<void> {
+    this.log('deletePasskey')
+    const list = this.passkeyList()
+    if (!list.some((passkey) => passkey.id === id)) throw new FakeError('notFound')
+    this.disk.passkeys = list.filter((passkey) => passkey.id !== id)
+  }
+
+  async checkPasskeyRp(origin: string, rpId?: string): Promise<string> {
+    return fakePasskeys.checkRp(origin, rpId)
+  }
+
+  async findPasskeys(rpId: string, allowed: string[]): Promise<PasskeyView[]> {
+    return fakePasskeys
+      .findIn(this.passkeyList(), rpId, allowed)
+      .map(({ passkey, order }) => fakePasskeys.view(passkey, order))
+  }
+
+  async createPasskey(
+    options: PasskeyCreationOptions,
+    origin: string,
+    topOrigin?: string,
+  ): Promise<CreatedPasskey> {
+    this.log('createPasskey')
+    const list = this.passkeyList()
+    const { passkey, made } = await fakePasskeys.create(
+      list,
+      options,
+      origin,
+      topOrigin,
+      this.now(),
+      this.id('passkey'),
+    )
+    list.push(passkey)
+    return made
+  }
+
+  async signPasskey(
+    id: string,
+    challenge: string,
+    origin: string,
+    topOrigin?: string,
+  ): Promise<PasskeyCredentialJson> {
+    this.log('signPasskey')
+    const passkey = this.passkeyList().find((candidate) => candidate.id === id)
+    if (passkey === undefined) throw new FakeError('notFound')
+    return fakePasskeys.sign(passkey, challenge, origin, topOrigin)
   }
 
   async recentPasswords(): Promise<GeneratedPassword[]> {
@@ -795,7 +1043,11 @@ export class FakeCore implements CoreApi {
     for (const login of logins) if (login.codeId !== undefined) codes.add(login.codeId)
     const site = registrable(host)
     const match: SiteMatch = { site, logins: logins.map((l) => l.id), codes: [...codes] }
-    if (match.logins.length === 0 && match.codes.length === 0) {
+    const passkeyIds = (disk.passkeys ?? [])
+      .filter((passkey) => host === passkey.rpId || host.endsWith(`.${passkey.rpId}`))
+      .map((passkey) => passkey.id)
+    if (passkeyIds.length > 0) match.passkeys = passkeyIds
+    if (match.logins.length === 0 && match.codes.length === 0 && passkeyIds.length === 0) {
       const known = [...disk.logins, ...disk.codes]
         .flatMap((item) => item.websites)
         .map((w) => hostOf(w))
@@ -963,6 +1215,12 @@ export class FakeCore implements CoreApi {
     }
   }
 
+  async account(request: AccountRequest): Promise<AccountResult> {
+    this.log(`account:${request.op}`)
+    this.need()
+    return this.accounts.call(request)
+  }
+
   async syncNow(): Promise<SyncStatus> {
     this.log('syncNow')
     const disk = this.need()
@@ -1020,7 +1278,142 @@ export class FakeCore implements CoreApi {
     disk.settings = { ...disk.settings, ...settings }
     return { ...disk.settings }
   }
+
+  /* Passkey unlock (added by unlock) ---------------------------------------------------------- */
+
+  async passkeyUnlockInfo(): Promise<PasskeyUnlockInfo> {
+    return passkeysOf(this.disk, this.now).info()
+  }
+
+  async passkeyUnlockPrepare(): Promise<PasskeyEnrolOptions> {
+    this.need()
+    return passkeysOf(this.disk, this.now).prepare()
+  }
+
+  async addPasskeyUnlock(input: NewPasskey): Promise<PasskeyUnlockInfo> {
+    this.log('addPasskeyUnlock')
+    const disk = this.need()
+    // Checked as an unlock is, and counted when it is wrong
+    if (input.password !== disk.password) {
+      disk.wrongPasswords += 1
+      disk.lastWrongAt = this.now()
+      throw new FakeError('wrongPassword')
+    }
+    disk.wrongPasswords = 0
+    passkeysOf(this.disk, this.now).passwordUsed()
+    return passkeysOf(this.disk, this.now).add(input)
+  }
+
+  async renamePasskeyUnlock(id: string, name: string): Promise<PasskeyUnlockInfo> {
+    this.need()
+    return passkeysOf(this.disk, this.now).rename(id, name)
+  }
+
+  async removePasskeyUnlock(id: string): Promise<PasskeyUnlockInfo> {
+    this.log('removePasskeyUnlock')
+    this.need()
+    return passkeysOf(this.disk, this.now).remove(id)
+  }
+
+  async unlockWithPasskey(answer: PasskeyUnlockAnswer): Promise<PasskeyUnlockResult> {
+    this.log('unlockWithPasskey')
+    if (!this.disk.exists) throw new FakeError('noVault')
+    const before = this.disk.wrongPasswords
+    const outcome = passkeysOf(this.disk, this.now).open(answer)
+    if (outcome !== 'opened') return { ok: false, wrongPasswords: before, reason: outcome }
+    this.disk.wrongPasswords = 0
+    this.unlocked = true
+    return { ok: true, wrongPasswords: before }
+  }
+  /* Sends (added by sends): src/background/core/fake-sends.ts does the work ------------------- */
+
+  sendsList(): Promise<SendResult<SendsListing>> {
+    return this.sends.list()
+  }
+
+  sendsGet(id: string): Promise<SendResult<SendDetail>> {
+    return this.sends.get(id)
+  }
+
+  sendsLink(id: string): Promise<SendResult<string>> {
+    return this.sends.link(id)
+  }
+
+  sendsStageFile(
+    data: string,
+    handle: string | null,
+  ): Promise<SendResult<{ handle: string; length: number }>> {
+    return this.sends.stageFile(data, handle)
+  }
+
+  sendsMake(input: NewSendInput): Promise<SendResult<{ id: string; link: string }>> {
+    this.log('sendsMake')
+    return this.sends.make(input)
+  }
+
+  sendsUpdate(id: string, patch: SendPatch): Promise<SendResult<null>> {
+    return this.sends.update(id, patch)
+  }
+
+  sendsDelete(id: string): Promise<SendResult<null>> {
+    return this.sends.delete(id)
+  }
+
+  sendsOpen(link: string, password?: string): Promise<SendResult<ReceivedSendView>> {
+    this.log('sendsOpen')
+    return this.sends.open(link, password)
+  }
+
+  sendsDownload(handle: string): Promise<SendResult<{ size: number }>> {
+    return this.sends.download(handle)
+  }
+
+  async sendsReadFile(handle: string, index: number): Promise<string> {
+    return this.sends.readFile(handle, index)
+  }
+
+  async sendsReceivedText(handle: string): Promise<string> {
+    return this.sends.receivedText(handle)
+  }
+
+  async sendsClose(handle: string): Promise<void> {
+    this.sends.close(handle)
+  }
+  // Added by keys: keys, contacts and the PGP tools, in fake-keys.ts
+  private keysState: KeysFake | undefined
+  private get keysFake(): KeysFake {
+    return (this.keysState ??= new KeysFake(
+      this.disk,
+      () => this.unlocked && this.disk.exists,
+      () => this.now(),
+    ))
+  }
+  keys: CoreApi['keys'] = () => this.keysFake.keys()
+  keyPublic: CoreApi['keyPublic'] = (id) => this.keysFake.keyPublic(id)
+  exportKey: CoreApi['exportKey'] = (args) => this.keysFake.exportKey(args)
+  saveKey: CoreApi['saveKey'] = (args) => this.keysFake.saveKey(args)
+  deleteKey: CoreApi['deleteKey'] = (id) => this.keysFake.deleteKey(id)
+  generateKey: CoreApi['generateKey'] = (args) => this.keysFake.generateKey(args)
+  previewKey: CoreApi['previewKey'] = (args) => this.keysFake.previewKey(args)
+  importKey: CoreApi['importKey'] = (args) => this.keysFake.importKey(args)
+  contacts: CoreApi['contacts'] = () => this.keysFake.contacts()
+  previewContacts: CoreApi['previewContacts'] = (args) => this.keysFake.previewContacts(args)
+  addContacts: CoreApi['addContacts'] = (args) => this.keysFake.addContacts(args)
+  saveContact: CoreApi['saveContact'] = (args) => this.keysFake.saveContact(args)
+  contactPublic: CoreApi['contactPublic'] = (id) => this.keysFake.contactPublic(id)
+  deleteContact: CoreApi['deleteContact'] = (id) => this.keysFake.deleteContact(id)
+  pgpEncrypt: CoreApi['pgpEncrypt'] = (args) => this.keysFake.pgpEncrypt(args)
+  pgpDecrypt: CoreApi['pgpDecrypt'] = (args) => this.keysFake.pgpDecrypt(args)
+  pgpSign: CoreApi['pgpSign'] = (args) => this.keysFake.pgpSign(args)
+  pgpVerify: CoreApi['pgpVerify'] = (args) => this.keysFake.pgpVerify(args)
+  sshSign: CoreApi['sshSign'] = (args) => this.keysFake.sshSign(args)
+  sshVerify: CoreApi['sshVerify'] = (args) => this.keysFake.sshVerify(args)
 }
+
+// Added by tools: the vault tools' methods (src/background/core/fake-tools.ts) join the class
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
+export interface FakeCore extends ToolsCoreApi {}
+Object.assign(FakeCore.prototype, fakeToolsMethods)
 
 const twoStepSites = new Set(['github.com', 'orbit-cloud.com'])
 const breachedPasswords = new Set(['password', '123456', 'qwerty'])

@@ -1,0 +1,130 @@
+name: Safari project
+
+# After a release: the Xcode project of the release's Safari zip, unsigned (tool/safari/convert.sh, with the defaults),
+# attached to the release for the owner to open in Xcode, sign with their own team and upload (docs/store/safari.md).
+# The Safari zip is in the release already, with its sum: the release's two builds compared it like the others. The
+# project is not reproducible, so the file has its own sum, SHA256SUMS-safari-xcode, beside it.
+#
+# It is its own workflow, started by the Release workflow finishing, so that a macOS runner's queue or trouble can never
+# hold up the next release (Release's concurrency group is one release at a time). The macOS job only builds, with
+# nothing but read access, and hands the project over as an artifact; a small Linux job with write access attaches it.
+# Started by hand with a tag, it makes the project of that release again.
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag (v1.2.3), to make its project again
+        type: string
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: safari-project-${{ github.event.workflow_run.head_sha || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  # The release tag this run is for: the one on the commit the Release workflow built, or the one given. None, when that
+  # workflow released nothing
+  find:
+    name: Find the release
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Find the tag
+        id: tag
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG}"
+          if [ -z "${tag}" ]; then
+            tag="$(git tag --points-at "${HEAD_SHA}" --list 'v*' | sort -V | tail -n 1)"
+          fi
+          if [[ "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Safari project::No release tag on this commit: nothing to make"
+          fi
+
+  build:
+    name: Xcode project (macOS)
+    needs: find
+    if: needs.find.outputs.tag != ''
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # The default branch's own tools, not the tag's: a job in the default branch's context runs no code from another ref
+      # (it could write to the cache the default branch's runs read). Only the release's zip comes from the tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The Node on the runner reads the manifest and patches the project's settings; nothing of the project depends on
+      # its version
+      - name: Make the project from the release's zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.find.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          gh release download "${TAG}" --repo "${REPO}" --pattern "kemlock-${version}-safari.zip" --dir "${RUNNER_TEMP}/download"
+          unzip -q "${RUNNER_TEMP}/download/kemlock-${version}-safari.zip" -d "${RUNNER_TEMP}/safari"
+          bash tool/safari/convert.sh "${RUNNER_TEMP}/safari" "${RUNNER_TEMP}/xcode"
+          mkdir -p files
+          ditto -c -k --sequesterRsrc --keepParent "${RUNNER_TEMP}/xcode" "files/kemlock-${version}-safari-xcode.zip"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: safari-xcode-project
+          path: files/
+          retention-days: 1
+          if-no-files-found: error
+
+  attach:
+    name: Attach the project
+    needs: [find, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: safari-xcode-project
+          path: files
+
+      # Never over a file that is there already (a run started over): the sum a person checked stays the sum of its file
+      - name: Sum it, and attach both
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.find.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" --repo "${REPO}" --json assets --jq '.assets[].name' | grep -q -- '-safari-xcode.zip$'; then
+            echo "::notice title=Safari project::${TAG} has its Xcode project already"
+            exit 0
+          fi
+          (cd files && sha256sum ./*.zip | sed 's# \./# #' > SHA256SUMS-safari-xcode)
+          cat files/SHA256SUMS-safari-xcode
+          gh release upload "${TAG}" files/*.zip files/SHA256SUMS-safari-xcode --repo "${REPO}"

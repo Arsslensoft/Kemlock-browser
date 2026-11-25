@@ -44,6 +44,10 @@ const knownErrors: Record<string, string> = {
   unsupported: 'popup_errorFailed',
   failed: 'popup_errorFailed',
   locked: 'popup_errorLocked',
+  // A card or an identity won't fill a frame or an http page without the person's confirmation in the field's menu
+  confirm: 'items_errorConfirm',
+  insecure: 'items_errorInsecure',
+  unverified: 'items_errorUnverified',
 }
 
 /** What went wrong, in words: the background's codes by name, anything else as it said it. */

@@ -26,6 +26,7 @@ export async function siteMatch(core: CoreApi, address: string | null): Promise<
     site: match.site,
     logins: [...new Set([...match.logins, ...picked.filter((id) => loginIds.has(id))])],
     codes: [...new Set([...match.codes, ...picked.filter((id) => codeIds.has(id))])],
+    ...(match.passkeys === undefined ? {} : { passkeys: match.passkeys }),
   }
   if (merged.logins.length + merged.codes.length === 0 && match.lookAlikeOf !== undefined)
     merged.lookAlikeOf = match.lookAlikeOf
