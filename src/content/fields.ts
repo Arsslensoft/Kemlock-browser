@@ -200,14 +200,15 @@ function loginCandidate(field: FieldDescription): LoginCandidate | null {
   return candidate(null, false)
 }
 
-const nothing: LoginFields = {
+/** A fresh empty answer each time: a shared one would carry what one caller changed to the next. */
+const nothing = (): LoginFields => ({
   username: null,
   password: null,
   newPasswords: [],
   focused: null,
   newPasswordMaxLength: null,
   newPasswordRules: null,
-}
+})
 
 /**
  * The login fields of a frame, by their autocomplete tokens, a password's
@@ -228,7 +229,7 @@ export function findLoginFields(fields: FieldDescription[]): LoginFields {
     roled.find((c) => c.field === focusedField) ??
     roled.find((c) => c.role !== 'username') ??
     roled.find((c) => c.role === 'username' && c.outright)
-  if (anchor === undefined) return nothing
+  if (anchor === undefined) return nothing()
 
   let passwords = candidates.filter((c) => c.role === 'password')
   let news = candidates.filter((c) => c.role === 'newPassword')
@@ -258,7 +259,7 @@ export function findLoginFields(fields: FieldDescription[]): LoginFields {
     (firstPassword >= 0 ? lastOf(before, (c) => c.role === null) : undefined)
 
   const password = passwords[0]
-  if (username === undefined && password === undefined && news.length === 0) return nothing
+  if (username === undefined && password === undefined && news.length === 0) return nothing()
   let focused: LoginRole | null = null
   if (focusedField !== undefined) {
     if (username?.field === focusedField) focused = 'username'
