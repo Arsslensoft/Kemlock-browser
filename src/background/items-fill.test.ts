@@ -503,10 +503,12 @@ describe('saving a card after a checkout', () => {
     h.mock.tabs.set(7, { id: 7, url: shop, active: true, windowId: 1 })
     await h.ok({ kind: 'cardSent', ...sentCard }, content(shop))
     await vi.advanceTimersByTimeAsync(3000)
-    await vi.advanceTimersByTimeAsync(10)
-    expect(
-      h.mock.sentToTabs.some((s) => (s.message as { kind: string }).kind === 'savePrompt'),
-    ).toBe(true)
+    // The timer starts a chain of reads (the offers, the tab's state); a slow runner may still be in it
+    await vi.waitFor(() => {
+      expect(
+        h.mock.sentToTabs.some((s) => (s.message as { kind: string }).kind === 'savePrompt'),
+      ).toBe(true)
+    })
     expect(h.mock.sentToTabs.at(-1)?.options).toMatchObject({ frameId: 0 })
   })
 
