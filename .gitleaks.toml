@@ -12,4 +12,6 @@ paths = [
   '''^test/fixtures/''',
   '''\.test\.tsx?$''',
   '''^core/test/''',
+  # The tests' stand-in core: no key in it, but its check for a pasted private key's armour line reads as one
+  '''^src/background/core/fake-keys\.ts$''',
 ]
