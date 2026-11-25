@@ -197,10 +197,12 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             mobile/assets/brand
+            mobile/assets/data
             mobile/assets/fonts
             mobile/assets/i18n
             mobile/lib/ui/theme
             mobile/test/fixtures/autofill
+            mobile/test/fixtures/websites
 
       - if: steps.app.outputs.readable == 'true'
         uses: ./.github/actions/toolchain
