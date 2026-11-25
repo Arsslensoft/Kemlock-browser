@@ -71,9 +71,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      # The default branch's own tools, not the tag's: a job in the default branch's context runs no code from another ref
+      # (it could write to the cache the default branch's runs read). Only the release's zip comes from the tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ needs.find.outputs.tag }}
           persist-credentials: false
 
       # The Node on the runner reads the manifest and patches the project's settings; nothing of the project depends on

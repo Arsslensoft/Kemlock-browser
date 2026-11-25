@@ -561,6 +561,8 @@ describe('the workflows', () => {
     expect(build).toContain('contents: read')
     expect(build).not.toContain('contents: write')
     expect(build).toContain('gh release download')
+    // It runs the default branch's tools only: code from another ref could poison the default branch's cache
+    expect(build).not.toContain('ref:')
     expect(build).toContain('timeout-minutes')
     expect(attach).toContain('runs-on: ubuntu-24.04')
     expect(attach).toContain('contents: write')
