@@ -109,11 +109,11 @@ mkdir -p "$output"
 project="$(find "$output" -name project.pbxproj -not -path '*/xcuserdata/*' -not -path '*/.build/*' | sort | head -n 1)"
 [ -n "$project" ] || fail "the converter made no Xcode project in $output"
 
-# The version, the build number, the deployment targets and, if given, the team
+# The version, the build number, the deployment targets, the bundle identifiers and, if given, the team
 team_args=()
 [ -z "$team" ] || team_args=(--team "$team")
 node "$here/project.mjs" patch "$project" --version "$version" --build "$build" --macos "$macos" --ios "$ios" \
-  ${team_args[@]+"${team_args[@]}"}
+  --bundle "$bundle_id" ${team_args[@]+"${team_args[@]}"}
 
 # The handler that answers the extension's native messages (the clipboard, the locked screen), over the converter's echo
 handlers=0

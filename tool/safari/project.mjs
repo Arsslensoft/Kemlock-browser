@@ -2,7 +2,7 @@
 // functions so a test can check them without a Mac (docs/plans/add-safari.md):
 //
 //   node tool/safari/project.mjs version <manifest.json>
-//   node tool/safari/project.mjs patch <project.pbxproj> --version 1.2.3 --build 1 --macos 14.0 --ios 17.0 [--team ABCDE12345]
+//   node tool/safari/project.mjs patch <project.pbxproj> --version 1.2.3 --build 1 --macos 14.0 --ios 17.0 [--bundle com.example.app] [--team ABCDE12345]
 //   xcodebuild -list -json -project <project> | node tool/safari/project.mjs scheme macos|ios [<app name>]
 //
 // The converter makes the project from the extension's folder, with its own defaults (version 1.0, build 1, an old deployment
@@ -16,6 +16,7 @@ const patterns = {
   build: /^[1-9]\d{0,8}$/,
   target: /^\d{1,2}(\.\d{1,2})?$/,
   team: /^[A-Z0-9]{10}$/,
+  bundle: /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/,
 }
 
 function check(name, value) {
@@ -25,17 +26,20 @@ function check(name, value) {
 }
 
 /**
- * The project's text with its version, build number, deployment targets and, when given, development team set. Every value is
+ * The project's text with its version, build number, deployment targets and, when given, bundle identifiers and development team
+ * set. A bundle identifier given is the app's, and each extension target's is it with ".Extension": the converter does not keep
+ * them so (Xcode 26's names the app <prefix>.<app name>, and the build refuses an extension not under its app). Every value is
  * checked against a strict pattern first, since it is written into the project. Gives `{ text, counts }`, the number of places
  * each setting was set at, so a caller can tell that a setting it needed was not in the project (a converter that changed).
  */
-export function patchProject(text, { version, build, macos, ios, team }) {
+export function patchProject(text, { version, build, macos, ios, team, bundle }) {
   check('version', version)
   check('build', build)
   check('macos', macos)
   check('ios', ios)
   if (team !== undefined && team !== '') check('team', team)
-  const counts = { version: 0, build: 0, macos: 0, ios: 0, team: 0 }
+  if (bundle !== undefined && bundle !== '') check('bundle', bundle)
+  const counts = { version: 0, build: 0, macos: 0, ios: 0, bundle: 0, team: 0 }
   const set = (key, setting, value) => {
     text = text.replace(new RegExp(`(\\b${setting} = )[^;\\n]*;`, 'g'), (_, head) => {
       counts[key] += 1
@@ -46,6 +50,16 @@ export function patchProject(text, { version, build, macos, ios, team }) {
   set('build', 'CURRENT_PROJECT_VERSION', build)
   set('macos', 'MACOSX_DEPLOYMENT_TARGET', macos)
   set('ios', 'IPHONEOS_DEPLOYMENT_TARGET', ios)
+  if (bundle !== undefined && bundle !== '') {
+    // An extension's identifier ends in "Extension" (the converter's <prefix>.Extension or <app>-Extension); the app's does not
+    text = text.replace(
+      /(\bPRODUCT_BUNDLE_IDENTIFIER = )("?)([^";\n]*)\2;/g,
+      (_, head, _quote, value) => {
+        counts.bundle += 1
+        return `${head}${/extension$/i.test(value) ? `${bundle}.Extension` : bundle};`
+      },
+    )
+  }
   if (team !== undefined && team !== '') {
     // Any team the project had goes, and each target that has a bundle identifier gets this one beside it
     text = text.replace(/^[ \t]*DEVELOPMENT_TEAM = [^;\n]*;\n/gm, '')
@@ -111,11 +125,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       macos: option(args, 'macos'),
       ios: option(args, 'ios'),
       team: option(args, 'team'),
+      bundle: option(args, 'bundle'),
     })
     if (counts.version === 0 || counts.build === 0) {
       throw new Error(
         `${file} has no MARKETING_VERSION or CURRENT_PROJECT_VERSION: did the converter change?`,
       )
+    }
+    if (option(args, 'bundle') !== undefined && counts.bundle === 0) {
+      throw new Error(`${file} has no PRODUCT_BUNDLE_IDENTIFIER: did the converter change?`)
     }
     writeFileSync(file, text)
     console.log(`patched ${file}: ${JSON.stringify(counts)}`)
@@ -124,7 +142,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(schemeFor(readFileSync(0, 'utf8'), file, args[0]))
   } else {
     console.error(
-      'usage: project.mjs version <manifest.json> | patch <project.pbxproj> --version … --build … --macos … --ios … [--team …] | scheme macos|ios [app name]',
+      'usage: project.mjs version <manifest.json> | patch <project.pbxproj> --version … --build … --macos … --ios … [--bundle …] [--team …] | scheme macos|ios [app name]',
     )
     process.exit(2)
   }

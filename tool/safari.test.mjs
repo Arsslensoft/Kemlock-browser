@@ -182,7 +182,7 @@ describe('the project settings', () => {
 
   it('sets the version, the build, and both deployment targets, wherever they are', () => {
     const { text, counts } = patchProject(project, settings)
-    expect(counts).toEqual({ version: 2, build: 2, macos: 1, ios: 1, team: 0 })
+    expect(counts).toEqual({ version: 2, build: 2, macos: 1, ios: 1, bundle: 0, team: 0 })
     expect(text).not.toContain('MARKETING_VERSION = 1.0;')
     expect(text.match(/MARKETING_VERSION = 1\.2\.3;/g)).toHaveLength(2)
     expect(text.match(/CURRENT_PROJECT_VERSION = 7;/g)).toHaveLength(2)
@@ -198,6 +198,23 @@ describe('the project settings', () => {
     expect(signed.counts.team).toBe(2)
     expect(signed.text.match(/DEVELOPMENT_TEAM = ABCDE12345;/g)).toHaveLength(2)
     expect(patchProject(project, { ...settings, team: '' }).counts.team).toBe(0)
+  })
+
+  it("puts the extension's bundle identifier under the app's, whatever the converter named them", () => {
+    // Xcode 26's converter names the app <prefix>.<app name>, and the build refuses an extension not under it
+    const converted = project
+      .replace('"com.kemlock.browser"', 'com.kemlock.Kemlock')
+      .replace('com.kemlock.browser.Extension', '"com.kemlock.Kemlock-Extension"')
+    const { text, counts } = patchProject(converted, { ...settings, bundle: 'com.kemlock.browser' })
+    expect(counts.bundle).toBe(2)
+    expect(text).toContain('PRODUCT_BUNDLE_IDENTIFIER = com.kemlock.browser;')
+    expect(text).toContain('PRODUCT_BUNDLE_IDENTIFIER = com.kemlock.browser.Extension;')
+    expect(text).not.toContain('Kemlock-Extension')
+    // Patched twice, the same
+    expect(patchProject(text, { ...settings, bundle: 'com.kemlock.browser' }).text).toBe(text)
+    expect(() => patchProject(project, { ...settings, bundle: 'com.x; EVIL = 1' })).toThrow(
+      /bundle/,
+    )
   })
 
   it('replaces a team the project had, instead of adding a second', () => {
