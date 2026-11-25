@@ -30,31 +30,35 @@ concurrency:
 jobs:
   # The release tag this run is for: the one on the commit the Release workflow built, or the one given. None, when that
   # workflow released nothing
+  # Nothing is checked out: the tags are read from the remote, so no code of the commit that ran Release is fetched, and
+  # only a Release run of this repository's own main counts
   find:
     name: Find the release
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && github.event.workflow_run.head_branch == github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-          fetch-tags: true
-          persist-credentials: false
-
+      # ls-remote lists an annotated tag twice: the tag object, then `refs/tags/vX^{}` with the commit it points at
       - name: Find the tag
         id: tag
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           INPUT_TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
         run: |
+          set -euo pipefail
           tag="${INPUT_TAG}"
           if [ -z "${tag}" ]; then
-            tag="$(git tag --points-at "${HEAD_SHA}" --list 'v*' | sort -V | tail -n 1)"
+            tag="$(git ls-remote --tags "${SERVER}/${REPO}.git" 'refs/tags/v*' \
+              | awk -v sha="${HEAD_SHA}" '$1 == sha { sub(/^refs\/tags\//, "", $2); sub(/\^\{\}$/, "", $2); print $2 }' \
+              | sort -uV | tail -n 1)"
           fi
           if [[ "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "tag=${tag}" >> "$GITHUB_OUTPUT"
