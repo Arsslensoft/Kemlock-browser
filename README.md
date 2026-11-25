@@ -19,7 +19,8 @@
   <br>
   <a href="https://github.com/Arsslensoft/Kemlock-browser/actions/workflows/checks.yml"><img alt="Checks" src="https://github.com/Arsslensoft/Kemlock-browser/actions/workflows/checks.yml/badge.svg"></a>
   <a href="https://github.com/Arsslensoft/Kemlock-browser/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/Arsslensoft/Kemlock-browser/actions/workflows/codeql.yml/badge.svg"></a>
-  <a href="https://scorecard.dev/viewer/?uri=github.com/Arsslensoft/Kemlock-browser"><img alt="OpenSSF Scorecard" src="https://api.securityscorecards.dev/projects/github.com/Arsslensoft/Kemlock-browser/badge"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/Arsslensoft/Kemlock-browser"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/Arsslensoft/Kemlock-browser/badge"></a>
+  <a href="https://www.bestpractices.dev/projects/17112"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/17112/badge"></a>
   <br>
   <img alt="Chrome" src="https://img.shields.io/badge/Chrome-supported-4285F4?logo=googlechrome&logoColor=white">
   <img alt="Edge" src="https://img.shields.io/badge/Edge-supported-0078D7?logo=microsoftedge&logoColor=white">
