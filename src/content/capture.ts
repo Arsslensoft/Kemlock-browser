@@ -3,6 +3,7 @@
 // goes to the background at once, which decides whether to ask. Nothing here reads a field that
 // isn't a login field, and nothing is kept: a value is read when the form is sent.
 
+import type { FieldElement } from './dom'
 import type { Registry } from './scan'
 
 /** What a form was sent with; `''` for what the form has no field for. */
@@ -15,7 +16,7 @@ export interface Sent {
 }
 
 /** The registered fields that belong to [scope]: the form, or the whole frame for a form-less page. */
-function within(scope: ParentNode | null, element: HTMLInputElement): boolean {
+function within(scope: ParentNode | null, element: FieldElement): boolean {
   if (scope === null) return true
   if (scope instanceof HTMLFormElement) return element.form === scope || scope.contains(element)
   return scope.contains(element)

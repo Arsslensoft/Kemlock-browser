@@ -6,11 +6,13 @@
 import { Gate, canTrackVisibility, trackVisibility, type PageState, type Verdict } from './gate'
 
 export interface Init {
-  mode: 'menu' | 'save'
+  mode: 'menu' | 'save' | 'passkey'
   tabId: number
   frameId: number
   fieldId: string
   siteRules?: string
+  /** The passkey card's secret: what it asks and answers under. */
+  token?: string
 }
 
 /** What the screens use: ask leave to act, say how tall they are, close. */
@@ -22,6 +24,8 @@ export interface Channel {
   permit(x: number | null, y: number | null): Promise<Verdict>
   size(height: number): void
   close(refocus: boolean): void
+  /** The half second of plain view starts again, as when the menu moves (a new screen asking for a click of its own). */
+  restart?(): void
 }
 
 const asksFor = 1500
@@ -32,9 +36,11 @@ export interface Connected {
 }
 
 /** The mode and secret in the address: `#menu.<secret>`, or `#save.<secret>`. */
-export function parseHash(hash: string): { mode: 'menu' | 'save'; nonce: string } | null {
-  const match = /^#(menu|save)\.([0-9a-f]{32})$/.exec(hash)
-  return match === null ? null : { mode: match[1] as 'menu' | 'save', nonce: match[2] }
+export function parseHash(
+  hash: string,
+): { mode: 'menu' | 'save' | 'passkey'; nonce: string } | null {
+  const match = /^#(menu|save|passkey)\.([0-9a-f]{32})$/.exec(hash)
+  return match === null ? null : { mode: match[1] as 'menu' | 'save' | 'passkey', nonce: match[2] }
 }
 
 /**
@@ -94,15 +100,17 @@ function open(port: MessagePort, win: Window, now: () => number): Promise<Connec
           },
           size: (height) => port.postMessage({ kind: 'size', height }),
           close: (refocus) => port.postMessage({ kind: 'close', refocus }),
+          restart: () => gate.restart(now()),
         }
         resolve({
           channel,
           init: {
-            mode: data.mode === 'save' ? 'save' : 'menu',
+            mode: data.mode === 'save' || data.mode === 'passkey' ? data.mode : 'menu',
             tabId: Number(data.tabId),
             frameId: Number(data.frameId),
             fieldId: String(data.fieldId ?? ''),
             ...(typeof data.siteRules === 'string' ? { siteRules: data.siteRules } : {}),
+            ...(typeof data.token === 'string' ? { token: data.token } : {}),
           },
         })
       } else if (data.kind === 'state') {

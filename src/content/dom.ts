@@ -4,6 +4,9 @@
 
 import type { FieldDescription } from './fields'
 
+/** What a field of a form is: an input, a select (a month, a country) or a text area (an address). */
+export type FieldElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+
 /** Where things are on screen: the page's own, or a stand-in in the tests. */
 export interface Geometry {
   rect(element: Element): { left: number; top: number; width: number; height: number }
@@ -143,8 +146,8 @@ export function readFields(
 }
 
 /** Names fields by the order the frame first showed them: f1, f2… Kept while the element lives. */
-export function fieldNames(): (input: HTMLInputElement) => string {
-  const names = new WeakMap<HTMLInputElement, string>()
+export function fieldNames(): (input: FieldElement) => string {
+  const names = new WeakMap<FieldElement, string>()
   let next = 1
   return (input) => {
     let name = names.get(input)

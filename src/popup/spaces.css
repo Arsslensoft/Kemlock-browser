@@ -1,0 +1,93 @@
+/* Shared spaces in the popup (docs/plans/add-spaces.md). Tokens and the components' classes are the popup's own. */
+
+.space-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accentSoft);
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.space-badge.readonly {
+  background: var(--raised);
+  color: var(--text2);
+}
+
+.space-badge svg {
+  flex: none;
+}
+
+.spaces-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accentSoft);
+  color: var(--accent);
+}
+
+.spaces-actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.space-page .space-kind + .space-kind {
+  margin-top: 8px;
+}
+
+.digits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--well);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.digits-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.member-row,
+.grant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grant-row {
+  padding: 4px 0;
+}
+
+.role-select,
+.collection select {
+  max-width: 150px;
+  font-size: 12px;
+}
+
+.space-move {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.collection .name {
+  margin: 0;
+}
+
+.collection .label {
+  margin: 0 0 6px;
+}

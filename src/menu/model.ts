@@ -22,7 +22,9 @@ export const wantsCode = (view: MenuView) => view.field.kind === 'code'
 
 /** Nothing of the vault matches this site: the picker, or the guard for a look-alike. */
 export const knowsNothing = (view: MenuView) =>
-  view.match.logins.length === 0 && view.match.codes.length === 0
+  view.match.logins.length === 0 &&
+  view.match.codes.length === 0 &&
+  (view.passkeys ?? []).length === 0
 
 /** The screen a menu opens on. A new password asks for suggestions, never a login. */
 export function firstScreen(view: MenuView): Screen {

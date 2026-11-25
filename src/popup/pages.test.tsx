@@ -102,6 +102,26 @@ describe('a login’s page', () => {
     expect(background.of('copy')[0]?.args).toEqual({ what: 'username', id: 'l1' })
   })
 
+  it('shows no strength for a password its space hides', async () => {
+    const hidden = login({
+      id: 'l9',
+      name: 'Team Vault',
+      strength: undefined,
+      previousPasswords: 2,
+      passwordChangedAt: Date.parse('2026-10-01T12:00:00Z'),
+      space: { id: 's1', name: 'Example Co', canEdit: true, passwordHidden: true },
+    })
+    background.reset(unlockedHandlers(world({ logins: [hidden] })))
+    const root = await openPopup()
+    await click(button(root, 'Logins 1'))
+    await click(button(root, 'Open Team Vault'))
+    expect(root.querySelector('.strength-line')).toBeNull()
+    for (const level of [0, 1, 2, 3, 4]) {
+      expect(text(root)).not.toContain(message('en', `popup_strength${level}`))
+    }
+    expect(text(root)).not.toContain('changed')
+  })
+
   it('lists the backup codes left, copies one and marks it used', async () => {
     let left = 8
     background.reset({

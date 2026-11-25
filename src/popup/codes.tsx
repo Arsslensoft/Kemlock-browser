@@ -8,6 +8,7 @@ import { useCopy, useFlash } from './copy'
 import { groupCode } from './format'
 import { secondsLeft, warnSeconds, type Live } from './live'
 import { ask } from './send'
+import { SpaceBadge } from './spaces'
 
 export function codeName(code: CodeView): string {
   return code.issuer !== '' ? code.issuer : code.account
@@ -102,7 +103,7 @@ export function CodeLine(props: {
   )
 }
 
-/** One row of the Codes list: a tap copies the code. The vault's order and tags are shown here and changed nowhere. */
+/** One row of the Codes list: a tap copies the code. Its order and tags are changed on their own pages (the vault tools). */
 export function CodeRow(props: { code: CodeView; live: Live }) {
   const { code, live } = props
   const copy = useCopy()
@@ -115,6 +116,7 @@ export function CodeRow(props: { code: CodeView; live: Live }) {
       <span class="grow lines">
         <span class="name ellipsis">{name}</span>
         {code.issuer !== '' && <span class="label ellipsis">{code.account}</span>}
+        <SpaceBadge space={code.space} />
       </span>
     </>
   )
@@ -182,10 +184,15 @@ function Pips(props: { left: number; total: number; label: string }) {
 }
 
 /**
- * Backup codes: how many are left, Copy for the next one and Mark used. No tool to get new codes,
- * locked or not: Kemlock for browsers sells nothing.
+ * Backup codes: how many are left, Copy for the next one and Mark used, and a service's own page
+ * to edit them. Free, as everything in Kemlock for browsers is.
  */
-export function BackupCodes(props: { backups: BackupCodeView[]; onChanged: () => Promise<void> }) {
+export function BackupCodes(props: {
+  backups: BackupCodeView[]
+  onChanged: () => Promise<void>
+  /** Opens a service's own page, where its codes are edited (the vault tools). */
+  onOpen?: (serviceId: string) => void
+}) {
   const copy = useCopy()
   const say = useToast()
   const [busy, setBusy] = useState<string | null>(null)
@@ -210,8 +217,20 @@ export function BackupCodes(props: { backups: BackupCodeView[]; onChanged: () =>
               <Tile name={backup.issuer} />
               <span class="grow lines">
                 <span class="name">{backup.issuer}</span>
-                <span class={backup.left === 0 ? 'label warn-text' : 'label'}>{count}</span>
+                <span
+                  class={backup.left === 0 || backup.low === true ? 'label warn-text' : 'label'}
+                >
+                  {count}
+                </span>
               </span>
+              {props.onOpen !== undefined && (
+                <LinkButton
+                  label={t('tools_manageCodesOf', backup.issuer)}
+                  onClick={() => props.onOpen?.(backup.serviceId)}
+                >
+                  {t('tools_manage')}
+                </LinkButton>
+              )}
             </div>
             <Pips left={backup.left} total={backup.total} label={count} />
             <div class="actions split">

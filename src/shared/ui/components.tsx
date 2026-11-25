@@ -125,6 +125,12 @@ export function Switch(props: {
   )
 }
 
+/**
+ * What a box that holds a secret or a plaintext must not get from the browser: no spell checker, which may send the text
+ * to a cloud service, no automatic capitals and no correction.
+ */
+const noAssist: Record<string, string> = { autocapitalize: 'off', autocorrect: 'off' }
+
 export function TextField(props: {
   label: string
   value: string
@@ -161,6 +167,8 @@ export function TextField(props: {
         {props.multiline ? (
           <textarea
             {...common}
+            {...noAssist}
+            spellcheck={false}
             rows={3}
             onInput={(event) => props.onInput(event.currentTarget.value)}
           />

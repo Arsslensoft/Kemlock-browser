@@ -2,6 +2,7 @@
 // unlock, ten seconds after a change made in the browser, and Sync now. A problem stops the runs
 // that nobody asked for, and puts the warning dot on the toolbar icon.
 import type { CoreApi, SyncStatus } from '../shared/api'
+import { approvalsAlarm } from './account'
 import type { Toolbar } from './toolbar'
 
 export const syncAlarm = 'kemlock-sync'
@@ -24,12 +25,14 @@ export class SyncScheduler {
   /** The vault opened: the five-minute alarm, and a run now (not waited for). */
   async opened(): Promise<void> {
     await chrome.alarms.create(syncAlarm, { periodInMinutes: everyMinutes })
+    await chrome.alarms.create(approvalsAlarm, { periodInMinutes: 1 })
     void this.run()
   }
 
   /** The vault is open again after the worker was stopped: the alarm is still there. */
   async restored(): Promise<void> {
     await chrome.alarms.create(syncAlarm, { periodInMinutes: everyMinutes })
+    await chrome.alarms.create(approvalsAlarm, { periodInMinutes: 1 })
     await this.showIcon()
   }
 
@@ -37,6 +40,7 @@ export class SyncScheduler {
   async closed(): Promise<void> {
     await chrome.alarms.clear(syncAlarm)
     await chrome.alarms.clear(syncSoonAlarm)
+    await chrome.alarms.clear(approvalsAlarm)
     await chrome.storage.session.remove(dueKey)
   }
 

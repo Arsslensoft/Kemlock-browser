@@ -1,6 +1,8 @@
 // Password health, worked out in the browser from the vault: nothing about it is stored or synced.
+import { useState } from 'preact/hooks'
 import type { LoginView } from '../shared/api'
 import {
+  Button,
   Group,
   Notice,
   PageHeader,
@@ -19,10 +21,27 @@ export function HealthPage(props: {
   onBack: () => void
   onOpenLogin: (id: string) => void
   onSettings: () => void
+  /** Opens the breach alerts of the vault's services (the vault tools). */
+  onBreaches?: () => void
 }) {
   const { vault } = props
   const say = useToast()
   const report = useLoad(() => ask('health'))
+  const [checking, setChecking] = useState(false)
+
+  // Added by tools: "Check now" asks Pwned Passwords again for every password, whatever it said before
+  const checkNow = async () => {
+    setChecking(true)
+    try {
+      const check = await ask('checkBreaches')
+      await Promise.all([vault.reload(), report.reload()])
+      say(t('tools_checkedPasswords', check.passwords.breached, check.passwords.failed))
+    } catch (error) {
+      say(errorMessage(error))
+    } finally {
+      setChecking(false)
+    }
+  }
   const named = (ids: string[]): LoginView[] =>
     ids
       .map((id) => vault.logins.find((login) => login.id === id))
@@ -101,6 +120,16 @@ export function HealthPage(props: {
                 </button>
               </Notice>
             )}
+            <div class="actions start">
+              {vault.settings.breachedPasswords && (
+                <Button icon="refresh" busy={checking} onClick={() => void checkNow()}>
+                  {t('tools_checkNow')}
+                </Button>
+              )}
+              {props.onBreaches !== undefined && (
+                <Button onClick={props.onBreaches}>{t('tools_serviceBreaches')}</Button>
+              )}
+            </div>
             {list(t('popup_sectionReused'), named(data.reused))}
             {list(t('popup_sectionWeak'), named(data.weak))}
             {list(t('popup_sectionWithoutCode'), named(data.withoutItsCode), true)}

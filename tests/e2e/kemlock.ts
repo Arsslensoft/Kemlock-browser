@@ -94,9 +94,18 @@ export class Kemlock {
     const manifest = JSON.parse(await readFile(path, 'utf8')) as {
       key?: string
       host_permissions?: string[]
+      permissions?: string[]
+      optional_permissions?: string[]
     }
     manifest.key = EXTENSION_KEY
-    if (options.allSites) manifest.host_permissions = ['<all_urls>']
+    if (options.allSites) {
+      manifest.host_permissions = ['<all_urls>']
+      // The frame list the passkey switch asks for with all sites, granted the same way (a test can't answer the prompt)
+      manifest.permissions = [...(manifest.permissions ?? []), 'webNavigation']
+      manifest.optional_permissions = (manifest.optional_permissions ?? []).filter(
+        (name) => name !== 'webNavigation',
+      )
+    }
     await writeFile(path, JSON.stringify(manifest, null, 2))
     const kemlock = new Kemlock(site, options, profileDir, extensionDir, testInfo)
     await kemlock.open()
@@ -352,6 +361,13 @@ export class Kemlock {
     return page
   }
 
+  /** The account page (approvals, devices, emergency access, the Recovery Kit, second steps, the move), at a section. */
+  async account(hash = ''): Promise<Page> {
+    const page = await this.context.newPage()
+    await page.goto(this.url(`src/account/index.html${hash === '' ? '' : `#${hash}`}`))
+    return page
+  }
+
   /** A page of a fixture site, e.g. `visit('orbit-cloud.com', '/signin')`. */
   async visit(host: string, path = '/'): Promise<Page> {
     const page = await this.context.newPage()
@@ -462,6 +478,13 @@ export class Kemlock {
   /** Opens a field's menu the keyboard way (spec: "pressing the down arrow in the field"). */
   async openMenu(page: Page, field: ReturnType<Page['locator']>): Promise<Frame> {
     await field.focus()
+    // As a person would: once Kemlock's button shows in the field, so the page's fields have been found. A field too small for
+    // the button (one box of a code split across several) has none, and the arrow still opens its menu: then it is waited for no
+    // longer than that.
+    await expect
+      .poll(() => this.hasButton(page, field), { timeout: 3_000 })
+      .toBe(true)
+      .catch(() => undefined)
     await page.keyboard.press('ArrowDown')
     return this.menu(page)
   }

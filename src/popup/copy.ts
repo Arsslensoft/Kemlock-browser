@@ -15,6 +15,14 @@ const said: Record<What, string> = {
   code: 'popup_copiedCode',
   backupCode: 'popup_copiedBackupCode',
   generated: 'popup_copiedPassword',
+  cardNumber: 'items_copiedCardNumber',
+  cardCode: 'items_copiedCardCode',
+  cardPin: 'items_copiedCardPin',
+  cardholder: 'items_copiedCardholder',
+  email: 'items_copiedEmail',
+  phone: 'items_copiedPhone',
+  documentNumber: 'items_copiedDocumentNumber',
+  noteText: 'items_copiedNote',
 }
 
 /** The seconds the clipboard keeps what was copied (the setting), for the toast's second line. */
@@ -25,11 +33,21 @@ export function rememberClipboardSeconds(seconds: number): void {
 }
 
 /** A function that copies, and says so (or why not) at the foot of the page. */
-export function useCopy(): (what: What, id: string, value?: string) => Promise<boolean> {
+export function useCopy(): (
+  what: What,
+  id: string,
+  value?: string,
+  documentId?: string,
+) => Promise<boolean> {
   const say = useToast()
-  return async (what, id, value) => {
+  return async (what, id, value, documentId) => {
     try {
-      await ask('copy', value === undefined ? { what, id } : { what, id, value })
+      await ask('copy', {
+        what,
+        id,
+        ...(value === undefined ? {} : { value }),
+        ...(documentId === undefined ? {} : { documentId }),
+      })
       say(t(said[what]), t('popup_clipboardClears', clipboardSeconds))
       return true
     } catch (error) {

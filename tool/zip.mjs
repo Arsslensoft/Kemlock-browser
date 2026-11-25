@@ -1,4 +1,4 @@
-// Zips each browser's build in dist/ as kemlock-<version>-<browser>.zip, the
+// Zips each browser's build in dist/ (Chrome's, Firefox's and Safari's) as kemlock-<version>-<browser>.zip, the
 // same bytes for the same files (design decision 18): entries in path
 // order, every date 1980-01-01, one mode and one compression level, and
 // nothing of the machine. `node tool/zip.mjs <dist> <out>`.
@@ -6,6 +6,9 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { crc32, deflateRawSync } from 'node:zlib'
+
+/** The builds that are zipped, one folder of dist/ each. */
+export const browsers = ['chrome', 'firefox', 'safari']
 
 /** 1980-01-01 00:00, the earliest time a zip can hold. */
 const dosDate = (0 << 9) | (1 << 5) | 1
@@ -91,7 +94,7 @@ export async function zipFolder(dir) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [dist, out] = process.argv.slice(2)
-  for (const browser of ['chrome', 'firefox']) {
+  for (const browser of browsers) {
     const dir = join(dist, browser)
     const { version } = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8'))
     const file = join(out, `kemlock-${version}-${browser}.zip`)

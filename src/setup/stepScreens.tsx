@@ -3,6 +3,7 @@
 // passphrase, and the first sync shown before it runs.
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { SecondMethod, SignInStep, StepAnswer } from '../shared/api'
+import { RecoveryKitOption } from './accountScreens'
 import type { FlowState } from './flow'
 import { t, tCount } from './i18n'
 import { placeName } from './placeScreens'
@@ -34,7 +35,14 @@ const answer = async (dispatch: Dispatch, reply: StepAnswer): Promise<SignInStep
   return step
 }
 
-const methodOrder: SecondMethod[] = ['authenticator', 'email', 'yubikey', 'securityKey', 'apiKey']
+const methodOrder: SecondMethod[] = [
+  'authenticator',
+  'email',
+  'yubikey',
+  'securityKey',
+  'apiKey',
+  'recoveryCode',
+]
 
 type KeyState =
   | { kind: 'idle' }
@@ -87,6 +95,16 @@ export function SecondScreen({ state, dispatch }: Props) {
 
   const useKey = () =>
     void run(async () => {
+      // Kemlock Server: the core gets the server's options and asks the key on the server's own connector page, as a passkey is asked
+      if (state.place === 'kemlock') {
+        setKey({ kind: 'asking' })
+        try {
+          await answer(dispatch, { step: 'second', method: 'securityKey', code: '', remember })
+        } finally {
+          setKey({ kind: 'idle' })
+        }
+        return
+      }
       const challenge = await ask('securityKeyChallenge')
       if (challenge === null) {
         setKey({ kind: 'unavailable' })
@@ -202,7 +220,7 @@ export function SecondScreen({ state, dispatch }: Props) {
             </button>
           </div>
         ) : null}
-        {method !== null && method !== 'apiKey' ? (
+        {method !== null && method !== 'apiKey' && method !== 'recoveryCode' ? (
           <Checkbox
             label={t('setup_second_remember')}
             hint={t('setup_second_remember_hint')}
@@ -300,9 +318,11 @@ export function ApprovalScreen({ state, dispatch }: Props) {
   const screen = state.screen
   const phrase = screen.name === 'approval' ? screen.phrase : []
   const requestId = screen.name === 'approval' ? screen.requestId : ''
+  // The Recovery Kit's answer is on its way: the account can't be answered by an approval at the same time
+  const [opening, setOpening] = useState(false)
 
   useEffect(() => {
-    if (requestId === '') return
+    if (requestId === '' || opening) return
     let live = true
     let inFlight = false
     const poll = async () => {
@@ -322,7 +342,7 @@ export function ApprovalScreen({ state, dispatch }: Props) {
       live = false
       clearInterval(timer)
     }
-  }, [requestId, dispatch])
+  }, [requestId, opening, dispatch])
 
   return (
     <Frame title={t('setup_approval_title')} lead={t('setup_approval_lead')} error={state.error}>
@@ -346,6 +366,7 @@ export function ApprovalScreen({ state, dispatch }: Props) {
         <span class="panel-text">{t('setup_approval_check')}</span>
       </div>
       <Status>{t('setup_approval_waiting')}</Status>
+      <RecoveryKitOption dispatch={dispatch} onWorking={setOpening} />
       <Actions>
         <button type="button" class="secondary" onClick={() => dispatch({ type: 'back' })}>
           {t('setup_approval_cancel')}
@@ -393,6 +414,8 @@ export function MasterPasswordScreen({ state, dispatch }: Props) {
           </button>
         </Actions>
       </form>
+      {/* Its own form: a form can't hold another */}
+      <RecoveryKitOption dispatch={dispatch} />
     </Frame>
   )
 }

@@ -1,7 +1,8 @@
 name: Checks
 
 # The checks a change has to pass before it merges and before it is released: lint, types, the
-# tests, the build of both browsers' folders and web-ext's lint of Firefox's, the extension's
+# tests, the build of the three browsers' folders and web-ext's lint of Firefox's, Safari's folder
+# wrapped in an Xcode project on macOS, the extension's
 # end-to-end tests in a real Chromium, actionlint and ShellCheck, the dependencies it brings in,
 # every commit signed off (DCO), the licences of the packages the zips are built with, and what the
 # change adds to the workflows' and the secrets' risk. (The pull request's title is checked by
@@ -18,6 +19,10 @@ on:
     inputs:
       app-drift:
         description: Whether to run the App drift job, which a release does not wait for
+        type: boolean
+        default: true
+      safari-project:
+        description: Whether to run the Safari (macOS) job, which a release does not wait for (release.yml builds the project of its own zip)
         type: boolean
         default: true
     secrets:
@@ -158,7 +163,7 @@ jobs:
   # copies, or that the copies were edited, not that the extension is broken
   app-drift:
     name: App drift
-    if: inputs.app-drift != false
+    if: toJSON(inputs.app-drift) != 'false'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -212,7 +217,7 @@ jobs:
           KEMLOCK_APP: ${{ github.workspace }}/kemlock-app
         run: npm test
 
-  # Both browsers' folders, and Mozilla's linter over Firefox's (tool/lint-firefox.mjs). The
+  # The three browsers' folders (Chrome's, Firefox's and Safari's), and Mozilla's linter over Firefox's (tool/lint-firefox.mjs). The
   # release itself is built again in the build container (tool/build.sh, Node and Debian pinned by hash), twice, by release.yml
   build:
     name: Build
@@ -246,6 +251,53 @@ jobs:
         with:
           name: dist
           path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  # Safari's folder from the Build job, wrapped in an Xcode project (tool/safari/convert.sh) and built
+  # unsigned for the Mac, which says that the converter still takes the folder, that the extension's
+  # native handler compiles, and that the project builds. Nothing is signed or uploaded: that is the
+  # owner's, with their Apple Developer team (docs/store/safari.md). The runner's own Node reads the
+  # manifest and patches the project's settings; nothing of the project depends on its version. The
+  # project is kept for a week as an artifact, to open in Xcode
+  safari:
+    name: Safari (macOS)
+    needs: build
+    if: toJSON(inputs.safari-project) != 'false'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: The Xcode project
+        env:
+          KEMLOCK_SAFARI_PLATFORMS: macos
+        run: bash tool/safari/convert.sh dist/safari dist/safari-xcode
+
+      - name: Build the app, unsigned
+        run: |
+          set -euo pipefail
+          project="$(find dist/safari-xcode -maxdepth 2 -name '*.xcodeproj' | head -n 1)"
+          # The scheme's name depends on the platforms the project was made for: read it
+          xcodebuild -list -json -project "${project}" > "${RUNNER_TEMP}/schemes.json"
+          scheme="$(node tool/safari/project.mjs scheme macos Kemlock < "${RUNNER_TEMP}/schemes.json")"
+          echo "Building the scheme ${scheme}"
+          xcodebuild -project "${project}" -scheme "${scheme}" -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath "${RUNNER_TEMP}/derived" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: safari-xcode
+          path: dist/safari-xcode/
           retention-days: 7
           if-no-files-found: error
 

@@ -14,7 +14,11 @@ vi.mock('./send', () => ({ ask: vi.fn() }))
 const root = join(import.meta.dirname, '..', '..')
 const read = (file: string): Record<string, string> =>
   JSON.parse(readFileSync(join(root, file), 'utf8')) as Record<string, string>
-const messages = { ...read('locales/parts/setup.en.json'), ...read('locales/app/en.json') }
+const messages = {
+  ...read('locales/parts/setup.en.json'),
+  ...read('locales/parts/safari.en.json'),
+  ...read('locales/app/en.json'),
+}
 
 type Handler = (args: Record<string, unknown>) => unknown
 let handlers: Record<string, Handler>
@@ -39,6 +43,11 @@ beforeEach(() => {
     permissions: { request },
     tabs: { create: createTab },
     action: { openPopup: vi.fn(() => Promise.resolve()) },
+    // The browser's sign-in window, which SSO and a passkey go through (Safari has none: see the Safari test below)
+    identity: {
+      launchWebAuthFlow: vi.fn(),
+      getRedirectURL: () => 'https://kemlockid.chromiumapp.org/',
+    },
   })
   for (const [name, value] of Object.entries(frameStubs())) vi.stubGlobal(name, value)
   container = document.createElement('div')
@@ -358,6 +367,16 @@ describe('Kemlock Server, by SSO or a passkey', () => {
     expect(button('Sign in with SSO')).toBeTruthy()
     expect(button('Use a passkey or security key')).toBeTruthy()
     expect(button('Sign in')).toBeTruthy()
+  })
+
+  it('shows neither where the browser has no sign-in window (Safari), and says why', async () => {
+    // Safari has no identity API: its sign-in window is what SSO and a passkey go through
+    vi.stubGlobal('chrome', { ...(globalThis as { chrome: object }).chrome, identity: undefined })
+    await toKemlockForm()
+    expect(() => button('Sign in with SSO')).toThrow()
+    expect(() => button('Use a passkey or security key')).toThrow()
+    expect(button('Sign in')).toBeTruthy()
+    expect(text()).toContain("Single sign-on and passkeys aren't available in this browser.")
   })
 
   it('signs in with SSO and goes on to the steps after it', async () => {

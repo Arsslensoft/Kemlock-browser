@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Delivery address</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Delivery address</h1>
+      <form method="post" action="/deliver">
+        <label for="given">First name</label>
+        <input id="given" name="given" autocomplete="given-name" />
+        <label for="family">Last name</label>
+        <input id="family" name="family" autocomplete="family-name" />
+        <label for="contact">Email</label>
+        <input id="contact" name="contact" type="email" autocomplete="email" />
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" />
+        <label for="street">Street address</label>
+        <input id="street" name="street" autocomplete="address-line1" />
+        <label for="postal">Postal code</label>
+        <input id="postal" name="postal" autocomplete="postal-code" />
+        <label for="city">City</label>
+        <input id="city" name="city" autocomplete="address-level2" />
+        <label for="country">Country</label>
+        <select id="country" name="country" autocomplete="country">
+          <option value="">Choose a country</option>
+          <option value="DE">Germany</option>
+          <option value="FR">France</option>
+          <option value="GB">United Kingdom</option>
+        </select>
+        <button type="submit">Deliver here</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Passkeys</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Passkeys</h1>
+      <label for="user">Username</label>
+      <input id="user" name="username" type="text" autocomplete="username webauthn" />
+      <p>
+        <button id="create" type="button">Create passkey</button>
+        <button id="signin" type="button">Sign in with passkey</button>
+        <button id="conditional" type="button">Wait for a passkey</button>
+      </p>
+      <p id="status" role="status">idle</p>
+    </main>
+    <script>
+      const status = (text) => (document.getElementById('status').textContent = text)
+      const b64 = (buffer) =>
+        btoa(String.fromCharCode(...new Uint8Array(buffer)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '')
+      const unb64 = (text) =>
+        Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+      const keyName = 'passkey-public-key'
+
+      /** The raw r and s of an ECDSA signature in DER, as WebCrypto verifies it. */
+      function derToRaw(der) {
+        const out = new Uint8Array(64)
+        let at = 2
+        for (let half = 0; half < 2; half += 1) {
+          let length = der[at + 1]
+          let start = at + 2
+          if (der[start] === 0 && length > 32) {
+            start += 1
+            length -= 1
+          }
+          out.set(der.slice(start, start + length), half * 32 + (32 - length))
+          at = start + length
+        }
+        return out
+      }
+
+      /** What a site does with a sign-in: the client data names this origin and its challenge, and the signature verifies. */
+      async function verify(credential, challenge) {
+        const response = credential.response
+        const data = JSON.parse(new TextDecoder().decode(response.clientDataJSON))
+        const key = await crypto.subtle.importKey(
+          'spki',
+          unb64(sessionStorage.getItem(keyName)),
+          { name: 'ECDSA', namedCurve: 'P-256' },
+          false,
+          ['verify'],
+        )
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', response.clientDataJSON))
+        const signed = new Uint8Array([...new Uint8Array(response.authenticatorData), ...hash])
+        const good = await crypto.subtle.verify(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          key,
+          derToRaw(new Uint8Array(response.signature)),
+          signed,
+        )
+        const rpHash = new Uint8Array(
+          await crypto.subtle.digest('SHA-256', new TextEncoder().encode(location.hostname)),
+        )
+        const sameRp = new Uint8Array(response.authenticatorData.slice(0, 32)).every(
+          (byte, i) => byte === rpHash[i],
+        )
+        return (
+          good &&
+          sameRp &&
+          data.type === 'webauthn.get' &&
+          data.origin === location.origin &&
+          data.challenge === b64(challenge)
+        )
+      }
+
+      async function signIn(options) {
+        const challenge = crypto.getRandomValues(new Uint8Array(32))
+        try {
+          const credential = await navigator.credentials.get({
+            publicKey: {
+              rpId: location.hostname,
+              challenge,
+              userVerification: 'preferred',
+              timeout: 60000,
+            },
+            ...options,
+          })
+          status(
+            (await verify(credential, challenge)) ? `verified ${credential.id}` : 'bad signature',
+          )
+        } catch (error) {
+          status(`error ${error.name}`)
+        }
+      }
+
+      document.getElementById('create').addEventListener('click', async () => {
+        try {
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              rp: { id: location.hostname, name: 'Orbit Cloud' },
+              user: {
+                id: new TextEncoder().encode('user-1'),
+                name: 'sam@example.com',
+                displayName: 'Sam',
+              },
+              challenge: crypto.getRandomValues(new Uint8Array(32)),
+              pubKeyCredParams: [
+                { type: 'public-key', alg: -7 },
+                { type: 'public-key', alg: -257 },
+              ],
+              authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+              attestation: 'none',
+              timeout: 60000,
+            },
+          })
+          sessionStorage.setItem(keyName, b64(credential.response.getPublicKey()))
+          const data = JSON.parse(new TextDecoder().decode(credential.response.clientDataJSON))
+          status(`created ${credential.id} ${data.type} ${data.origin}`)
+        } catch (error) {
+          status(`error ${error.name}`)
+        }
+      })
+      document.getElementById('signin').addEventListener('click', () => void signIn({}))
+      document
+        .getElementById('conditional')
+        .addEventListener('click', () => void signIn({ mediation: 'conditional' }))
+    </script>
+  </body>
+</html>

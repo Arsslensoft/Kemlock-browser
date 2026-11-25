@@ -30,6 +30,11 @@ export interface AutoLockHost {
   readSession(key: string): Promise<unknown>
   writeSession(key: string, value: unknown): Promise<void>
   removeSession(key: string): Promise<void>
+  /**
+   * Whether the screen is locked, for a browser with no `idle` API to say so (Safari asks the Mac app, src/background/native.ts).
+   * Asked at each beat, so the lock follows within a minute.
+   */
+  screenLocked?(): Promise<boolean>
 }
 
 /** The alarm for the idle time, set again on each use. */
@@ -91,6 +96,7 @@ export class AutoLock {
     const { idleMinutes, lockOnSleep } = await this.settings()
     if (name === beatAlarm) {
       if (lockOnSleep && now - times.lastBeat > sleepGap) return this.lockFor('sleep')
+      if (lockOnSleep && (await this.screenIsLocked())) return this.lockFor('screen')
       await this.host.writeSession(stateKey, { ...times, lastBeat: now })
     }
     if (now - times.lastUse >= idleMinutes * minute) return this.lockFor('idle')
@@ -101,6 +107,15 @@ export class AutoLock {
   async idleState(state: string): Promise<void> {
     if (state !== 'locked' || (await this.times()) === null) return
     if ((await this.settings()).lockOnSleep) await this.lockFor('screen')
+  }
+
+  /** The host's word that the screen is locked; no word, or a host that fails, is no. */
+  private async screenIsLocked(): Promise<boolean> {
+    try {
+      return (await this.host.screenLocked?.()) === true
+    } catch {
+      return false
+    }
   }
 
   private async lockFor(reason: LockReason): Promise<void> {

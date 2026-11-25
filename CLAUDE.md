@@ -1,14 +1,17 @@
 # Kemlock for browsers
 
-The Kemlock browser extension: TypeScript, Preact and Vite, built for Chrome (and Edge) and
-Firefox from `manifests/`. It moved here, with its history, from `extension/` in the Kemlock
+The Kemlock browser extension: TypeScript, Preact and Vite, built for Chrome (and Edge),
+Firefox and Safari from `manifests/`. It moved here, with its history, from `extension/` in the Kemlock
 app's repository (`git@github.com:Arsslensoft/Kemlock.git`), which is checked out next to
 this one as `../kemlock`.
 
 ## Layout
 
 - `src/`: the background worker, the content script and the pages (popup, menu, setup,
-  offscreen).
+  offscreen). `src/shared/capabilities.ts` is where the browsers' missing APIs are found (Safari has
+  no `offscreen`, `idle` or `identity`): feature-detect there, never by the browser's name.
+- `tool/safari/`: Safari runs an extension only from a Mac app, so `convert.sh` wraps `dist/safari` in an
+  Xcode project (macOS only; `docs/plans/add-safari.md`).
 - `tool/`: the build, the zip, and the generators of what comes from the app.
 - `manifests/`, `locales/`, `icons/`, `fonts/`: what the build puts in the zips.
 - `test/fixtures/`: copies of the app's fixtures. Never edit them here; copy them again
@@ -31,7 +34,8 @@ the generator or copy the file again, and commit that here.
 root, and in `core/` `dart format --output=none --set-exit-if-changed .`, `dart analyze --fatal-infos`
 and `dart test`. On GitHub, `.github/workflows/checks.yml` runs them as the jobs Lint (with the
 core's format and analysis), Test (with the core's `dart test`) and Build, and E2E (`npm run
-test:e2e` in a real Chromium over the build, under `xvfb-run`), with Dependencies (vulnerabilities
+test:e2e` in a real Chromium over the build, under `xvfb-run`) and Safari (macOS) (the Safari folder in an
+Xcode project, built unsigned on a Mac; not required), with Dependencies (vulnerabilities
 only), DCO, Licences (`node .github/scripts/check-licences.mjs` for the npm packages and
 `node .github/scripts/check-pub-licences.mjs` for the core's Dart packages) and Security
 beside them, and App drift (the tests again, with the app's files; not required). The pull

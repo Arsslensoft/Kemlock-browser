@@ -1,6 +1,7 @@
 // The card for the tab in front: its logins and codes first, with Fill, or a warning when the
 // address looks like another site's, or a hint when the vault has nothing for it.
 import type { CodeView, LoginView, TabView } from '../shared/api'
+import type { PasskeyView } from '../shared/passkeys'
 import { Button, IconButton, Notice, Tile, useToast } from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
 import { Icon } from '../shared/ui/icons'
@@ -8,6 +9,8 @@ import { CodeLine, codeName } from './codes'
 import type { Vault } from './data'
 import type { Live } from './live'
 import { PasswordLine } from './logins'
+import { SpaceBadge } from './spaces'
+import { SitePasskeys } from './passkeys'
 import { ask } from './send'
 
 interface SiteItems {
@@ -57,13 +60,17 @@ export function SiteCards(props: {
   vault: Vault
   live: Live
   onOpenLogin: (id: string) => void
+  /** Added by passkeys: the vault's passkeys, and the way to one's page. */
+  passkeys?: PasskeyView[]
+  onOpenPasskey?: (id: string) => void
 }) {
   const { tab, vault, live } = props
   const fill = useFill(tab)
   if (tab === undefined) return null
   const items = siteItems(tab, vault)
   const { match } = tab
-  const nothing = items.logins.length === 0 && items.codes.length === 0
+  const heldPasskeys = new Set(match.passkeys ?? [])
+  const nothing = items.logins.length === 0 && items.codes.length === 0 && heldPasskeys.size === 0
   const hasCards = !nothing
 
   if (!hasCards && match.lookAlikeOf === undefined && match.site === '') return null
@@ -99,6 +106,7 @@ export function SiteCards(props: {
               <span class="grow lines">
                 <h2 class="card-title ellipsis">{login.name}</h2>
                 {login.username !== '' && <span class="label ellipsis">{login.username}</span>}
+                <SpaceBadge space={login.space} />
               </span>
               <IconButton
                 icon="chevron"
@@ -146,6 +154,7 @@ export function SiteCards(props: {
             <span class="grow lines">
               <h2 class="card-title ellipsis">{codeName(code)}</h2>
               {code.issuer !== '' && <span class="label ellipsis">{code.account}</span>}
+              <SpaceBadge space={code.space} />
             </span>
           </div>
           <div class="well">
@@ -165,6 +174,9 @@ export function SiteCards(props: {
           )}
         </article>
       ))}
+      {props.passkeys !== undefined && props.onOpenPasskey !== undefined && (
+        <SitePasskeys tab={tab} passkeys={props.passkeys} onOpen={props.onOpenPasskey} />
+      )}
     </section>
   )
 }

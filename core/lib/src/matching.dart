@@ -5,6 +5,7 @@ import 'package:kemlock_core/core/public_suffix_list.dart';
 import 'package:kemlock_core/core/website_rules.dart';
 import 'package:kemlock_core/models/login.dart';
 import 'package:kemlock_core/models/otp_account.dart';
+import 'package:kemlock_core/models/passkey.dart';
 import 'package:kemlock_core/models/website_rule.dart';
 
 import 'directory.dart';
@@ -61,15 +62,24 @@ class Page {
 
 /// What a site gets: the ids it matches, and the known site it looks like when it matches nothing.
 class SiteMatches {
-  const SiteMatches({required this.site, this.logins = const [], this.codes = const [], this.lookAlikeOf});
+  const SiteMatches({required this.site, this.logins = const [], this.codes = const [], this.passkeys = const [], this.lookAlikeOf});
 
   /// The page's registrable domain, shown in the picker.
   final String site;
   final List<String> logins;
   final List<String> codes;
+
+  /// The passkeys whose relying party is the page's host or a domain above it (docs/plans/add-passkeys.md).
+  final List<String> passkeys;
   final String? lookAlikeOf;
 
-  Map<String, Object?> toJson() => {'site': site, 'logins': logins, 'codes': codes, 'lookAlikeOf': ?lookAlikeOf};
+  Map<String, Object?> toJson() => {
+    'site': site,
+    'logins': logins,
+    'codes': codes,
+    if (passkeys.isNotEmpty) 'passkeys': passkeys,
+    'lookAlikeOf': ?lookAlikeOf,
+  };
 }
 
 /// Matches pages to the vault's logins and codes.
@@ -148,7 +158,7 @@ class SiteMatcher {
 
   /// What [page] gets from the vault. Logins and codes in the vault's order; a code linked to a login that matches is
   /// offered too, as the code that follows its password.
-  SiteMatches match(Page page, {required List<Login> logins, required List<OtpAccount> accounts}) {
+  SiteMatches match(Page page, {required List<Login> logins, required List<OtpAccount> accounts, List<Passkey> passkeys = const []}) {
     final site = registrable(page.host);
     final loginIds = [
       for (final login in logins)
@@ -162,7 +172,13 @@ class SiteMatcher {
       for (final account in accounts)
         if (codeMatches(account, page) || linked.contains(account.id)) account.id,
     ];
-    if (loginIds.isNotEmpty || codeIds.isNotEmpty) return SiteMatches(site: site, logins: loginIds, codes: codeIds);
+    final passkeyIds = [
+      for (final passkey in passkeys)
+        if (page.host == passkey.rpId || page.host.endsWith('.${passkey.rpId}')) passkey.id,
+    ];
+    if (loginIds.isNotEmpty || codeIds.isNotEmpty || passkeyIds.isNotEmpty) {
+      return SiteMatches(site: site, logins: loginIds, codes: codeIds, passkeys: passkeyIds);
+    }
     return SiteMatches(site: site, lookAlikeOf: lookAlike(site, knownDomains(logins, accounts)));
   }
 }

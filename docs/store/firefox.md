@@ -34,9 +34,10 @@ collection". Nothing is optional here, so there is no `optional` list.
 The same as [chrome.md](chrome.md)'s justifications, minus `offscreen` (Firefox's background is an
 event page with a document, so it uses the clipboard itself), and with Firefox's own two points:
 
-- `storage`, `alarms`, `idle`, `contextMenus`, `activeTab`, `scripting`, `clipboardRead` and
+- `storage`, `alarms`, `idle`, `contextMenus`, `activeTab`, `scripting`, `notifications`, `clipboardRead` and
   `clipboardWrite`: as listed.
-- Optional: all sites, and the sync server's address, each asked for by the extension at the moment
+- Optional: all sites, `webNavigation` (with all sites, when the person turns on passkeys: it reads a frame's ancestors, and
+  without it only a page's top frame is answered), and the sync server's address, each asked for by the extension at the moment
   it is needed. Firefox shows its own prompt for them.
 - No remote code: `'wasm-unsafe-eval'` loads the bundled WebAssembly core.
 

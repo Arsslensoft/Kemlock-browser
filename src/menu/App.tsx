@@ -9,6 +9,7 @@ import { Wordmark } from '../shared/brand/brand'
 import { ask } from './ask'
 import type { Channel, Init } from './channel'
 import { markDifference, type Part } from './diff'
+import { CardFacts, FormMenu, IdentityFacts } from './forms'
 import type { Ignored, Verdict } from './gate'
 import {
   codeWords,
@@ -62,7 +63,7 @@ export const pressOf = (event: MouseEvent): Press =>
   event.detail === 0 ? { x: null, y: null } : { x: event.clientX, y: event.clientY }
 
 /** Runs [action] only when the gate lets this press count, else says why. */
-function useGuarded(channel: Channel) {
+export function useGuarded(channel: Channel) {
   const [notice, setNotice] = useState<string | null>(null)
   const guarded = useCallback(
     async (press: Press, action: () => Promise<void>) => {
@@ -84,7 +85,7 @@ function useGuarded(channel: Channel) {
 }
 
 /** Reports the card's height to the content script, which sizes the frame. */
-function useSize(channel: Channel) {
+export function useSize(channel: Channel) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const card = ref.current
@@ -100,7 +101,7 @@ function useSize(channel: Channel) {
 }
 
 /** Up and Down move between the rows of a list; Escape closes the menu. */
-function onKeys(channel: Channel) {
+export function onKeys(channel: Channel) {
   return (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -173,6 +174,8 @@ function MenuScreen({ channel, init }: AppProps) {
   if (!view.state.exists) return shell(<p class="muted">{t('menu_no_vault')}</p>)
   if (!view.state.unlocked)
     return shell(<Unlock wrong={view.state.wrongPasswords} onUnlocked={load} />)
+  if (view.field.kind === 'card' || view.field.kind === 'identity')
+    return shell(<FormMenu channel={channel} init={init} view={view} />)
   if (view.field.kind === 'newPassword')
     return shell(<Suggestions channel={channel} init={init} view={view} />)
   if (screen === 'guard')
@@ -210,7 +213,7 @@ function MenuScreen({ channel, init }: AppProps) {
 }
 
 /** The wordmark every card starts with. */
-function Header({ chip }: { chip?: ComponentChildren }) {
+export function Header({ chip }: { chip?: ComponentChildren }) {
   return (
     <div class="head">
       <Wordmark height={14} />
@@ -228,11 +231,11 @@ function Tile({ name }: { name: string }) {
   )
 }
 
-function Rows({ children }: { children: ComponentChildren }) {
+export function Rows({ children }: { children: ComponentChildren }) {
   return <div class="rows">{children}</div>
 }
 
-function Row(props: {
+export function Row(props: {
   title: string
   detail?: string
   /** The detail is a secret or an address: shown in the monospace face. */
@@ -268,7 +271,7 @@ const codeTitle = (code: CodeView) => code.issuer || code.account
 const codeDetail = (code: CodeView) => (code.issuer ? code.account : '')
 
 /** Focuses the first row once, so Enter and the arrows work in a menu opened from the keyboard. */
-function useFirstFocus(ready: boolean) {
+export function useFirstFocus(ready: boolean) {
   useEffect(() => {
     if (!ready) return
     document.querySelector<HTMLElement>('[data-row], input')?.focus()
@@ -293,8 +296,33 @@ function List({ channel, init, view }: AppProps & { view: MenuView }) {
       channel.close(true)
     })
 
+  // Added by passkeys: the passkeys the page's conditional request can be answered with (docs/plans/add-passkeys.md)
+  const passkeys = code ? [] : (view.passkeys ?? [])
+  const choose = (press: Press, passkeyId: string) =>
+    guarded(press, async () => {
+      await ask('passkeyChoose', {
+        tabId: init.tabId,
+        frameId: init.frameId,
+        fieldId: init.fieldId,
+        passkeyId,
+      })
+      channel.close(true)
+    })
+
   return (
     <>
+      {passkeys.length > 0 ? (
+        <Rows>
+          {passkeys.map((p) => (
+            <Row
+              key={p.id}
+              title={p.name}
+              detail={`${t('passkeys_kind')} · ${p.detail}`}
+              onClick={(event) => void choose(pressOf(event), p.id)}
+            />
+          ))}
+        </Rows>
+      ) : null}
       {code ? (
         codes.length === 0 ? (
           <p class="muted">{t('menu_empty_codes')}</p>
@@ -312,7 +340,9 @@ function List({ channel, init, view }: AppProps & { view: MenuView }) {
           </Rows>
         )
       ) : logins.length === 0 ? (
-        <p class="muted">{t('menu_empty_logins')}</p>
+        passkeys.length > 0 ? null : (
+          <p class="muted">{t('menu_empty_logins')}</p>
+        )
       ) : (
         <Rows>
           {logins.map((l) => (
@@ -535,7 +565,7 @@ function Guard({
 
 /* Unlock, inline */
 
-function Unlock({ wrong, onUnlocked }: { wrong: number; onUnlocked: () => void }) {
+export function Unlock({ wrong, onUnlocked }: { wrong: number; onUnlocked: () => void }) {
   const [password, setPassword] = useState('')
   const [tries, setTries] = useState(wrong)
   const [busy, setBusy] = useState(false)
@@ -691,17 +721,40 @@ function SavePrompt({ channel, init }: AppProps) {
   if (pending === undefined || pending === null) return <p class="muted">{t('menu_loading')}</p>
   const update = pending.updateOf !== undefined
   const answer = async (save: boolean, never = false) => {
-    await ask('answerSave', { tabId: init.tabId, save, ...(never ? { never: true } : {}) })
+    // Which offer this answers: a tab may hold a login, a card and an identity
+    await ask('answerSave', {
+      tabId: init.tabId,
+      save,
+      ...(never ? { never: true } : {}),
+      ...(pending.card !== undefined ? { card: true } : {}),
+      ...(pending.identity !== undefined ? { identity: true } : {}),
+    })
     channel.close(false)
   }
   return (
     <>
-      <p class="lead">{update ? t('menu_update_title') : t('menu_save_title')}</p>
+      <p class="lead">
+        {pending.card !== undefined
+          ? t('items_menu_saveCard')
+          : pending.identity !== undefined
+            ? t('items_menu_saveIdentity')
+            : update
+              ? t('menu_update_title')
+              : t('menu_save_title')}
+      </p>
       <dl class="facts">
         <dt>{t('menu_save_site')}</dt>
         <dd class="mono">{pending.site}</dd>
-        <dt>{t('menu_save_user')}</dt>
-        <dd>{pending.username}</dd>
+        {pending.card !== undefined ? (
+          <CardFacts card={pending.card} />
+        ) : pending.identity !== undefined ? (
+          <IdentityFacts identity={pending.identity} />
+        ) : (
+          <>
+            <dt>{t('menu_save_user')}</dt>
+            <dd>{pending.username}</dd>
+          </>
+        )}
         <dt>{t('menu_save_vault')}</dt>
         <dd>{t('menu_save_vault_name')}</dd>
       </dl>

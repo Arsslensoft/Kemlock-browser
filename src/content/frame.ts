@@ -10,7 +10,7 @@ import type { Geometry } from './dom'
 import { otherTopLayer, plainAt, plainView, signatureOf, type NotPlain } from './gate'
 import { placeMenu, placePrompt, type Box } from './place'
 
-export type FrameMode = 'menu' | 'save'
+export type FrameMode = 'menu' | 'save' | 'passkey'
 
 /** What this script sends the frame over the port. */
 export type ToFrame =
@@ -21,6 +21,8 @@ export type ToFrame =
       frameId: number
       fieldId: string
       siteRules?: string
+      /** The passkey card's secret, for the request it answers. */
+      token?: string
     }
   | { kind: 'state'; plain: boolean; why?: NotPlain; signature: string }
   | { kind: 'checked'; id: number; ok: boolean; why?: NotPlain }
@@ -48,6 +50,7 @@ export interface FrameOptions {
   frameId: number
   fieldId: string
   siteRules?: string
+  token?: string
   /** The field's box (for the menu); the prompt ignores it. */
   anchor: () => Box | null
   /** The frame is gone: closed by the person, by Escape, or because its field went away. */
@@ -58,8 +61,8 @@ export interface FrameOptions {
  * The card's width, and the height it has before it reports its own. The frame is bigger than the card by
  * [gutter] on every side, for the card's shadow: the menu page's body has the same padding (menu.css).
  */
-const width = { menu: 340, save: 320 }
-const firstHeight = { menu: 100, save: 190 }
+const width = { menu: 340, save: 320, passkey: 320 }
+const firstHeight = { menu: 100, save: 190, passkey: 190 }
 const gutter = 16
 /** The card's tallest: the same as its max-height in src/menu/menu.css */
 const tallest = 420
@@ -171,7 +174,7 @@ export class MenuFrame {
       this.env.frameOrigin ?? originOfUrl(this.env.pageUrl),
       [channel.port2],
     )
-    const { mode, tabId, frameId, fieldId, siteRules } = this.options
+    const { mode, tabId, frameId, fieldId, siteRules, token } = this.options
     this.send({
       kind: 'init',
       mode,
@@ -179,6 +182,7 @@ export class MenuFrame {
       frameId,
       fieldId,
       ...(siteRules !== undefined ? { siteRules } : {}),
+      ...(token !== undefined ? { token } : {}),
     })
     this.beat()
   }
@@ -262,7 +266,7 @@ export class MenuFrame {
     // The host is the card and its gutter, which has to lie inside the viewport as a whole (src/content/gate.ts)
     const size = { width: width[this.options.mode] + 2 * gutter, height: this.height + 2 * gutter }
     let box: Box
-    if (this.options.mode === 'save') {
+    if (this.options.mode !== 'menu') {
       // The card, not the gutter, sits 16px from the corner
       const placed = placePrompt(size, viewport)
       box = {

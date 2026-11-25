@@ -14,6 +14,8 @@ const pages = [
   ['/src/setup/index.html', 'setup'],
   ['/src/menu/index.html', 'menu'],
   ['/src/offscreen/index.html', 'offscreen'],
+  ['/src/unlock/index.html', 'unlock'],
+  ['/src/sends/index.html', 'sends'],
 ] as const
 const notPages = [
   '/',
@@ -224,7 +226,7 @@ describe('identifySender', () => {
         expect(identifySender(asSender(raw), identity(self))).toEqual(found)
         if (found === null) return
         if (found.from === 'page') {
-          expect(['popup', 'setup', 'menu', 'offscreen']).toContain(found.page)
+          expect(['popup', 'setup', 'menu', 'offscreen', 'unlock']).toContain(found.page)
           expect(raw.id).toBe(self)
           return
         }

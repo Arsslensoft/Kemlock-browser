@@ -3,8 +3,8 @@
 //
 // - `init(host)`: the background's object, with the callbacks (`launchWebAuthFlow`, `cancelWebAuthFlow`, `passkeyAssertion`),
 //   `version`, `sessionKey` (base64, 32 bytes, kept in `storage.session`), `redirectUrl`, optionally `browser`
-//   (`chrome`, `edge` or `firefox`; else read from the user agent), and the files it read from the extension's own files
-//   (`publicSuffixList`, `wordList`, `twoFactorDirectory`, as text). Answers a promise.
+//   (`chrome`, `edge`, `firefox` or `safari`; else read from the user agent), and the files it read from the extension's own files
+//   (`publicSuffixList`, `wordList`, `twoFactorDirectory`, `breachList`, as text). Answers a promise.
 // - `call(method, argsJson)`: a `CoreApi` method with its arguments as a JSON array. Answers a promise of JSON text, always an
 //   envelope: `{"ok": true, "value": …}` or `{"ok": false, "error": {"code", "message"}}`, so no failure crosses as an exception.
 import 'dart:convert';
@@ -75,6 +75,7 @@ class CoreBridge {
         publicSuffixList: host.string('publicSuffixList'),
         wordList: host.string('wordList'),
         twoFactorDirectory: host.string('twoFactorDirectory'),
+        breachList: host.string('breachList'),
       );
       _service = await CoreService.start(platform, data);
       return null;

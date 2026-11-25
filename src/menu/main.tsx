@@ -7,11 +7,15 @@ import './menu.css'
 import { render } from 'preact'
 import { App } from './App'
 import { connect, parseHash } from './channel'
+import { PasskeyApp } from './passkey-card'
 
 const hash = parseHash(location.hash)
 // Opened any other way (a page framing it, someone visiting it): nothing is shown, nothing fills
 if (hash !== null) {
   void connect(hash.nonce).then(({ channel, init }) => {
-    render(<App channel={channel} init={init} />, document.getElementById('app')!)
+    const root = document.getElementById('app')!
+    // The passkey card is its own screen (docs/plans/add-passkeys.md); the menu and the save prompt are App's
+    if (init.mode === 'passkey') render(<PasskeyApp channel={channel} init={init} />, root)
+    else render(<App channel={channel} init={init} />, root)
   })
 }

@@ -6,6 +6,7 @@
 import { adaptCore, KemlockError, open, type CoreBridge } from './bridge'
 import { compile, compileStreaming, type CompiledApp } from './loader'
 import type { CoreApi } from '../../shared/api'
+import { detect } from '../../shared/capabilities'
 
 /** What the background lets the core ask of the browser. Each is optional: without one, the way it serves is not offered. */
 export interface CoreHooks {
@@ -51,8 +52,8 @@ async function readText(path: string): Promise<string | undefined> {
 
 /** The browser's own sign-in flow, and where it ends. */
 function identityHooks(): CoreHooks {
-  const identity = chrome.identity as typeof chrome.identity | undefined
-  if (identity === undefined) return {}
+  if (!detect().identity) return {}
+  const { identity } = chrome
   return {
     async launchWebAuthFlow(url) {
       try {
@@ -64,6 +65,15 @@ function identityHooks(): CoreHooks {
     },
     redirectUrl: identity.getRedirectURL(),
   }
+}
+
+/**
+ * The browser the core is told it runs in, when the build knows better than the user agent: Safari's says neither Chrome nor
+ * Firefox, so the core would call it Chrome (core/lib/src/browser.dart). Chrome's own zip also runs in Edge, which only the user
+ * agent tells, so the others are left to it.
+ */
+export function browserHint(built: string | undefined): { browser?: string } {
+  return built === 'safari' ? { browser: 'safari' } : {}
 }
 
 async function compileCore(): Promise<CompiledApp> {
@@ -79,12 +89,13 @@ async function compileCore(): Promise<CompiledApp> {
 
 /** Loads the core. Call it once, at the background's start. */
 export async function loadCore(hooks: CoreHooks = {}): Promise<CoreApi> {
-  const [app, key, publicSuffixList, wordList, twoFactorDirectory] = await Promise.all([
+  const [app, key, publicSuffixList, wordList, twoFactorDirectory, breachList] = await Promise.all([
     compileCore(),
     sessionKey(),
     readText('core/data/public_suffix_list.dat'),
     readText('core/data/eff_large_wordlist.txt'),
     readText('core/data/two_factor_directory.json'),
+    readText('core/data/breaches.json'),
   ])
   const instance = await app.instantiate({})
   instance.invokeMain()
@@ -94,11 +105,13 @@ export async function loadCore(hooks: CoreHooks = {}): Promise<CoreApi> {
     await bridge.init({
       ...identityHooks(),
       ...hooks,
+      ...browserHint(typeof __BROWSER__ === 'undefined' ? undefined : __BROWSER__),
       version: chrome.runtime.getManifest().version,
       sessionKey: key,
       publicSuffixList,
       wordList,
       twoFactorDirectory,
+      breachList,
     }),
   )
   return adaptCore(bridge)

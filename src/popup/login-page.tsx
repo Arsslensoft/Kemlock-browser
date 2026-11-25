@@ -22,12 +22,16 @@ import { Icon } from '../shared/ui/icons'
 import { CodeLine, codeName } from './codes'
 import { useCopy } from './copy'
 import { backupsFor, type Vault } from './data'
-import { healthTags, hostOf } from './format'
+import { allTags, healthTags, hostOf } from './format'
 import { useLiveCodes } from './live'
+import { passkeysOfWebsites } from './passkey-format'
+import { LoginPasskeys, usePasskeys } from './passkeys'
 import { PasswordLine } from './logins'
 import type { Route } from './route'
 import { ask } from './send'
 import { useFill } from './site'
+import { SpaceDetail } from './spaces'
+import { TagEditor } from './tools/tag-editor'
 
 export function LoginPage(props: {
   id: string
@@ -49,6 +53,7 @@ export function LoginPage(props: {
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
   const remembered = useLoad(() => ask('rememberedSites', { loginId: props.id }), [props.id])
+  const passkeys = usePasskeys()
   useToastBottom(tab === undefined ? 16 : 76)
 
   if (login === undefined) {
@@ -78,7 +83,11 @@ export function LoginPage(props: {
   const tags = healthTags(login, vault.settings.breachedPasswords)
   const unlinked = vault.codes.filter((candidate) => candidate.loginId === undefined)
   const backups = code === undefined ? [] : backupsFor(vault.backups, code)
-  const strengthLabel = t(`popup_strength${Math.max(0, Math.min(4, login.strength))}`)
+  // A password the space hides has no strength to show: nothing of it, not even the line
+  const strengthLabel =
+    login.strength === undefined
+      ? undefined
+      : t(`popup_strength${Math.max(0, Math.min(4, login.strength))}`)
   const backup = backups[0]
   const toGenerator = () => props.onRoute({ name: 'generator' })
 
@@ -89,14 +98,18 @@ export function LoginPage(props: {
         <KemlockIcon size={24} class="mark" />
         <Tile name={login.name} size={32} />
         <h1 class="login-title">{login.name}</h1>
-        <button
-          type="button"
-          class="link-btn hov"
-          onClick={() => props.onRoute({ name: 'edit', id: login.id })}
-        >
-          {t('popup_edit')}
-        </button>
-        <IconButton icon="trash" label={t('popup_deleteLogin')} onClick={() => setAsking(true)} />
+        {login.space?.canEdit !== false && (
+          <button
+            type="button"
+            class="link-btn hov"
+            onClick={() => props.onRoute({ name: 'edit', id: login.id })}
+          >
+            {t('popup_edit')}
+          </button>
+        )}
+        {login.space?.canEdit !== false && (
+          <IconButton icon="trash" label={t('popup_deleteLogin')} onClick={() => setAsking(true)} />
+        )}
       </header>
 
       {asking && (
@@ -156,15 +169,23 @@ export function LoginPage(props: {
             )}
           </div>
           <PasswordLine login={login} variant="detail" />
+          <SpaceDetail
+            kind="login"
+            id={login.id}
+            space={login.space}
+            onMoved={() => void vault.reload()}
+          />
         </Group>
-        <p class="strength-line">
-          {login.passwordChangedAt === undefined
-            ? strengthLabel
-            : t('popup_strengthChanged', strengthLabel, formatDate(login.passwordChangedAt))}
-          {login.previousPasswords > 0 && (
-            <span> · {t('popup_previousCount', login.previousPasswords)}</span>
-          )}
-        </p>
+        {strengthLabel !== undefined && (
+          <p class="strength-line">
+            {login.passwordChangedAt === undefined
+              ? strengthLabel
+              : t('popup_strengthChanged', strengthLabel, formatDate(login.passwordChangedAt))}
+            {login.previousPasswords > 0 && (
+              <span> · {t('popup_previousCount', login.previousPasswords)}</span>
+            )}
+          </p>
+        )}
 
         {tags.includes('breached') && (
           <div class="login-note danger" role="note">
@@ -195,7 +216,7 @@ export function LoginPage(props: {
             <Icon name="warning" size={15} weight={2} />
             <div class="grow">
               <p class="note-title">{t('popup_tagWeak')}</p>
-              <p class="note-body">{t('popup_warnWeak', strengthLabel)}</p>
+              <p class="note-body">{t('popup_warnWeak', strengthLabel ?? '')}</p>
               <button type="button" class="note-link" onClick={toGenerator}>
                 {t('popup_generateAPassword')}
               </button>
@@ -286,6 +307,11 @@ export function LoginPage(props: {
           )}
         </Section>
 
+        <LoginPasskeys
+          passkeys={passkeysOfWebsites(passkeys.value ?? [], login.websites)}
+          onOpen={(id) => props.onRoute({ name: 'passkey', id })}
+        />
+
         {remembered.value !== undefined && remembered.value.length > 0 && (
           <Section>
             <Group>
@@ -317,6 +343,19 @@ export function LoginPage(props: {
             <p class="strength-line">{t('popup_rememberedNote')}</p>
           </Section>
         )}
+
+        {/* Added by tools: the login's tags, changed in place */}
+        <Section title={t('tools_tags')}>
+          <Group pad>
+            <TagEditor
+              kind="login"
+              id={login.id}
+              tags={login.tags}
+              suggestions={allTags(vault.codes, vault.logins)}
+              onChange={() => void vault.reload()}
+            />
+          </Group>
+        </Section>
       </div>
 
       {tab !== undefined && (

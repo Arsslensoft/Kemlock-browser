@@ -62,3 +62,18 @@ Pixels _shrunk(Pixels pixels, int factor) {
   }
   return (width: width, height: height, argb: argb);
 }
+
+/// The QR code of [content] (ASCII text) as its modules: [size] modules a side, [modules] as `size * size` characters, `1` for a dark one, row
+/// by row, without the quiet zone the drawing adds. Error correction level L, so that the largest codes (a 2,048-byte transfer chunk)
+/// fit in a version of the standard.
+({int size, String modules}) qrModules(String content) {
+  final matrix = Encoder.encode(content, ErrorCorrectionLevel.l).matrix;
+  if (matrix == null) throw StateError('the QR code has no matrix');
+  final modules = StringBuffer();
+  for (var y = 0; y < matrix.height; y++) {
+    for (var x = 0; x < matrix.width; x++) {
+      modules.write(matrix.get(x, y) == 1 ? '1' : '0');
+    }
+  }
+  return (size: matrix.width, modules: modules.toString());
+}

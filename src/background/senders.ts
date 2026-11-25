@@ -2,13 +2,21 @@
 // says (design decision 4).
 
 /** The extension's own pages, by the path they are built at. */
-export type ExtensionPage = 'popup' | 'setup' | 'menu' | 'offscreen'
+export type ExtensionPage =
+  'popup' | 'setup' | 'account' | 'menu' | 'offscreen' | 'unlock' | 'sends' | 'keys' | 'transfer'
 
 const pages: Readonly<Record<string, ExtensionPage>> = {
   '/src/popup/index.html': 'popup',
   '/src/setup/index.html': 'setup',
+  '/src/account/index.html': 'account',
   '/src/menu/index.html': 'menu',
   '/src/offscreen/index.html': 'offscreen',
+  // The tab that asks the browser for a passkey, Windows Hello or a security key (docs/plans/add-passkey-unlock.md)
+  '/src/unlock/index.html': 'unlock',
+  '/src/sends/index.html': 'sends',
+  // Keys and PGP, in a tab: the popup's screens for files and long jobs
+  '/src/keys/index.html': 'keys',
+  '/src/transfer/index.html': 'transfer',
 }
 
 /** The extension's id, and the origins its pages send from. */

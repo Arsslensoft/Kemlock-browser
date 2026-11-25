@@ -75,7 +75,50 @@ const fieldReport = fc.oneof(
     { boxes: fc.integer({ min: 4, max: 10 }), rules: short() },
   ),
 )
-const fieldReports = fc.uniqueArray(fieldReport, {
+/** A card's or an identity's field, with what it asks for and its block (docs/plans/add-items.md). */
+const cardPart = fc.constantFrom(
+  'cardName',
+  'cardNumber',
+  'cardExp',
+  'cardExpMonth',
+  'cardExpYear',
+  'cardCsc',
+  'cardType',
+)
+const identityPart = fc.constantFrom(
+  'title',
+  'fullName',
+  'givenName',
+  'middleName',
+  'familyName',
+  'company',
+  'email',
+  'phone',
+  'birthDate',
+  'birthDay',
+  'birthMonth',
+  'birthYear',
+  'street',
+  'line1',
+  'line2',
+  'line3',
+  'city',
+  'region',
+  'postalCode',
+  'country',
+  'countryName',
+)
+const formReport = fc.oneof(
+  rec(
+    { id: fieldId, kind: fc.constant('card'), part: cardPart },
+    { group: short(1), rules: short(), focus: fc.boolean() },
+  ),
+  rec(
+    { id: fieldId, kind: fc.constant('identity'), part: identityPart },
+    { group: short(1), rules: short() },
+  ),
+)
+const fieldReports = fc.uniqueArray(fc.oneof(fieldReport, formReport), {
   maxLength: 8,
   selector: (field) => field.id,
 }) as fc.Arbitrary<Args[]>
@@ -85,6 +128,26 @@ const contentArgs: Record<string, Spec> = {
   sent: rec({ username: free, password: free }, { newPassword: free }),
   openMenu: rec({ fieldId }),
   frame: rec({}),
+  identitySent: rec({
+    given: short(),
+    family: short(),
+    full: short(),
+    email: short(),
+    phone: short(),
+    company: short(),
+    line1: short(),
+    city: short(),
+    postalCode: short(),
+    country: short(),
+  }),
+  cardSent: rec({
+    number: short(),
+    holder: short(),
+    expiry: short(),
+    month: short(),
+    year: short(),
+    code: fc.string({ maxLength: 16 }),
+  }),
 }
 
 const loginInput = rec(
@@ -122,7 +185,15 @@ const settingsPatch = rec(
 const stepAnswer = fc.oneof(
   rec({
     step: fc.constant('second'),
-    method: fc.constantFrom('authenticator', 'email', 'yubikey', 'securityKey', 'duo', 'apiKey'),
+    method: fc.constantFrom(
+      'authenticator',
+      'email',
+      'yubikey',
+      'securityKey',
+      'duo',
+      'apiKey',
+      'recoveryCode',
+    ),
     code: free,
     remember: fc.boolean(),
   }),
@@ -132,8 +203,58 @@ const stepAnswer = fc.oneof(
   rec({ step: fc.constant('homes'), homeId: short(1) }),
   rec({ step: fc.constant('passphrase'), passphrase: free }),
   rec({ step: fc.constant('firstSync'), go: fc.boolean() }),
+  rec({ step: fc.constant('recoveryKit'), pieces: fc.array(short(1), { maxLength: 3 }) }),
 )
 const ids = fc.array(short(1), { maxLength: 4 })
+
+// Added by unlock: a credential's id and a 32-byte PRF output, base64url
+const credentialId = fc.stringMatching(/^[A-Za-z0-9_-]{1,100}$/)
+const prfOutput = fc.stringMatching(/^[A-Za-z0-9_-]{43}$/)
+const noteInput = rec(
+  { title: free, text: free },
+  { pinned: fc.boolean(), tags: fc.array(short(1), { maxLength: 4 }) },
+)
+const cardInput = rec(
+  { name: free },
+  {
+    cardholder: free,
+    number: short(),
+    brand: short(),
+    expMonth: fc.integer({ min: 1, max: 12 }),
+    expYear: fc.integer({ min: 0, max: 9999 }),
+    code: fc.string({ maxLength: 16 }),
+    pin: fc.string({ maxLength: 16 }),
+    validFromMonth: fc.integer({ min: 1, max: 12 }),
+    validFromYear: fc.integer({ min: 0, max: 9999 }),
+    note: free,
+    tags: fc.array(short(1), { maxLength: 4 }),
+    pinned: fc.boolean(),
+    fromAutofill: fc.boolean(),
+  },
+)
+const identityInput = rec(
+  { name: free },
+  {
+    title: short(),
+    givenName: short(),
+    familyName: short(),
+    email: short(),
+    phone: short(),
+    birthDate: short(),
+    address: rec(
+      {},
+      { lines: fc.array(short(), { maxLength: 3 }), city: short(), country: short() },
+    ),
+    documents: fc.array(
+      rec({ type: short(1), number: short(1) }, { id: short(1), expiresOn: short() }),
+      {
+        maxLength: 3,
+      },
+    ),
+    note: free,
+    pinned: fc.boolean(),
+  },
+)
 
 /** Every page request's arguments, by kind: what a well-formed page sends. */
 const pageArgs: Record<string, Spec> = {
@@ -199,7 +320,48 @@ const pageArgs: Record<string, Spec> = {
   allSitesGranted: rec({}),
   menu: rec({ tabId: browserId, frameId: browserId, fieldId }),
   pendingSave: rec({ tabId: browserId }),
-  answerSave: rec({ tabId: browserId, save: fc.boolean() }, { never: fc.boolean() }),
+  // Added by unlock (begin)
+  passkeyUnlockInfo: rec({}),
+  passkeyUnlockPrepare: rec({}),
+  addPasskeyUnlock: rec(
+    { name: short(1), password: free, credentialId, prfOutput },
+    {
+      rpId: short(1),
+      attachment: fc.constantFrom('platform', 'cross-platform'),
+      transports: fc.array(short(1), { maxLength: 4 }),
+    },
+  ),
+  renamePasskeyUnlock: rec({ id: short(1), name: short(1) }),
+  removePasskeyUnlock: rec({ id: short(1) }),
+  unlockWithPasskey: rec({ credentialId, prfOutput }),
+  // Added by unlock (end)
+  account: rec({
+    request: fc.constantFrom(
+      { op: 'devices' },
+      { op: 'approve', id: 'request-1' },
+      { op: 'emergencyInvite', email: 'a@b.c', kind: 'view', waitDays: 7 },
+    ),
+  }),
+  answerSave: rec(
+    { tabId: browserId, save: fc.boolean() },
+    { never: fc.boolean(), card: fc.boolean(), identity: fc.boolean() },
+  ),
+  notes: rec({}),
+  revealNote: rec({ id: short(1) }),
+  saveNote: rec({ id: fc.option(short(1), { nil: null }), input: noteInput }),
+  deleteNote: rec({ id: short(1) }),
+  cards: rec({}),
+  revealCard: rec({ id: short(1) }),
+  saveCard: rec({ id: fc.option(short(1), { nil: null }), input: cardInput }),
+  deleteCard: rec({ id: short(1) }),
+  identities: rec({}),
+  revealIdentity: rec({ id: short(1) }),
+  saveIdentity: rec({ id: fc.option(short(1), { nil: null }), input: identityInput }),
+  deleteIdentity: rec({ id: short(1) }),
+  showSecret: rec(
+    { what: fc.constantFrom('cardNumber', 'cardCode', 'cardPin', 'documentNumber'), id: short(1) },
+    { documentId: short(1) },
+  ),
 }
 
 const contextTarget = fc.oneof(

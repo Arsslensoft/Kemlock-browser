@@ -43,11 +43,11 @@ button for its next code.
 - **WHEN** the person clicks the next-code button of an HOTP account
 - **THEN** its counter goes up by one and the change syncs
 
-### Requirement: The vault's order and tags are shown, not changed
+### Requirement: The vault's order and tags are shown, and changed on their own pages
 
-The lists SHALL follow the account order the vault keeps and SHALL offer
-the vault's tags as a filter. The extension SHALL change neither the order
-nor any item's tags.
+The lists SHALL follow the account order the vault keeps (pinned items first) and SHALL offer the vault's tags as a filter. The
+extension changes the order and the tags only where the vault tools say so (`docs/plans/add-vault-tools.md`), in the app's own
+storage format, so that a phone keeps what the browser saves.
 
 #### Scenario: A custom order
 
@@ -57,7 +57,7 @@ nor any item's tags.
 #### Scenario: Filtering by a tag
 
 - **WHEN** the person picks the tag "Work" in the popup
-- **THEN** only the codes and logins tagged Work are listed, and no tag can be added or removed
+- **THEN** only the codes and logins tagged Work are listed
 
 ### Requirement: Codes kept on a security key are named, not filled
 
@@ -265,13 +265,12 @@ saved login holds it, and SHALL NOT be synced.
 
 The extension SHALL show no paywall and check no purchase. What the app
 sells as Premium and the extension has, sync, the vault's order and tags,
-SHALL be free in the browser, and Premium's tools it doesn't have SHALL be
-absent, not shown locked.
+SHALL be free in the browser, and no tool SHALL be shown locked.
 
 #### Scenario: Backup-code tools
 
 - **WHEN** the person opens a service's backup codes in the popup
-- **THEN** they can copy and mark codes used, and no "get new codes" or coverage tool is shown, locked or not
+- **THEN** they can copy, mark codes used or unused, add, remove and delete them, and see which codes have none saved, all free (`docs/plans/add-vault-tools.md`)
 
 ### Requirement: The settings
 

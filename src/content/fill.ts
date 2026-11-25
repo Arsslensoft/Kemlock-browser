@@ -35,7 +35,9 @@ const canTakeText = (input: HTMLInputElement) => !input.disabled && !input.readO
  */
 export function fillEntry(entry: Registered, value: string, geometry?: Geometry): boolean {
   if (value.length === 0 || value.length > longestValue) return false
-  const { elements } = entry
+  // A card's or an identity's field may be a select or a text area: src/content/form-fill.ts fills those
+  if (entry.kind === 'card' || entry.kind === 'identity') return false
+  const elements = entry.elements as HTMLInputElement[]
   if (elements.length === 0) return false
   for (const element of elements) {
     if (!element.isConnected || !canTakeText(element)) return false

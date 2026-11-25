@@ -82,8 +82,11 @@ See proposal.md for why. What shapes the approach:
 - Running when the vault is locked beyond recognising fields and asking to
   unlock (no index of names outside the vault, unlike the phone's AutoFill
   index).
-- Spaces, Safari, passkeys as a WebAuthn provider, and unlocking with
-  biometrics or a key: see proposal.md.
+- Spaces, Safari and passkeys as a WebAuthn provider: see proposal.md.
+  Unlocking with a passkey or a security key came later, with
+  `docs/plans/add-passkey-unlock.md`, in Chrome and Edge only: Firefox gives an extension page no
+  relying party of its own, only a web domain, so a credential made there would also answer to
+  that domain's pages and to other extensions. It is not offered in Firefox until that changes.
 
 ## Decisions
 

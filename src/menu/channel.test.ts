@@ -9,6 +9,7 @@ describe('parseHash', () => {
   it('reads the mode and the secret the content script put in the address', () => {
     expect(parseHash(`#menu.${nonce}`)).toEqual({ mode: 'menu', nonce })
     expect(parseHash(`#save.${nonce}`)).toEqual({ mode: 'save', nonce })
+    expect(parseHash(`#passkey.${nonce}`)).toEqual({ mode: 'passkey', nonce })
   })
 
   it('refuses an address without them: a page framing the menu on its own gets nothing', () => {
@@ -60,6 +61,21 @@ describe('connect', () => {
     const { channel, init } = await parts.connected
     return { ...parts, channel, init }
   }
+
+  it('gives the passkey card its secret, and only as text', async () => {
+    for (const [token, expected] of [
+      ['abc123', 'abc123'],
+      [7, undefined],
+      [undefined, undefined],
+    ] as const) {
+      const parts = setup()
+      parts.deliver({ kemlock: 'port', nonce }, [parts.port2])
+      parts.port1.postMessage({ ...initMessage, mode: 'passkey', token })
+      const { init } = await parts.connected
+      expect(init.mode).toBe('passkey')
+      expect(init.token).toBe(expected)
+    }
+  })
 
   it('takes the port only with the secret from the address', async () => {
     const parts = setup()

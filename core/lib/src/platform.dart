@@ -76,7 +76,7 @@ class CorePlatform {
 /// What the background gives the core at load, beside the platform: the files it read from the extension's own files,
 /// since the core holds no large data (design decision 1).
 class CoreData {
-  const CoreData({this.publicSuffixList, this.wordList, this.twoFactorDirectory});
+  const CoreData({this.publicSuffixList, this.wordList, this.twoFactorDirectory, this.breachList});
 
   /// publicsuffix.org's list, as its `.dat` text.
   final String? publicSuffixList;
@@ -86,4 +86,7 @@ class CoreData {
 
   /// The 2FA directory's JSON, as 2fa.directory's copy the app bundles.
   final String? twoFactorDirectory;
+
+  /// The breach list's JSON, the copy of Have I Been Pwned's list the app bundles (`assets/data/breaches.json`).
+  final String? breachList;
 }

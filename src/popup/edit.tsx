@@ -16,6 +16,7 @@ import type { Vault } from './data'
 import { hostOf } from './format'
 import type { Prefill } from './route'
 import { ask } from './send'
+import { SpaceField } from './spaces'
 
 export function EditLogin(props: {
   /** The login to change, or null for a new one. */
@@ -42,12 +43,15 @@ export function EditLogin(props: {
   const [codeId, setCodeId] = useState(login?.codeId ?? '')
   const [reveal, setReveal] = useState(false)
   // Saving an unread password would erase it, so an existing login saves only once it is read.
-  const [loaded, setLoaded] = useState(login === undefined)
+  // A password a grant hides is never read here: the form keeps it as it is (docs/plans/add-spaces.md)
+  const hidden = login?.space?.passwordHidden === true
+  const [space, setSpace] = useState(props.prefill?.space ?? '')
+  const [loaded, setLoaded] = useState(login === undefined || hidden)
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (login === undefined) return
+    if (login === undefined || hidden) return
     let alive = true
     ask('showPassword', { id: login.id }).then(
       (current) => {
@@ -88,7 +92,7 @@ export function EditLogin(props: {
 
   const save = async () => {
     const sites = websites.map((site) => site.trim()).filter((site) => site !== '')
-    if (username.trim() === '' && password === '') {
+    if (username.trim() === '' && password === '' && !hidden) {
       setError(t('popup_needsSecret'))
       return
     }
@@ -100,7 +104,8 @@ export function EditLogin(props: {
             ? hostOf(sites[0])
             : username.trim(),
       username: username.trim(),
-      password,
+      password: hidden ? '' : password,
+      ...(hidden ? { keepPassword: true } : {}),
       websites: sites,
       note: note.trim() === '' ? undefined : note,
       // The vault's tags are shown, never changed: they go back as they came.
@@ -110,6 +115,8 @@ export function EditLogin(props: {
     setError(undefined)
     try {
       const saved = await ask('saveLogin', { id: props.id, input })
+      if (props.id === null && space !== '')
+        await ask('moveItem', { itemKind: 'login', id: saved.id, space })
       const before = login?.codeId ?? ''
       if (before !== codeId) {
         if (before !== '') await ask('linkCode', { codeId: before, loginId: null })
@@ -189,30 +196,34 @@ export function EditLogin(props: {
             autocomplete="off"
             onInput={setUsername}
           />
-          <div class="password-edit">
-            <TextField
-              class="grow"
-              label={t('popup_fieldPassword')}
-              value={password}
-              mono
-              type={reveal ? 'text' : 'password'}
-              autocomplete="new-password"
-              readOnly={!loaded}
-              onInput={setPassword}
-              trailing={
-                <IconButton
-                  icon={reveal ? 'eyeOff' : 'eye'}
-                  label={reveal ? t('popup_hide') : t('popup_show')}
-                  pressed={reveal}
-                  onClick={() => setReveal((value) => !value)}
-                />
-              }
-            />
-            <Button class="tall" disabled={!loaded} onClick={() => void generate()}>
-              {t('popup_generate')}
-            </Button>
-          </div>
+          {!hidden && (
+            <div class="password-edit">
+              <TextField
+                class="grow"
+                label={t('popup_fieldPassword')}
+                value={password}
+                mono
+                type={reveal ? 'text' : 'password'}
+                autocomplete="new-password"
+                readOnly={!loaded}
+                onInput={setPassword}
+                trailing={
+                  <IconButton
+                    icon={reveal ? 'eyeOff' : 'eye'}
+                    label={reveal ? t('popup_hide') : t('popup_show')}
+                    pressed={reveal}
+                    onClick={() => setReveal((value) => !value)}
+                  />
+                }
+              />
+              <Button class="tall" disabled={!loaded} onClick={() => void generate()}>
+                {t('popup_generate')}
+              </Button>
+            </div>
+          )}
+          {hidden && <p class="muted">{t('spaces_passwordHiddenEdit')}</p>}
           <TextField label={t('popup_fieldNote')} value={note} multiline onInput={setNote} />
+          {props.id === null && <SpaceField value={space} onChange={setSpace} />}
           <SelectField
             stacked
             label={t('popup_twoStepCode')}
