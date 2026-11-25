@@ -67,7 +67,8 @@ name_re='^[A-Za-z0-9][A-Za-z0-9 ._-]*$'
 # The output folder is deleted first, so it is resolved (links followed) and held against what must never go: the repository
 # and anything above it, the folder this runs from, the home folder, the extension's own folder and anything that holds it, and
 # the repository's own files. Inside dist/ or outside the repository it may be
-inside() { case "$1/" in "$2/"*) return 0 ;; esac; return 1; }
+# Whether $1 is $2 or inside it. Each loses its trailing slash first, so that the root, /, is above everything and not "//"
+inside() { case "${1%/}/" in "${2%/}/"*) return 0 ;; esac; return 1; }
 mkdir -p "$(dirname "$output")"
 if [ -d "$output" ]; then
   output="$(cd "$output" && pwd -P)"
