@@ -8,7 +8,7 @@ this one as `../kemlock`.
 ## Layout
 
 - `src/`: the background worker, the content script and the pages (popup, menu, setup,
-  offscreen). `src/shared/capabilities.ts` is where the browsers' missing APIs are found (Safari has
+  offscreen, account, keys, sends, transfer, unlock). `src/shared/capabilities.ts` is where the browsers' missing APIs are found (Safari has
   no `offscreen`, `idle` or `identity`): feature-detect there, never by the browser's name.
 - `tool/safari/`: Safari runs an extension only from a Mac app, so `convert.sh` wraps `dist/safari` in an
   Xcode project (macOS only; `docs/plans/add-safari.md`).

@@ -8,7 +8,7 @@ and Edge), `kemlock-<version>-firefox.zip` and `kemlock-<version>-safari.zip`. W
 tool/build.sh v1.2.0
 ```
 
-It builds the tag (or `HEAD` when none is given) and prints the SHA-256 of both zips, to
+It builds the tag (or `HEAD` when none is given) and prints the SHA-256 of every zip, to
 compare with the published ones (`SHA256SUMS` in the release). The release workflow builds the
 commit twice, on two runners, with `tool/build.sh --version <x.y.z>`, and tags and publishes it
 only if the two are the same bytes. A release is rebuilt with `tool/build.sh v<x.y.z>`, from the
