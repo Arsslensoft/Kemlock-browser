@@ -68,7 +68,7 @@ describe('the vault', () => {
       expect(await h.send({ kind })).toEqual({ ok: false, error: 'locked' })
     activeTab(orbit)
     expect(await h.ok<PopupView>({ kind: 'popup' })).toEqual({
-      state: { exists: true, unlocked: false, wrongPasswords: 0 },
+      state: { exists: true, unlocked: false, wrongPasswords: 0, fileSync: 'readOnly' },
     })
     expect(await h.ok<UnlockResult>({ kind: 'unlock', password: 'nope' })).toEqual({
       ok: false,
@@ -574,7 +574,7 @@ describe('the in-page menu', () => {
     expect(await ask()).toEqual({
       ok: true,
       value: {
-        state: { exists: true, unlocked: false, wrongPasswords: 0 },
+        state: { exists: true, unlocked: false, wrongPasswords: 0, fileSync: 'readOnly' },
         match: { site: 'accounts.orbit-cloud.com', logins: [], codes: [] },
         logins: [],
         codes: [],

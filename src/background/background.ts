@@ -42,6 +42,7 @@ import { BackgroundError } from './errors'
 import { Filler, recentKey } from './fill'
 import { browserExtensionId } from './identity'
 import { copyText, itemCopies, itemHandlers } from './items'
+import { itemFileHandlers } from './item-files'
 import { createMenus, menuItems, type MenuAction } from './menus'
 import { passkeyUnlockHandlers } from './passkey-unlock'
 import { keysPageHandlers } from './keys'
@@ -87,6 +88,7 @@ const stateAskers: readonly ExtensionPage[] = [
   'sends',
   'keys',
   'transfer',
+  'files',
 ]
 const menuAndPopup: readonly ExtensionPage[] = ['popup', 'menu']
 const menuOnly: readonly ExtensionPage[] = ['menu']
@@ -438,7 +440,16 @@ export class Background {
         changed: () => this.changed(),
       }),
 
-      copy: async ({ what, id, value, documentId }, sender) => {
+      // File items and note attachments (item-files.ts)
+      ...itemFileHandlers({
+        core,
+        check: (sender, allowed) => this.check(sender, allowed),
+        needOpen: () => this.needOpen(),
+        touch: () => this.touch(),
+        changed: () => this.changed(),
+      }),
+
+      copy: async ({ what, id, value, documentId, ref, index }, sender) => {
         this.check(sender, pages)
         await this.needOpen()
         await this.touch()
@@ -449,7 +460,8 @@ export class Background {
           text = (await core.revealLogin(id)).password
         } else if (what === 'code') text = (await core.liveCodes([id], now()))[0]?.code
         else if (what === 'backupCode') text = await this.backupCode(id)
-        else if (itemCopies.has(what)) text = await copyText(core, what, id, documentId)
+        else if (itemCopies.has(what))
+          text = await copyText(core, what, id, documentId, { ref, index })
         else text = value
         if (text === undefined || text === '') throw new BackgroundError('failed')
         await this.d.clipboard.copy(text, await this.clipboardSeconds())

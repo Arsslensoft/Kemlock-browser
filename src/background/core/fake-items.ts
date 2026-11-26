@@ -9,24 +9,66 @@ import type {
   IdentityFull,
   IdentityInput,
   IdentityView,
+  ItemExtras,
+  ItemKind,
+  ItemRef,
   NoteFull,
   NoteInput,
   NoteView,
 } from '../../shared/api'
+import type { FakeExtras, StoredExtras } from './fake-extras'
 import { cardDigits, cardNumberMaxDigits, cardNumberMinDigits, cardYear, isCardNumberText } from '../../shared/card'
 
-/** A note as the fake keeps it: whole, with its files by name. */
-export type StoredNote = NoteFull
+/** What the fake keeps of an item apart from the format's fields and links, which `FakeExtras` holds for every kind. */
+type Plain<T> = Omit<T, keyof ItemExtras>
+
+/** A note as the fake keeps it: whole, with its files by name (their bytes are fake-files.ts's). */
+export type StoredNote = Plain<NoteFull>
+export type StoredCard = Plain<CardFull>
+export type StoredIdentity = Plain<IdentityFull>
+
+/** A File item as the fake keeps it; its bytes are fake-files.ts's. */
+export interface StoredFile {
+  id: string
+  name: string
+  notes: string
+  pinned: boolean
+  tags: string[]
+  /** The file's own name, size and type, from the save that carried it. */
+  fileName?: string
+  size?: number
+  type?: string
+  onServer: boolean
+  changedAt: number
+}
 
 /** What the fake's disk holds of these kinds. */
 export interface ItemsDisk {
   notes: StoredNote[]
-  cards: CardFull[]
-  identities: IdentityFull[]
+  cards: StoredCard[]
+  identities: StoredIdentity[]
   nextId: number
+  /** Fields and links by `refKey`, for every kind that has them. */
+  extras: Record<string, StoredExtras>
+  files: StoredFile[]
 }
 
-export const emptyItems = (): ItemsDisk => ({ notes: [], cards: [], identities: [], nextId: 1 })
+export const emptyItems = (): ItemsDisk => ({
+  notes: [],
+  cards: [],
+  identities: [],
+  nextId: 1,
+  extras: {},
+  files: [],
+})
+
+/** The bytes of files and attachments, by their ids: in memory, as a vault with file sync holds them on the server and not on disk. */
+const blobs = new WeakMap<object, Map<string, Uint8Array>>()
+export const blobsOf = (items: ItemsDisk): Map<string, Uint8Array> => {
+  let held = blobs.get(items)
+  if (held === undefined) blobs.set(items, (held = new Map()))
+  return held
+}
 
 const noteTextLimit = 10_000
 
@@ -46,7 +88,20 @@ export class FakeItems {
     private readonly disk: () => ItemsDisk,
     private readonly now: () => number,
     private readonly fail: (word: string) => Error,
+    private readonly extras: FakeExtras,
   ) {}
+
+  private ref(kind: ItemKind, id: string): ItemRef {
+    return { kind, id }
+  }
+
+  /** The views' fields and links, and the names of the items whose end of a new link could not be written. */
+  private more(kind: ItemKind, id: string, failures: string[] = []): ItemExtras {
+    return {
+      ...this.extras.view(this.ref(kind, id)),
+      ...(failures.length > 0 ? { linkFailures: failures } : {}),
+    }
+  }
 
   private id(prefix: string): string {
     const items = this.disk()
@@ -67,9 +122,14 @@ export class FakeItems {
 
   /* Notes ----------------------------------------------------------------------------------- */
 
-  private noteView(note: StoredNote): NoteView {
+  private noteView(note: StoredNote, failures: string[] = []): NoteView {
     const { text: _text, attachments: _files, ...view } = note
-    return { ...view, order: this.disk().notes.indexOf(note), files: note.attachments.length }
+    return {
+      ...view,
+      order: this.disk().notes.indexOf(note),
+      files: note.attachments.length,
+      ...this.more('note', note.id, failures),
+    }
   }
 
   async notes(): Promise<NoteView[]> {
@@ -78,7 +138,11 @@ export class FakeItems {
 
   async revealNote(id: string): Promise<NoteFull> {
     const note = this.find(this.disk().notes, id)
-    return structuredClone({ ...note, order: this.disk().notes.indexOf(note) })
+    return structuredClone({
+      ...note,
+      order: this.disk().notes.indexOf(note),
+      ...this.more('note', note.id),
+    })
   }
 
   async saveNote(id: string | null, input: NoteInput): Promise<NoteView> {
@@ -86,6 +150,7 @@ export class FakeItems {
     const title = (input.title ?? '').trim()
     if (title === '') throw this.fail('invalid')
     if (input.text.length > noteTextLimit) throw this.fail('invalid')
+    if (id === null) this.extras.check('note', input)
     const now = this.now()
     if (id === null) {
       const note: StoredNote = {
@@ -100,7 +165,7 @@ export class FakeItems {
         attachments: [],
       }
       notes.push(note)
-      return this.noteView(note)
+      return this.noteView(note, this.extras.apply(this.ref('note', note.id), input))
     }
     const note = this.find(notes, id)
     note.title = title
@@ -108,20 +173,24 @@ export class FakeItems {
     if (input.tags !== undefined) note.tags = [...input.tags]
     if (input.pinned !== undefined) note.pinned = input.pinned
     note.changedAt = now
-    return this.noteView(note)
+    return this.noteView(note, this.extras.apply(this.ref('note', note.id), input))
   }
 
   async deleteNote(id: string): Promise<void> {
     const items = this.disk()
-    items.notes = items.notes.filter((note) => note !== this.find(items.notes, id))
+    const gone = this.find(items.notes, id)
+    items.notes = items.notes.filter((note) => note !== gone)
+    for (const file of gone.attachments) blobsOf(items).delete(file.id)
+    this.extras.forget(this.ref('note', id))
   }
 
   /* Cards ----------------------------------------------------------------------------------- */
 
-  private cardView(card: CardFull): CardView {
+  private cardView(card: StoredCard, failures: string[] = []): CardView {
     const { number, code, pin, ...view } = card
     return {
       ...view,
+      ...this.more('card', card.id, failures),
       ...(number === '' ? {} : { lastFour: number.slice(-4) }),
       order: this.disk().cards.indexOf(card),
       expired: expiredAt(card.expMonth, card.expYear, this.now()),
@@ -137,7 +206,11 @@ export class FakeItems {
 
   async revealCard(id: string): Promise<CardFull> {
     const card = this.find(this.disk().cards, id)
-    return structuredClone({ ...card, order: this.disk().cards.indexOf(card) })
+    return structuredClone({
+      ...card,
+      order: this.disk().cards.indexOf(card),
+      ...this.more('card', card.id),
+    })
   }
 
   async saveCard(id: string | null, input: CardInput): Promise<CardView> {
@@ -167,7 +240,8 @@ export class FakeItems {
     })
     const secrets = { number: digits, code: input.code ?? '', pin: input.pin ?? '' }
     if (id === null) {
-      const card: CardFull = {
+      this.extras.check('card', input)
+      const card: StoredCard = {
         id: this.id('card'),
         ...fields,
         ...secrets,
@@ -182,7 +256,7 @@ export class FakeItems {
         changedAt: this.now(),
       }
       cards.push(card)
-      return this.cardView(card)
+      return this.cardView(card, this.extras.apply(this.ref('card', card.id), input))
     }
     const card = this.find(cards, id)
     for (const key of [
@@ -199,21 +273,23 @@ export class FakeItems {
     if (input.tags !== undefined) card.tags = [...input.tags]
     if (input.pinned !== undefined) card.pinned = input.pinned
     card.changedAt = this.now()
-    return this.cardView(card)
+    return this.cardView(card, this.extras.apply(this.ref('card', card.id), input))
   }
 
   async deleteCard(id: string): Promise<void> {
     const items = this.disk()
     items.cards = items.cards.filter((card) => card !== this.find(items.cards, id))
+    this.extras.forget(this.ref('card', id))
   }
 
   /* Identities ------------------------------------------------------------------------------ */
 
-  private identityView(identity: IdentityFull): IdentityView {
+  private identityView(identity: StoredIdentity, failures: string[] = []): IdentityView {
     const now = this.now()
     const today = new Date(now).toISOString().slice(0, 10)
     return {
       ...identity,
+      ...this.more('identity', identity.id, failures),
       order: this.disk().identities.indexOf(identity),
       documents: identity.documents.map(({ number, ...document }) => ({
         ...document,
@@ -229,7 +305,11 @@ export class FakeItems {
 
   async revealIdentity(id: string): Promise<IdentityFull> {
     const identity = this.find(this.disk().identities, id)
-    return structuredClone({ ...identity, order: this.disk().identities.indexOf(identity) })
+    return structuredClone({
+      ...identity,
+      order: this.disk().identities.indexOf(identity),
+      ...this.more('identity', identity.id),
+    })
   }
 
   async saveIdentity(id: string | null, input: IdentityInput): Promise<IdentityView> {
@@ -283,7 +363,8 @@ export class FakeItems {
       }
     })
     if (held === undefined) {
-      const identity: IdentityFull = {
+      this.extras.check('identity', input)
+      const identity: StoredIdentity = {
         id: this.id('identity'),
         ...details,
         name,
@@ -294,7 +375,7 @@ export class FakeItems {
         changedAt: this.now(),
       }
       identities.push(identity)
-      return this.identityView(identity)
+      return this.identityView(identity, this.extras.apply(this.ref('identity', identity.id), input))
     }
     for (const key of [
       'title',
@@ -316,11 +397,12 @@ export class FakeItems {
     if (input.tags !== undefined) held.tags = [...input.tags]
     if (input.pinned !== undefined) held.pinned = input.pinned
     held.changedAt = this.now()
-    return this.identityView(held)
+    return this.identityView(held, this.extras.apply(this.ref('identity', held.id), input))
   }
 
   async deleteIdentity(id: string): Promise<void> {
     const items = this.disk()
     items.identities = items.identities.filter((identity) => identity !== this.find(items.identities, id))
+    this.extras.forget(this.ref('identity', id))
   }
 }

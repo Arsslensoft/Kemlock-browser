@@ -3,7 +3,16 @@
 
 /** The extension's own pages, by the path they are built at. */
 export type ExtensionPage =
-  'popup' | 'setup' | 'account' | 'menu' | 'offscreen' | 'unlock' | 'sends' | 'keys' | 'transfer'
+  | 'popup'
+  | 'setup'
+  | 'account'
+  | 'menu'
+  | 'offscreen'
+  | 'unlock'
+  | 'sends'
+  | 'keys'
+  | 'transfer'
+  | 'files'
 
 const pages: Readonly<Record<string, ExtensionPage>> = {
   '/src/popup/index.html': 'popup',
@@ -17,6 +26,8 @@ const pages: Readonly<Record<string, ExtensionPage>> = {
   // Keys and PGP, in a tab: the popup's screens for files and long jobs
   '/src/keys/index.html': 'keys',
   '/src/transfer/index.html': 'transfer',
+  // File items and note attachments, in a tab: the popup's choosing, uploading and replacing of files
+  '/src/files/index.html': 'files',
 }
 
 /** The extension's id, and the origins its pages send from. */

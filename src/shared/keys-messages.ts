@@ -28,7 +28,11 @@ const maxText = 1_100_000
 /** A file of the most the tools take, in base64. */
 const maxBase64 = Math.ceil(maxFileBytes / 3) * 4 + 8
 
-export function keysPageSpecs(h: SpecHelpers): { [K in keyof KeysPageApi]: Record<string, Field> } {
+/** `extras` are the item format's `fields` and `links` members (messages.ts), which a contact takes as every item does. */
+export function keysPageSpecs(
+  h: SpecHelpers,
+  extras: Record<string, Field>,
+): { [K in keyof KeysPageApi]: Record<string, Field> } {
   const { text, id, bool, int, oneOf, list, nullable, obj, req, opt } = h
   const secret = text(4096, 1)
   // A text or a file's bytes: the core says when there is neither
@@ -67,7 +71,17 @@ export function keysPageSpecs(h: SpecHelpers): { [K in keyof KeysPageApi]: Recor
       checked: opt(list(text(130, 1), 100)),
       replacing: opt(id),
     },
-    saveContact: { id: req(id), ...edits, checked: opt(bool) },
+    // A null id makes a contact with no key; the details are the item format's (company, email, phone, address)
+    saveContact: {
+      id: req(nullable(id)),
+      ...edits,
+      company: opt(text(512)),
+      email: opt(text(512)),
+      phone: opt(text(128)),
+      address: opt(text(2048)),
+      checked: opt(bool),
+      ...extras,
+    },
     contactPublic: { id: req(id) },
     deleteContact: { id: req(id) },
 
