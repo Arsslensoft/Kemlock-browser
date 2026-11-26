@@ -70,7 +70,7 @@ test.describe('sync with a WebDAV folder', () => {
     // button, and says how many backup codes are left and, near the end of the period, the next code
     const githubRow = popup
       .locator('li')
-      .filter({ has: popup.getByRole('button', { name: 'Copy the code of GitHub' }) })
+      .filter({ has: popup.getByRole('button', { name: 'Copy the MFA code of GitHub' }) })
     const shown = (await githubRow.innerText())
       .replace(/backup codes left: \d+/i, '')
       .split(/next/i)[0]

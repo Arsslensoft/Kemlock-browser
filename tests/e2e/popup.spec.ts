@@ -1,5 +1,5 @@
 // The browser-popup spec: the site in front, live codes, search, copying, the generator, health,
-// settings, "Add a code" and the toolbar icon. The popup is opened as a tab (see Kemlock.popup).
+// settings, "Add an MFA code" and the toolbar icon. The popup is opened as a tab (see Kemlock.popup).
 import type { Page } from '@playwright/test'
 import { expect, ORBIT, test, type Kemlock } from './kemlock'
 import { hosts } from './hosts'
@@ -25,7 +25,7 @@ test.describe('the popup', () => {
     await expect(popup.getByText(ORBIT.username).first()).toBeVisible()
     await expect(popup.getByText(ORBIT.password)).toHaveCount(0)
     expect(totpNear(ORBIT.secret)).toContain(await codeShownIn(row(popup, ORBIT.name)))
-    await expect(control(popup, /fill code/i)).toBeVisible()
+    await expect(control(popup, /fill MFA code/i)).toBeVisible()
 
     // Nothing was filled by itself
     await expect(site.getByLabel('Email')).toHaveValue('')
@@ -155,7 +155,7 @@ test.describe('the popup', () => {
     // The counts row, as the spec words it
     await expect(popup.getByText(/password health/i).first()).toBeVisible()
     await expect(popup.getByText(/2 reused/i).first()).toBeVisible()
-    await expect(popup.getByText(/1 without its code/i).first()).toBeVisible()
+    await expect(popup.getByText(/1 without its MFA code/i).first()).toBeVisible()
     await expect(
       row(popup, 'Linear')
         .getByText(/reused/i)
@@ -171,7 +171,7 @@ test.describe('the popup', () => {
     await kemlock.call('ignoreHealth', { id: github.id, ignored: true })
     await popup.reload()
     await openSection(popup, 'Logins')
-    await expect(popup.getByText(/without its code/i)).toHaveCount(0)
+    await expect(popup.getByText(/without its MFA code/i)).toHaveCount(0)
   })
 
   test('settings are saved, and nothing asks for Premium', async ({ kemlock }) => {
@@ -185,7 +185,7 @@ test.describe('the popup', () => {
     await popup.reload()
     await openSection(popup, 'Settings')
     await expect(toggle(popup, /offer to save/i)).not.toBeChecked()
-    for (const section of ['Codes', 'Logins', 'Generator', 'Settings'] as const) {
+    for (const section of ['MFA codes', 'Logins', 'Generator', 'Settings'] as const) {
       // Generator and Settings are pages over Home; the lists are on Home itself
       await popup.reload()
       await openSection(popup, section)
@@ -193,19 +193,19 @@ test.describe('the popup', () => {
     }
   })
 
-  test.describe('Add a code', () => {
+  test.describe('Add an MFA code', () => {
     const qr = (uri?: string) => `/qr${uri ? `?uri=${encodeURIComponent(uri)}` : ''}`
 
-    // "Add a code" reads what the tab in front shows. The popup is a tab here, so the site is put in
+    // "Add an MFA code" reads what the tab in front shows. The popup is a tab here, so the site is put in
     // front again, as it is behind the toolbar's popup, before the popup is asked.
-    const addACode = async (popup: Page, site: Page) => {
+    const addAnMfaCode = async (popup: Page, site: Page) => {
       await site.bringToFront()
-      await control(popup, /add a code/i).click()
+      await control(popup, /add an MFA code/i).click()
     }
 
     test('a pasted link adds the code', async ({ kemlock }) => {
       const popup = await kemlock.popup()
-      await control(popup, /add a code/i).click()
+      await control(popup, /add an MFA code/i).click()
       await popup
         .getByRole('textbox', { name: /link|otpauth|paste/i })
         .or(popup.getByPlaceholder(/otpauth/i))
@@ -225,7 +225,7 @@ test.describe('the popup', () => {
     }) => {
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await addACode(popup, site)
+      await addAnMfaCode(popup, site)
       await expect(popup.getByText('Harbor Notes').first()).toBeVisible({ timeout: 20_000 })
       await control(popup, /^add$/i).click()
       await expect.poll(async () => (await kemlock.call('codes')).length).toBe(1)
@@ -237,9 +237,9 @@ test.describe('the popup', () => {
     test('a QR code that holds only an address adds nothing', async ({ kemlock }) => {
       const site = await kemlock.visit(hosts.harbor, qr('https://example.com/not-a-code'))
       const popup = await kemlock.popup(site)
-      await addACode(popup, site)
+      await addAnMfaCode(popup, site)
       await expect(
-        popup.getByText(/no code (was )?found|couldn.t find a code/i).first(),
+        popup.getByText(/no (MFA )?code (was )?found|couldn.t find an? (MFA )?code/i).first(),
       ).toBeVisible({ timeout: 20_000 })
       expect(await kemlock.call('codes')).toEqual([])
     })
@@ -251,7 +251,7 @@ test.describe('the popup', () => {
       })
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await addACode(popup, site)
+      await addAnMfaCode(popup, site)
       await expect(popup.getByText(/already/i).first()).toBeVisible({ timeout: 20_000 })
       await expect(popup.getByText('Harbor Notes').first()).toBeVisible()
       expect(await kemlock.call('codes')).toHaveLength(1)
@@ -269,7 +269,7 @@ test.describe('the popup', () => {
       })
       const site = await kemlock.visit(hosts.harbor, qr())
       const popup = await kemlock.popup(site)
-      await addACode(popup, site)
+      await addAnMfaCode(popup, site)
       await expect(popup.getByText(/link to the harbor notes login/i).first()).toBeVisible({
         timeout: 20_000,
       })
