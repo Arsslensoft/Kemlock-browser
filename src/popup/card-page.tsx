@@ -34,6 +34,7 @@ import { errorMessage, t } from '../shared/ui/i18n'
 import { useCopy } from './copy'
 import type { Vault } from './data'
 import { allTags } from './format'
+import { FieldsEditor, FieldsSection, LinkPicker, LinksSection, useItemExtras } from './item-extras'
 import { DeleteQuestion, DetailRow, ItemBar, SecretRow, useFillForm } from './items-ui'
 import type { Route } from './route'
 import { ask } from './send'
@@ -189,6 +190,12 @@ export function CardPage(props: {
             </Group>
           </Section>
         )}
+        <FieldsSection item={{ kind: 'card', id: card.id }} fields={card.fields} />
+        <LinksSection
+          item={{ kind: 'card', id: card.id }}
+          onRoute={props.onRoute}
+          onChanged={() => void vault.reload()}
+        />
       </div>
       {tab !== undefined && (
         <div class="foot-bar">
@@ -319,6 +326,11 @@ function CardForm(props: {
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof CardDraft>(key: K, value: CardDraft[K]) =>
     setDraft((before) => ({ ...before, [key]: value }))
+  const extras = useItemExtras(
+    'card',
+    props.id === null ? null : { kind: 'card', id: props.id },
+    props.initial?.fields,
+  )
 
   const digits = cardDigits(draft.number)
   const offered = cardBrandOf(digits)
@@ -337,10 +349,17 @@ function CardForm(props: {
       setError(made.problem)
       return
     }
+    if (extras.problem !== undefined) {
+      setError(extras.problem)
+      return
+    }
     setBusy(true)
     setError(undefined)
     try {
-      const saved = await ask('saveCard', { id: props.id, input: made.input })
+      const saved = await ask('saveCard', {
+        id: props.id,
+        input: { ...made.input, ...extras.members() },
+      })
       await props.vault.reload()
       props.onSaved(saved.id)
     } catch (failure) {
@@ -450,6 +469,7 @@ function CardForm(props: {
             multiline
             onInput={(value) => set('note', value)}
           />
+          <FieldsEditor {...extras.fieldsProps} />
           <Group>
             <Switch
               checked={draft.pinned}
@@ -457,12 +477,13 @@ function CardForm(props: {
               onChange={(on) => set('pinned', on)}
             />
           </Group>
+          <LinkPicker {...extras.linkProps} />
         </div>
         <div class="foot-bar">
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy}>
+          <Button kind="primary" tall type="submit" busy={busy} disabled={extras.loading}>
             {t('popup_save')}
           </Button>
         </div>

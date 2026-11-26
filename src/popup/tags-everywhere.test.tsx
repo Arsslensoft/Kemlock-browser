@@ -100,7 +100,14 @@ describe('which lists have a tag button', () => {
   it('shows the tag button on each of Home’s tabs', async () => {
     background.reset(handlers())
     const root = await openPopup()
-    for (const tab of ['Codes 0', 'Logins 0', 'Passkeys 2', 'Notes 1', 'Cards 1', 'Identities 1']) {
+    for (const tab of [
+      'MFA codes 0',
+      'Logins 0',
+      'Passkeys 2',
+      'Notes 1',
+      'Cards 1',
+      'Identities 1',
+    ]) {
       await click(button(root, tab))
       expect(button(root, t('tools_tagsTitle')), tab).not.toBeNull()
     }

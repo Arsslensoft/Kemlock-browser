@@ -92,7 +92,6 @@
   "items_fieldUsername": "Nom d’utilisateur",
   "items_fieldValidFrom": "Valable à partir de",
   "items_files": "Fichiers : {count}",
-  "items_filesOnPhone": "Ouvrez les fichiers dans l’app Kemlock sur votre téléphone : le navigateur les liste et les garde tels quels.",
   "items_filesTitle": "Fichiers · {count}",
   "items_fillCard": "Remplir la carte",
   "items_fillCardOf": "Remplir la carte {name}",

@@ -32,10 +32,16 @@ export function BackupCodesPage(props: {
         <BackupCodes
           backups={props.vault.backups}
           onChanged={props.vault.reload}
+          onRoute={props.onRoute}
           onOpen={
             props.onRoute === undefined
               ? undefined
               : (serviceId) => props.onRoute?.({ name: 'backupService', serviceId })
+          }
+          onEdit={
+            props.onRoute === undefined
+              ? undefined
+              : (serviceId) => props.onRoute?.({ name: 'backupEdit', id: serviceId })
           }
         />
       </div>

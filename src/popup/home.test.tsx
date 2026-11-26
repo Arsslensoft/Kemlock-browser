@@ -189,7 +189,7 @@ describe('the Logins list', () => {
     expect(text(root)).toContain('Password health')
     expect(text(root)).toContain('2 reused · 1 without its code')
     expect(root.querySelectorAll('.item .sub.warn-text')).toHaveLength(3)
-    expect(text(root)).toContain('Without its code')
+    expect(text(root)).toContain('Without its MFA code')
 
     await click(button(root, 'Copy the password of Linear'))
     expect(background.of('copy')[0]?.args).toEqual({ what: 'password', id: 'l2' })
@@ -234,7 +234,7 @@ describe('search', () => {
   it('matches names, usernames, accounts and websites in both lists, whatever the case', async () => {
     background.reset(unlockedHandlers(world()))
     const root = await openPopup()
-    const search = input(root, 'Search codes and logins')
+    const search = input(root, 'Search MFA codes and logins')
 
     await change(search, 'ORBIT')
     expect(names(root)).toEqual(['Orbit Cloud', 'Orbit Cloud'])
@@ -274,7 +274,7 @@ describe('the site in front', () => {
 
     await click(button(card, 'Fill login'))
     expect(background.of('fill')[0]?.args).toEqual({ tabId: 7, loginId: 'l1' })
-    await click(button(card, 'Fill code'))
+    await click(button(card, 'Fill MFA code'))
     expect(background.of('fill')[1]?.args).toEqual({ tabId: 7, codeId: 'c1' })
 
     await click(button(card, 'Show the password of Orbit Cloud'))
