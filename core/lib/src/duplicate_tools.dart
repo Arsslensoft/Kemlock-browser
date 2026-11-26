@@ -26,6 +26,7 @@ import 'package:kemlock_core/models/otp_account.dart';
 import 'package:kemlock_core/models/passkey.dart';
 import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
+import 'package:kemlock_core/models/vault_file.dart';
 import 'package:kemlock_core/models/vault_key.dart';
 
 import 'failure.dart';
@@ -56,6 +57,7 @@ class DuplicateTools {
     cards: lists.cards,
     identities: lists.identities,
     contacts: lists.contacts,
+    files: lists.files,
   );
 
   /// The items the matching works on: the vault's, with every hidden password taken out first (as health does), so that the match, its
@@ -317,6 +319,7 @@ class DuplicateTools {
     for (final item in lists.logins) item.id: item,
     for (final item in lists.cards) item.id: item,
     for (final item in lists.identities) item.id: item,
+    for (final item in lists.files) item.id: item,
   };
 
   /// Puts back what the merge with [recordId] took, as `planUndo` plans it, and drops the record: the items that went, the item that
@@ -400,6 +403,10 @@ class DuplicateTools {
       for (final item in lists.identities)
         if (!ids.contains(item.id)) item,
     ],
+    files: [
+      for (final item in lists.files)
+        if (!ids.contains(item.id)) item,
+    ],
   );
 
   /// [lists] with each of [items] put in place of the item of its kind with its id, or added at the end.
@@ -425,6 +432,7 @@ class DuplicateTools {
       logins: put(lists.logins, items.whereType<Login>(), (a) => a.id),
       cards: put(lists.cards, items.whereType<PaymentCard>(), (a) => a.id),
       identities: put(lists.identities, items.whereType<Identity>(), (a) => a.id),
+      files: put(lists.files, items.whereType<VaultFile>(), (a) => a.id),
     );
   }
 

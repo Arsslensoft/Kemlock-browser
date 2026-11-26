@@ -30,8 +30,11 @@ void main() {
       'order': 3,
       'onSecurityKey': false,
       'websites': ['orbit-cloud.com'],
+      'ownWebsites': ['orbit-cloud.com'],
       'loginId': 'l',
       'backupCodesLeft': 4,
+      'fields': <Object?>[],
+      'links': 0,
     });
     expect(view.values.join(), isNot(contains('JBSWY3DPEHPK3PXP')));
   });

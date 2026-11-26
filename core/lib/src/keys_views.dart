@@ -158,6 +158,8 @@ class ContactStanding {
 
 /// What the key of [contact] holds, or null when it can't be read.
 crypto.PgpKeyInfo? contactInfoOf(Contact contact) {
+  // A person kept without a key has nothing to read
+  if (!contact.hasKey) return null;
   try {
     return crypto.readPgpKeyInfo(unb64(contact.publicKey));
   } on crypto.KeyFormatException {
@@ -193,8 +195,9 @@ ContactStanding contactStandingOf(Contact contact, DateTime now, {crypto.PgpKeyI
   );
 }
 
-/// [contact] as a `ContactView`.
-Map<String, Object?> contactView(Contact contact, DateTime now) {
+/// [contact] as a `ContactView`. [fields] are its custom fields as `fieldViews` gives them (no hidden value), [links] how many items it
+/// is linked to.
+Map<String, Object?> contactView(Contact contact, DateTime now, {List<Map<String, Object?>> fields = const [], int links = 0}) {
   final standing = contactStandingOf(contact, now);
   final info = standing.info;
   final fingerprint = info == null ? '' : info.primary.fingerprintHex;
@@ -202,6 +205,11 @@ Map<String, Object?> contactView(Contact contact, DateTime now) {
   return {
     'id': contact.id,
     'name': named.isNotEmpty ? named : (info == null ? '' : nameOfKey(info) ?? fingerprint.substring(0, 8)),
+    'company': ?_nonBlank(contact.company),
+    'email': ?_nonBlank(contact.email),
+    'phone': ?_nonBlank(contact.phone),
+    'address': ?_nonBlank(contact.address),
+    'hasKey': contact.hasKey,
     'fingerprint': info == null ? '' : groupedFingerprintOf(fingerprint),
     'line': info == null ? '' : pgpListLine(info),
     'userIds': info?.userIdsMainFirst ?? const <String>[],
@@ -215,6 +223,11 @@ Map<String, Object?> contactView(Contact contact, DateTime now) {
     'canEncrypt': standing.canEncrypt,
     'note': ?contact.note,
     'addedAt': contact.addedAt,
-    if (info == null) 'unreadable': true,
+    'fields': fields,
+    'links': links,
+    // A contact with no key isn't one whose key can't be read
+    if (info == null && contact.hasKey) 'unreadable': true,
   };
 }
+
+String? _nonBlank(String? text) => text == null || text.trim().isEmpty ? null : text;

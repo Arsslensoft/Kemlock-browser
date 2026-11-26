@@ -270,7 +270,8 @@ class SpacesService {
         count(lists.notes) +
         count(lists.logins) +
         count(lists.cards) +
-        count(lists.identities);
+        count(lists.identities) +
+        count(lists.files);
   }
 
   /// The WebDAV spaces of the settings, as rows. One that moved to Kemlock Server is the phone's to run: it is listed, not synced.
@@ -436,6 +437,8 @@ class SpacesService {
         if (identity.spaceId == space) (id: identity.id, kind: 'identity', name: identity.name),
       for (final key in lists.keys)
         if (key.spaceId == space) (id: key.id, kind: 'key', name: key.name),
+      for (final file in lists.files)
+        if (file.spaceId == space) (id: file.id, kind: 'file', name: file.name),
     ];
   }
 
@@ -980,6 +983,7 @@ class SpacesService {
     logins: logins ?? l.logins,
     cards: cards ?? l.cards,
     identities: identities ?? l.identities,
+    files: l.files,
   );
 
   // ─── WebDAV spaces ──────────────────────────────────────────────────
