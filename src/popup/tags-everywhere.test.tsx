@@ -92,8 +92,8 @@ afterEach(() => {
 describe('which lists have a tag button', () => {
   it('names the kind the core tags for each of Home’s lists, and nothing for another', () => {
     expect(
-      ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities'].map(taggableKind),
-    ).toEqual(['code', 'login', 'passkey', 'note', 'card', 'identity'])
+      ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities', 'files'].map(taggableKind),
+    ).toEqual(['code', 'login', 'passkey', 'note', 'card', 'identity', 'file'])
     expect(taggableKind('sends')).toBeUndefined()
   })
 
