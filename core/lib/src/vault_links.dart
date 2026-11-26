@@ -129,6 +129,8 @@ extension VaultLinks on VaultService {
       for (final item in linkedItemsOf(lists, self, account: owner))
         if (item.entry != null) item.id: item,
     };
+    // An item that holds more links than the limit already may be saved with the ones it has
+    if (wanted.length > linkRefsMax && wanted.length > current.length) throw const CoreFailure(CoreFailure.invalid, 'too many links');
     final desired = <String, VaultEntry<Object?>>{};
     for (final ref in wanted) {
       final other = findEntry(lists, ref.kind, ref.id);

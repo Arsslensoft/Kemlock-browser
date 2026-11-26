@@ -116,6 +116,25 @@ void main() {
       expect(next[2].value, '', reason: 'a new hidden field holds nothing the page could have kept');
     });
 
+    test('a name or value over the limit that the field holds already is written back, a new one is refused', () {
+      final fields = [CustomField(name: 'n' * 300, value: 'v' * 20000, kind: CustomFieldKind.text)];
+      final same = applyFields(fields, [
+        {'origin': 0, 'name': 'n' * 300, 'kind': 'text', 'value': 'v' * 20000},
+      ]);
+      expect(identical(same, fields), isTrue);
+      expect(
+        () => applyFields(fields, [
+          {'origin': 0, 'name': 'n' * 300, 'kind': 'text', 'value': 'w' * 20000},
+        ]),
+        invalid(),
+      );
+      final many = [for (var i = 0; i < 120; i++) CustomField(name: 'f$i', value: '', kind: CustomFieldKind.text)];
+      final back = applyFields(many, [
+        for (var i = 0; i < 120; i++) {'origin': i, 'name': 'f$i', 'kind': 'text', 'value': ''},
+      ]);
+      expect(identical(back, many), isTrue, reason: 'a list over the limit is sent back whole');
+    });
+
     test('refuses what is not a field', () {
       final fields = read(original);
       expect(() => applyFields(fields, 'x'), invalid());
@@ -230,6 +249,34 @@ void main() {
       expect(() => readRules('example.co', const []), invalid());
     });
 
+    test('check the scheme before the host and port shortcut, which only a host with a dot or localhost may use', () {
+      for (final uri in ['javascript:1/alert(1)', 'data:1', 'file:80', 'vbscript:1/x', 'JavaScript:8080', 'intranet:8080']) {
+        for (final match in ['default', 'domain', 'host', 'startsWith', 'exact', 'never']) {
+          expect(() => readRules([{'uri': uri, 'match': match}], const []), invalid(), reason: '$uri on $match');
+        }
+      }
+      final rules = readRules([
+        {'uri': 'localhost:8080', 'match': 'exact'},
+        {'uri': 'example.co:8443/admin', 'match': 'startsWith'},
+        {'uri': 'iosapp://com.example.app', 'match': 'default'},
+        {'uri': 'androidapp://com.example', 'match': 'never'},
+      ], const []);
+      expect(rules.map((r) => r.uri), ['localhost:8080', 'example.co:8443/admin', 'iosapp://com.example.app', 'androidapp://com.example']);
+    });
+
+    test('keep a website the item holds as it is whatever its length or scheme, and refuse a new one over the limit', () {
+      final held = [
+        WebsiteRule('x' * 2500),
+        for (var i = 0; i < 60; i++) WebsiteRule('h$i.example.co'),
+      ];
+      final same = readRules(ruleViews(held), held);
+      expect(same.map((r) => r.uri), held.map((r) => r.uri));
+      expect(
+        () => readRules([...ruleViews(held), {'uri': 'new.example.co', 'match': 'default'}], held),
+        invalid(),
+      );
+    });
+
     test('hosts typed for a code are normalised, once each, and not hosts are left out', () {
       expect(readHosts(['https://www.Example.co/x', 'example.co', 'not a host', 'github.com']), ['example.co', 'github.com']);
     });
@@ -279,9 +326,16 @@ void main() {
       expect(() => parseRefs('a'), invalid());
       expect(
         () => parseRefs([
-          for (var i = 0; i < 101; i++) {'kind': 'login', 'id': '$i'},
+          for (var i = 0; i < linkRefsReadMax + 1; i++) {'kind': 'login', 'id': '$i'},
         ]),
         invalid(),
+      );
+      expect(
+        parseRefs([
+          for (var i = 0; i < linkRefsMax + 1; i++) {'kind': 'login', 'id': '$i'},
+        ]),
+        hasLength(linkRefsMax + 1),
+        reason: 'what an item holds may be sent back; setLinksOf checks the limit against it',
       );
     });
   });
