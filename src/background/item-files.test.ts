@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileFull, FileView, NoteFull, NoteView, Opened } from '../shared/api'
 import { itemFileChunkBytes, itemFilesKeepAlivePort } from '../shared/item-files'
-import { acceptItemFilesPort } from './item-files'
+import { acceptItemFilesPort, ItemFileHandles } from './item-files'
 import {
   content,
   harness,
@@ -329,6 +329,71 @@ describe('attachments', () => {
   })
 })
 
+describe('attaching when some files do not go up', () => {
+  beforeEach(syncsWithKemlock)
+
+  it('answers the note with the handles that did not, which stay staged to try again', async () => {
+    const note = await saveNote()
+    const good = await stage(bytesOf(4, 1))
+    const bad = await stage(bytesOf(4, 2))
+    h.core.fileStore.refuseUpload = (file) => file.name === 'bad.bin'
+    const attached = await h.ok<NoteFull>(
+      {
+        kind: 'addAttachments',
+        noteId: note.id,
+        files: [
+          { handle: good, name: 'good.bin' },
+          { handle: bad, name: 'bad.bin' },
+        ],
+      },
+      filesTab,
+    )
+    expect(attached.attachments.map((file) => file.name)).toEqual(['good.bin'])
+    expect(attached.failed).toEqual([bad])
+    expect(h.core.fileStore.held().staged).toBe(1)
+    // Only the one that failed is tried again
+    h.core.fileStore.refuseUpload = () => false
+    const again = await h.ok<NoteFull>(
+      { kind: 'addAttachments', noteId: note.id, files: [{ handle: bad, name: 'bad.bin' }] },
+      filesTab,
+    )
+    expect(again.attachments.map((file) => file.name)).toEqual(['good.bin', 'bad.bin'])
+    expect(again.failed).toBeUndefined()
+    expect(h.core.fileStore.held().staged).toBe(0)
+  })
+
+  it('fails, with every file still staged, when none went up, and tells sync all the same', async () => {
+    const note = await saveNote()
+    const handle = await stage(bytesOf(4))
+    h.core.fileStore.refuseUpload = () => true
+    const spy = vi.spyOn(h.bg['d'].sync, 'changed')
+    expect(
+      await h.send(
+        { kind: 'addAttachments', noteId: note.id, files: [{ handle, name: 'a.bin' }] },
+        filesTab,
+      ),
+    ).toEqual({ ok: false, error: 'failed' })
+    // The core writes and syncs before it answers failed
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(h.core.fileStore.held().staged).toBe(1)
+  })
+
+  it('needs at least one file, and a name of at most 255 characters', async () => {
+    const note = await saveNote()
+    expect(await h.send({ kind: 'addAttachments', noteId: note.id, files: [] }, filesTab)).toEqual({
+      ok: false,
+      error: 'invalid',
+    })
+    const handle = await stage(bytesOf(2))
+    expect(
+      await h.send(
+        { kind: 'addAttachments', noteId: note.id, files: [{ handle, name: 'a'.repeat(256) }] },
+        filesTab,
+      ),
+    ).toMatchObject({ ok: false })
+  })
+})
+
 describe('staging', () => {
   beforeEach(syncsWithKemlock)
 
@@ -350,12 +415,27 @@ describe('staging', () => {
     ).toEqual({ ok: false, error: 'lost' })
   })
 
-  it('holds four files at a time', async () => {
-    for (let i = 0; i < 4; i += 1) await stage(bytesOf(2, i))
-    expect(await h.send({ kind: 'stageItemFile', data: 'AAAA' }, filesTab)).toEqual({
-      ok: false,
-      error: 'tooMany',
-    })
+  it('holds four files at a time, and a fifth pushes the oldest out', async () => {
+    const handles: string[] = []
+    for (let i = 0; i < 4; i += 1) handles.push(await stage(bytesOf(2, i)))
+    const fifth = await h.ok<{ handle: string }>({ kind: 'stageItemFile', data: 'AAAA' }, filesTab)
+    expect(h.core.fileStore.held().staged).toBe(4)
+    expect(
+      await h.send({ kind: 'stageItemFile', data: 'AAAA', handle: handles[0] }, filesTab),
+    ).toEqual({ ok: false, error: 'lost' })
+    await h.ok({ kind: 'stageItemFile', data: 'AAAA', handle: fifth.handle }, filesTab)
+  })
+
+  it('refuses a piece over a megabyte as invalid, and drops a file that passes 50 MiB', async () => {
+    expect(
+      await h.send(
+        { kind: 'stageItemFile', data: toBase64(new Uint8Array(itemFileChunkBytes + 1)) },
+        filesTab,
+      ),
+    ).toEqual({ ok: false, error: 'invalid' })
+    const handle = await stage(bytesOf(3))
+    await h.ok({ kind: 'releaseStaged', handle }, filesTab)
+    expect(h.core.fileStore.held().staged).toBe(0)
   })
 
   it('stops a file at 50 MiB', async () => {
@@ -366,6 +446,10 @@ describe('staging', () => {
     expect(
       await h.send({ kind: 'stageItemFile', data: 'AAAA', handle: first.handle }, filesTab),
     ).toEqual({ ok: false, error: 'tooLarge' })
+    // The file was dropped: its next piece is one nobody holds
+    expect(
+      await h.send({ kind: 'stageItemFile', data: 'AAAA', handle: first.handle }, filesTab),
+    ).toEqual({ ok: false, error: 'lost' })
     // 51 pieces of 1 MiB through the parser: slow while dozens of workers share the machine
   }, 60_000)
 
@@ -546,30 +630,39 @@ describe('who may ask', () => {
   })
 })
 
-describe('the port the files tab holds', () => {
+describe('the port the files tab and the popup hold', () => {
   const portFrom = (sender: object | undefined, name = itemFilesKeepAlivePort) => {
     const listeners: (() => void)[] = []
+    const closers: (() => void)[] = []
     return {
       port: {
         name,
         sender,
         disconnect: vi.fn(),
         onMessage: { addListener: (listener: () => void) => listeners.push(listener) },
+        onDisconnect: { addListener: (listener: () => void) => closers.push(listener) },
       } as unknown as chrome.runtime.Port,
       listeners,
+      /** The page closes, and the background has had its turns to let go of what the page made. */
+      close: async () => {
+        for (const closer of closers) closer()
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      },
     }
   }
+  const accept = (port: chrome.runtime.Port) => acceptItemFilesPort(port, self, h.bg.fileHandles)
 
-  it('is kept for the files tab, which then only has to ping it', () => {
-    const { port, listeners } = portFrom(filesTab)
-    acceptItemFilesPort(port, self)
-    expect(port.disconnect).not.toHaveBeenCalled()
-    expect(listeners).toHaveLength(1)
+  it('is kept for the files tab and the popup, which then only have to ping it', () => {
+    for (const sender of [filesTab, popup]) {
+      const { port, listeners } = portFrom(sender)
+      accept(port)
+      expect(port.disconnect).not.toHaveBeenCalled()
+      expect(listeners).toHaveLength(1)
+    }
   })
 
   it('is closed for any other page, a web page, another name, or no sender', () => {
     for (const sender of [
-      popup,
       setup,
       menuFrame,
       sendsTab,
@@ -577,15 +670,74 @@ describe('the port the files tab holds', () => {
       undefined,
     ]) {
       const { port, listeners } = portFrom(sender)
-      acceptItemFilesPort(port, self)
+      accept(port)
       expect(port.disconnect).toHaveBeenCalledTimes(1)
       expect(listeners).toHaveLength(0)
     }
     const { port } = portFrom(filesTab, 'something-else')
-    acceptItemFilesPort(port, self)
+    accept(port)
     expect(port.disconnect).toHaveBeenCalledTimes(1)
     const other = portFrom({ ...filesTab, id: 'another-extension' })
-    acceptItemFilesPort(other.port, self)
+    accept(other.port)
     expect(other.port.disconnect).toHaveBeenCalledTimes(1)
+  })
+
+  describe('closing', () => {
+    beforeEach(syncsWithKemlock)
+
+    it('lets go of the files the files tab staged and did not use', async () => {
+      const tab = portFrom(filesTab)
+      accept(tab.port)
+      await stage(bytesOf(3))
+      await stage(bytesOf(4))
+      expect(h.core.fileStore.held().staged).toBe(2)
+      await tab.close()
+      expect(h.core.fileStore.held().staged).toBe(0)
+    })
+
+    it('keeps what went into an item, and lets go of what the popup opened and did not close', async () => {
+      const file = await makeFile()
+      const opened = portFrom(popup)
+      accept(opened.port)
+      await h.ok<Opened>({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } })
+      await download(
+        await h.ok<Opened>({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } }),
+      )
+      expect(h.core.fileStore.held().opened).toBe(1)
+      await opened.close()
+      expect(h.core.fileStore.held().opened).toBe(0)
+      expect(h.bg.fileHandles.heldBy({ from: 'page', page: 'popup' })).toEqual({
+        staged: 0,
+        opened: 0,
+      })
+    })
+
+    it('waits for the last port of a page, and touches no other page', async () => {
+      const first = portFrom(filesTab)
+      const second = portFrom(filesTab)
+      accept(first.port)
+      accept(second.port)
+      await stage(bytesOf(3))
+      const file = await makeFile()
+      await h.ok<Opened>({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } })
+      await first.close()
+      expect(h.core.fileStore.held().staged).toBe(1)
+      await second.close()
+      expect(h.core.fileStore.held()).toEqual({ staged: 0, opened: 1 })
+    })
+
+    it('lets go of what a page made even once the vault is locked', async () => {
+      const tab = portFrom(filesTab)
+      accept(tab.port)
+      await stage(bytesOf(3))
+      await h.ok({ kind: 'lock' })
+      await tab.close()
+      expect(h.core.fileStore.held()).toEqual({ staged: 0, opened: 0 })
+    })
+  })
+
+  it('is told of nothing for a page it does not know', async () => {
+    const handles = new ItemFileHandles({ releaseStaged: vi.fn(), closeOpened: vi.fn() })
+    await expect(handles.disconnected({ from: 'page', page: 'files' })).resolves.toBeUndefined()
   })
 })

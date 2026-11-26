@@ -42,7 +42,7 @@ import { BackgroundError } from './errors'
 import { Filler, recentKey } from './fill'
 import { browserExtensionId } from './identity'
 import { copyText, itemCopies, itemHandlers } from './items'
-import { itemFileHandlers } from './item-files'
+import { ItemFileHandles, itemFileHandlers } from './item-files'
 import { createMenus, menuItems, type MenuAction } from './menus'
 import { passkeyUnlockHandlers } from './passkey-unlock'
 import { keysPageHandlers } from './keys'
@@ -116,6 +116,8 @@ export class Background {
   private readonly passkeys: PasskeyProvider
   /** The account's own calls and its approval watcher (account.ts). */
   private readonly account: AccountManager
+  /** The staged and opened files each page made, let go when its port closes (item-files.ts). */
+  readonly fileHandles: ItemFileHandles
   private lastTouch = 0
   /** Tabs that are loading a page right now. */
   private readonly loading = new Set<number>()
@@ -130,6 +132,7 @@ export class Background {
       changed: () => this.changed(),
     })
     this.account = new AccountManager(d)
+    this.fileHandles = new ItemFileHandles(d.core)
     this.handlers = { content: this.contentHandlers(), page: this.pageHandlers() }
   }
 
@@ -441,16 +444,20 @@ export class Background {
       }),
 
       // File items and note attachments (item-files.ts)
-      ...itemFileHandlers({
-        core,
-        check: (sender, allowed) => this.check(sender, allowed),
-        needOpen: () => this.needOpen(),
-        touch: () => this.touch(),
-        changed: () => this.changed(),
-      }),
+      ...itemFileHandlers(
+        {
+          core,
+          check: (sender, allowed) => this.check(sender, allowed),
+          needOpen: () => this.needOpen(),
+          touch: () => this.touch(),
+          changed: () => this.changed(),
+        },
+        this.fileHandles,
+      ),
 
       copy: async ({ what, id, value, documentId, ref, index }, sender) => {
-        this.check(sender, pages)
+        // A custom field of a contact is copied from the keys tab too
+        this.check(sender, what === 'field' ? [...pages, 'keys'] : pages)
         await this.needOpen()
         await this.touch()
         let text: string | undefined

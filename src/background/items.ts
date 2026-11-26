@@ -51,8 +51,13 @@ export interface ItemAccess {
 }
 
 const pages: readonly ExtensionPage[] = ['popup', 'setup']
-/** The item format's requests also come from the files tab, which edits nothing of its own but a file's details. */
-const extraPages: readonly ExtensionPage[] = ['popup', 'setup', 'files']
+/**
+ * The item format's requests also come from the files tab, which edits nothing of its own but a file's details, and from the keys
+ * tab, which shows contacts with their fields and links.
+ */
+const extraPages: readonly ExtensionPage[] = ['popup', 'setup', 'files', 'keys']
+/** A note is read by the files tab too (the attach screen lists what it holds). */
+const notePages: readonly ExtensionPage[] = ['popup', 'setup', 'files']
 
 /** The item requests of the popup and the setup tab. */
 export function itemHandlers(a: ItemAccess): ItemHandlers {
@@ -81,7 +86,9 @@ export function itemHandlers(a: ItemAccess): ItemHandlers {
       return core.notes()
     },
     revealNote: async ({ id }, sender) => {
-      await read(sender)
+      a.check(sender, notePages)
+      await a.needOpen()
+      await a.touch()
       return core.revealNote(id)
     },
     saveNote: async ({ id, input }, sender) => {
