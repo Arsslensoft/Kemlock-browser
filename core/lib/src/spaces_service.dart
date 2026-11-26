@@ -46,9 +46,11 @@ import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_core/models/vault_entry.dart';
 import 'package:kemlock_core/models/vault_key.dart';
+import 'package:kemlock_core/vault/item_links.dart' show entriesOf, linkIdOf, relinkedAfterMove;
 import 'package:kemlock_core/vault/vault_store.dart' show VaultSession;
 
 import 'failure.dart';
+import 'item_extras.dart' show listsWithEntry;
 import 'spaces/space_contact.dart';
 import 'spaces/space_invites.dart';
 import 'spaces/space_listing.dart';
@@ -876,10 +878,31 @@ class SpacesService {
     await _sync(id, connection, account).keepHeld(item, now: _millis);
   });
 
-  Future<void> deleteHeld(String id, String item) => _run((connection, account) async {
-    _requireServerSpace(id);
-    await _sync(id, connection, account).deleteHeld(item, now: _millis);
-  });
+  Future<void> deleteHeld(String id, String item) async {
+    await _run((connection, account) async {
+      _requireServerSpace(id);
+      await _sync(id, connection, account).deleteHeld(item, now: _millis);
+    });
+    await _dropLinksToHeld(id, item);
+  }
+
+  /// Takes the links to the held item [item] of [space], which the server has just deleted, off the entries that named it, when this
+  /// device still holds the item's last accepted copy to know what names it. The entries are saved apart from the delete, which is
+  /// the server's: a link that can't be taken off (an end this account may not edit, or a write that fails) stays one-way, since the
+  /// item is gone and nothing mends a link to it, and the delete is not undone for it.
+  Future<void> _dropLinksToHeld(String space, String item) async {
+    final owner = _vault.accountOwner?.call();
+    final wanted = item.toLowerCase();
+    bool named(VaultEntry<Object?> entry) =>
+        entry.spaceId == space && (entry.id.toLowerCase() == wanted || linkIdOf(entry, account: owner).toLowerCase() == wanted);
+    final entry = entriesOf(_vault.lists).where(named).firstOrNull;
+    if (entry == null) return;
+    try {
+      await _vault.saveChanged((lists) => _vault.withLinksDroppedTo(lists, entry));
+    } on CoreFailure {
+      // Left as it is: see above
+    }
+  }
 
   /// This account's own fingerprint, 12 groups of 5 digits, for the other side's comparison; null without an opened account.
   Future<String?> ownFingerprint() async => (await _host.ownBundle())?.fingerprintDigits;
@@ -966,8 +989,37 @@ class SpacesService {
       final now = find(held);
       if (now == null) throw const CoreFailure(CoreFailure.notFound, 'no such item');
       if ((now.space ?? '') != (from ?? '')) throw const CoreFailure(CoreFailure.stale, 'the item is not where it was');
-      return move(held);
+      return _relinkedAfterMove(held, move(held), id, from, target);
     });
+  }
+
+  /// [moved], the lists with the entry [id] moved from [from] to [to], with the other entries that linked to it by its old item id now
+  /// linking by the new one: an entry whose id isn't a UUID is given another item id by its new owner (`relinkedAfterMove`), and an
+  /// entry with a UUID id keeps its own, so nothing changes for it. An entry that links to it from a space this account may not edit
+  /// is left as it is, since the move must not fail for it: that link then names an item id nothing holds, shown as not available.
+  Lists _relinkedAfterMove(Lists before, Lists moved, String id, String? from, String? to) {
+    final owner = _vault.accountOwner?.call();
+    VaultEntry<Object?>? entryIn(Lists lists, String? space) =>
+        entriesOf(lists).where((entry) => entry.id == id && (entry.spaceId ?? '') == (space ?? '')).firstOrNull;
+    final was = entryIn(before, from);
+    final now = entryIn(moved, to);
+    if (was == null || now == null) return moved;
+    final changed = relinkedAfterMove(
+      moved,
+      oldLinkId: linkIdOf(was, account: owner),
+      newLinkId: linkIdOf(now, account: owner),
+      now: _millis,
+    );
+    var next = moved;
+    for (final other in changed) {
+      try {
+        requireEdit(other.spaceId, other.id);
+      } on CoreFailure {
+        continue;
+      }
+      next = listsWithEntry(next, other);
+    }
+    return next;
   }
 
   ({String? space})? _spaceOf<T extends VaultEntry<T>>(List<T> list, String id) {

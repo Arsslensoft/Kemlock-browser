@@ -27,10 +27,13 @@ import 'package:kemlock_core/models/otp_account.dart';
 import 'package:kemlock_core/models/passkey.dart';
 import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
+import 'package:kemlock_core/models/vault_entry.dart';
 import 'package:kemlock_core/models/vault_file.dart';
 import 'package:kemlock_core/models/vault_key.dart';
+import 'package:kemlock_core/vault/item_links.dart' show undoRelink;
 
 import 'failure.dart';
+import 'item_extras.dart' show listsWithEntry;
 import 'matching.dart' show isSharedHost;
 import 'sync_service.dart';
 import 'tools_service.dart' show listsWith;
@@ -258,6 +261,10 @@ class DuplicateTools {
     final gone = choices.removed;
     final goneIds = {for (final entry in gone) entry.id};
     final relink = _relinked(result, goneIds, vault.lists);
+    // What the merge does to the links and custom fields: the kept item takes the removed items' and every entry that named one of them
+    // now names it, from both ends. Worked out here for the record, and again on the lists the write holds
+    final owner = vault.accountOwner?.call();
+    final relinking = choices.relink(vault.lists, now: now, account: owner);
     final record = MergeRecord(
       id: newUuid(),
       at: now,
@@ -265,6 +272,7 @@ class DuplicateTools {
       kept: mergeJsonOf(choices.kept.item),
       removed: [for (final entry in gone) mergeJsonOf(entry.item)],
       relinked: [for (final login in relink) mergeJsonOf(login)],
+      relinkUndo: relinking.undo,
     );
     final store = DedupStore(vault.vault);
     final answers = await store.loadAnswers(session);
@@ -287,10 +295,16 @@ class DuplicateTools {
             again.length == relink.length &&
             [for (var i = 0; i < again.length; i++) jsonEncode(mergeJsonOf(again[i])) == jsonEncode(mergeJsonOf(relink[i]))]
                 .every((same) => same);
-        if (_stale(group, lists) || !sameLinks) {
+        // The links and fields the merge joins, and the entries it rewrites, are those the record keeps for Undo: a link made or dropped
+        // since (a save that went first) makes it stale, as an item changed does
+        final relinkedNow = choices.relink(lists, now: now, account: owner);
+        final sameRelink =
+            jsonEncode(relinkedNow.kept.toJson()) == jsonEncode(relinking.kept.toJson()) &&
+            jsonEncode([for (final step in relinkedNow.undo) step.toJson()]) == jsonEncode([for (final step in relinking.undo) step.toJson()]);
+        if (_stale(group, lists) || !sameLinks || !sameRelink) {
           throw const CoreFailure(CoreFailure.stale, 'an item changed since the check: check again');
         }
-        var next = _replacing(_without(lists, goneIds), [result]);
+        var next = _replacing(_without(lists, goneIds), [relinkedNow.kept]);
         if (relink.isNotEmpty) {
           final ids = {for (final login in relink) login.id};
           next = listsWith(
@@ -298,7 +312,9 @@ class DuplicateTools {
             logins: [for (final login in next.logins) ids.contains(login.id) ? login.copyWith(accountId: keptId) : login],
           );
         }
-        return next;
+        // The other entries are written in the same change; one in a space this account may not edit keeps what it holds, which Undo
+        // (it puts a member back only where the entry still holds what the merge wrote) then leaves alone
+        return _putting(next, relinkedNow.others);
       }, at: now);
     } on PartialSave {
       rethrow;
@@ -364,7 +380,8 @@ class DuplicateTools {
           ],
         );
       }
-      return next;
+      // What the merge wrote on the other entries goes back where they still hold it: one linked or edited since keeps what it holds
+      return _putting(next, undoRelink(next, plan.relinkUndo, now: vault.nowMs));
     });
     if (outcome == 'undone') await store.saveAnswers(answers.withoutMerge(recordId), session);
     return outcome;
@@ -421,6 +438,21 @@ class DuplicateTools {
         if (!ids.contains(item.id)) item,
     ],
   );
+
+  /// [lists] with each of [entries] put in place of the entry of its kind with its id, leaving out one in a space this account may not
+  /// edit (the merge, and its Undo, do what they can and never fail for the other end of a link).
+  Lists _putting(Lists lists, Iterable<VaultEntry<Object?>> entries) {
+    var next = lists;
+    for (final entry in entries) {
+      try {
+        vault.editGuard?.call(entry.spaceId, entry.id);
+      } on CoreFailure {
+        continue;
+      }
+      next = listsWithEntry(next, entry);
+    }
+    return next;
+  }
 
   /// [lists] with each of [items] put in place of the item of its kind with its id, or added at the end.
   Lists _replacing(Lists lists, List<Object> items) {
