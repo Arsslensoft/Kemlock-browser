@@ -53,6 +53,11 @@ function KeyRow(props: { item: KeyView; onOpen: (id: string) => void }) {
 
 function ContactRow(props: { item: ContactView; onOpen: (id: string) => void }) {
   const { item } = props
+  // A contact with no key has nothing to compare and no fingerprint: its email and company say who it is
+  const keyless = item.hasKey === false
+  const who = [item.email, item.company]
+    .filter((part) => part !== undefined && part !== '')
+    .join(' · ')
   return (
     <li class="item">
       <button
@@ -65,17 +70,23 @@ function ContactRow(props: { item: ContactView; onOpen: (id: string) => void }) 
         <span class="grow lines">
           <span class="name ellipsis">{item.name}</span>
           <span class="label ellipsis">{item.line}</span>
-          <span class="label mono ellipsis">{shortFingerprint(item.fingerprint)}</span>
-        </span>
-        <span class="value">
-          {item.standing !== 'ok' ? (
-            <span class="mono sub warn-text">{t(standingNames[item.standing])}</span>
+          {keyless ? (
+            who !== '' && <span class="label ellipsis">{who}</span>
           ) : (
-            <span class={item.checked ? 'mono sub copied-mark' : 'mono sub'}>
-              {item.checked ? t('keys_checked') : t('keys_notChecked')}
-            </span>
+            <span class="label mono ellipsis">{shortFingerprint(item.fingerprint)}</span>
           )}
         </span>
+        {!keyless && (
+          <span class="value">
+            {item.standing !== 'ok' ? (
+              <span class="mono sub warn-text">{t(standingNames[item.standing])}</span>
+            ) : (
+              <span class={item.checked ? 'mono sub copied-mark' : 'mono sub'}>
+                {item.checked ? t('keys_checked') : t('keys_notChecked')}
+              </span>
+            )}
+          </span>
+        )}
         <Icon name="chevron" size={16} weight={2} />
       </button>
     </li>
