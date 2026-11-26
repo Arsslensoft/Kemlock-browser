@@ -80,7 +80,10 @@ hold a PGP key.
 5. **Links are by entry id.** A link names the item's UUID, never the server's own item id, as
    the web vault and the app do; unlinking removes both ends. If one end can't be written (a
    space the person may only read) the other stays and the answer names the item whose end
-   failed.
+   failed. The links to an item follow it: a delete takes them off the items that named it, a
+   move to another owner renames them, and a duplicate merge points them at the kept item (Undo
+   puts them back), each in the same write as the change, with kemlock-core's helpers. An end
+   the person may only read is left as it is, one-way, and never fails the change.
 6. **"MFA code", not "Code".** The word is the app's; the rename covers `popup.*` and `items.*`
    strings, the popup's tabs and its pages.
 7. **The Files row is in the lists as every kind is.** Home shows Files beside Notes, with the same
@@ -99,31 +102,31 @@ hold a PGP key.
 
 ## Tasks
 
-- [ ] 1. The core
-  - [ ] 1.1 Fields and links (`item_extras.dart`): read, edit and write per the models, two-way
+- [x] 1. The core
+  - [x] 1.1 Fields and links (`item_extras.dart`): read, edit and write per the models, two-way
         links with `linkedLoginId`, byte-stable saves.
-  - [ ] 1.2 Files (`item_files.dart`): staged and opened handles, upload through the sync run,
+  - [x] 1.2 Files (`item_files.dart`): staged and opened handles, upload through the sync run,
         download on demand, the pending list and its clean-up, `fileSync` in the state.
-  - [ ] 1.3 Admin definitions (`custom_fields.dart`), contacts and codes with the new members,
+  - [x] 1.3 Admin definitions (`custom_fields.dart`), contacts and codes with the new members,
         website rules, File items in every list the core copies, `filesNeedPhone`.
-  - [ ] 1.4 Dart tests.
-- [ ] 2. The contract and the background
-  - [ ] 2.1 Types in `api.ts` first, then messages with their bounds, the keepalive port, the
+  - [x] 1.4 Dart tests.
+- [x] 2. The contract and the background
+  - [x] 2.1 Types in `api.ts` first, then messages with their bounds, the keepalive port, the
         senders' gates, handlers (`items.ts`, `item-files.ts`) and the fake core.
-  - [ ] 2.2 Vitest: parsing and fuzz, the gates, the handlers, the fakes.
-- [ ] 3. The popup
-  - [ ] 3.1 Fields, links and rules (`item-extras.tsx`, `site-rules.tsx`), codes and contacts.
-  - [ ] 3.2 The Files row, a File item's pages, the note's attachments, the Files tab
+  - [x] 2.2 Vitest: parsing and fuzz, the gates, the handlers, the fakes.
+- [x] 3. The popup
+  - [x] 3.1 Fields, links and rules (`item-extras.tsx`, `site-rules.tsx`), codes and contacts.
+  - [x] 3.2 The Files row, a File item's pages, the note's attachments, the Files tab
         (`src/files/`), strings in `locales/parts/extras.*` and `locales/parts/files.*`, the
         "MFA code" rename.
-  - [ ] 3.3 Vitest component tests and the locales tests.
-- [ ] 4. End to end
-  - [ ] 4.1 `tests/e2e/items-extras.spec.ts` over a WebDAV vault: display, Show and Copy of a
+  - [x] 3.3 Vitest component tests and the locales tests.
+- [x] 4. End to end
+  - [x] 4.1 `tests/e2e/items-extras.spec.ts` over a WebDAV vault: display, Show and Copy of a
         hidden field, a save that keeps what it didn't edit, links added and removed from either
         end, rules, a contact with no key, a code with a name and websites, files read-only with
         the notice.
-  - [ ] 4.2 New cases in `tests/e2e/kemlock-server.spec.ts` (skipped without the server): attach
+  - [x] 4.2 New cases in `tests/e2e/kemlock-server.spec.ts` (skipped without the server): attach
         a file to a note, download it and compare the bytes, remove it, add, download and delete a
         File item, the admin's fields offered in the editor.
-- [ ] 5. This plan
-  - [ ] 5.1 Decision 3 of `add-items` points here.
+- [x] 5. This plan
+  - [x] 5.1 Decision 3 of `add-items` points here.
