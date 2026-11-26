@@ -169,6 +169,8 @@ export interface BackupCodeView extends ItemExtras {
   issuer: string
   /** Its websites (the linked items' when it is linked to some). */
   websites: string[]
+  /** Its note. */
+  note?: string
   total: number
   left: number
   /** Two codes or fewer are left (the app's low warning). */
@@ -238,6 +240,9 @@ export type ItemKind =
   | 'pgp-key'
   | 'certificate'
   | 'passkey'
+  // A signing, exchange or other key of the vault (`VaultKey` with no certificate), and an account kept on a security key
+  | 'key'
+  | 'key-otp'
 
 /** One item: its kind and its entry id (never the server's item id). */
 export interface ItemRef {
@@ -429,6 +434,11 @@ export interface NoteView extends ItemExtras {
 export interface NoteFull extends NoteView {
   text: string
   attachments: AttachmentView[]
+  /**
+   * `addAttachments` only, when some files went up and some did not: the staged handles of those that did not, which stay
+   * staged until released. When none went up the call fails (`failed`) instead.
+   */
+  failed?: string[]
 }
 
 /** What the browser edits of a note. A missing `pinned` or `tags` leaves them as they are. */
@@ -933,14 +943,20 @@ export interface CoreApi extends ToolsCoreApi {
   saveFile(id: string | null, input: FileInput): Promise<FileView>
   /** Adds a piece of a file (base64, at most 1 MiB) to the staged file under `handle`, or, with null, to a new one. */
   stageItemFile(data: string, handle: string | null): Promise<{ handle: string; length: number }>
+  /** Lets a staged file go; needs no open vault (a lock let go of every one already). */
   releaseStaged(handle: string): Promise<void>
-  /** Attaches staged files to a note (at most 100 in all, 50 MiB each). */
+  /**
+   * Attaches staged files to a note (at most 100 in all, 50 MiB each, at least one). When only some went up the answer is the note
+   * with `failed`, the handles of those that did not, still staged; when none did it fails `failed`.
+   */
   addAttachments(noteId: string, files: StagedAttachment[]): Promise<NoteFull>
+  /** Needs Kemlock Server (`unavailable` otherwise): the server's file is deleted with it. */
   removeAttachment(noteId: string, attachmentId: string): Promise<NoteFull>
   /** Fetches and opens a File item's file, or a note's attachment, and holds it for `readOpened`. */
   openItemFile(ref: ItemRef, attachmentId?: string): Promise<Opened>
   /** A piece of the opened file, base64, from `index` times 1 MiB; empty past its end. */
   readOpened(handle: string, index: number): Promise<string>
+  /** Closes an opened file; needs no open vault. */
   closeOpened(handle: string): Promise<void>
   // End of added by item format
 
@@ -1250,7 +1266,7 @@ export interface PageApi extends ToolsPageApi {
     handle?: string
   }): Promise<{ handle: string; length: number }>
   releaseStaged(args: { handle: string }): Promise<void>
-  /** Files tab only. */
+  /** Files tab only. The answer carries `failed` when only some of the files went up (see CoreApi). */
   addAttachments(args: { noteId: string; files: StagedAttachment[] }): Promise<NoteFull>
   removeAttachment(args: { noteId: string; attachmentId: string }): Promise<NoteFull>
   /** Opens a File item's file or a note's attachment, to be read with `readOpened`. Popup and files tab. */

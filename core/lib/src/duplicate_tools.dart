@@ -12,6 +12,7 @@ import 'package:kemlock_core/features/duplicates/dedup_store.dart';
 import 'package:kemlock_core/features/duplicates/dedup_tagger.dart';
 import 'package:kemlock_core/features/duplicates/duplicate_matcher.dart';
 import 'package:kemlock_core/features/duplicates/duplicate_merge.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show kmServerFileId;
 import 'package:kemlock_core/features/duplicates/duplicate_normalise.dart' show SiteResolver;
 import 'package:kemlock_core/features/duplicates/duplicate_rules.dart' show DuplicateReason;
 import 'package:kemlock_core/features/duplicates/duplicate_server.dart';
@@ -345,6 +346,11 @@ class DuplicateTools {
         outcome = 'unavailable';
         return lists;
       }
+      // An item that named a file the server holds can't come back: the next run deletes that file, no body naming it any more
+      if (plan.removed.any(_namesServerFile)) {
+        outcome = 'unavailable';
+        return lists;
+      }
       if (plan.keptEdited && !overwrite) {
         outcome = 'edited';
         return lists;
@@ -363,6 +369,13 @@ class DuplicateTools {
     if (outcome == 'undone') await store.saveAnswers(answers.withoutMerge(recordId), session);
     return outcome;
   }
+
+  /// Whether [item] is a note or File item that names a file on the server.
+  bool _namesServerFile(Object item) => switch (item) {
+    final SecureNote note => note.files.any((file) => kmServerFileId(file) != null),
+    final VaultFile file => kmServerFileId(file.file) != null,
+    _ => false,
+  };
 
   /// [lists] without the items with these ids, whatever their kind.
   Lists _without(Lists lists, Set<String> ids) => Lists(

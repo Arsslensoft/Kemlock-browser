@@ -11,6 +11,7 @@ import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
 import 'package:kemlock_core/models/backup_service.dart';
 import 'package:kemlock_core/models/login.dart';
 import 'package:kemlock_core/models/secure_note.dart';
+import 'package:kemlock_core/models/vault_file.dart';
 import 'package:kemlock_core/vault/vault_export.dart' show exportVaultPlaintext;
 import 'package:kemlock_extension_core/src/browser.dart';
 import 'package:kemlock_extension_core/src/core_service.dart';
@@ -225,6 +226,18 @@ void main() {
       await into.call('lock');
       await into.call('unlock', [password]);
       await expectLater(into.call('transferPreview', [second]), failure(CoreFailure.notFound));
+    });
+
+    test('an export counts the File items among the attached files it cannot hold', () async {
+      final file = NoteAttachment(id: 'a1', name: 'a.pdf', size: 1, key: 'a2V5', addedAt: 1);
+      await into.vault.applySynced(
+        Lists(
+          notes: [SecureNote(id: 'n1', title: 'Papers', text: '', attachments: [file], addedAt: 1)],
+          files: [VaultFile(id: 'f1', name: 'Scan', file: file, addedAt: 1)],
+        ),
+      );
+      final info = await object(into, 'transferExportInfo');
+      expect(info['attachedFiles'], 2);
     });
 
     test('needs the vault open', () async {

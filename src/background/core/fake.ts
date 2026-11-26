@@ -733,15 +733,29 @@ export class FakeCore implements CoreApi {
 
   /* What it holds --------------------------------------------------------------------------- */
 
-  /** The websites of the logins an item is linked to, and those logins: what a code or backup codes show in place of their own. */
+  /** The websites an item holds itself, whatever its kind: a login's, a code's or backup codes'. */
+  private ownWebsites(ref: ItemRef): string[] {
+    switch (ref.kind) {
+      case 'login':
+        return this.disk.logins.find((l) => l.id === ref.id)?.websites ?? []
+      case 'otp':
+        return this.disk.codes.find((c) => c.id === ref.id)?.websites ?? []
+      case 'backup-codes':
+        return this.disk.backups.find((b) => b.serviceId === ref.id)?.websites ?? []
+      default:
+        return []
+    }
+  }
+
+  /** The websites of the items an item is linked to, and those items: what a code or backup codes show in place of their own. */
   private lent(ref: ItemRef): { websites: string[]; from: ItemRef[] } {
     const websites: string[] = []
     const from: ItemRef[] = []
     for (const item of this.extras.linked(ref)) {
-      const login = item.ref.kind === 'login' ? this.disk.logins.find((l) => l.id === item.ref.id) : undefined
-      if (login === undefined || login.websites.length === 0) continue
+      const own = this.ownWebsites(item.ref)
+      if (own.length === 0) continue
       from.push(item.ref)
-      for (const site of login.websites) if (!websites.includes(site)) websites.push(site)
+      for (const site of own) if (!websites.includes(site)) websites.push(site)
     }
     return { websites, from }
   }
@@ -922,6 +936,7 @@ export class FakeCore implements CoreApi {
     }
     const login = this.findLogin(id)
     const sites = this.sitesOf(input, login.websiteRules)
+    this.extras.validate({ kind: 'login', id }, input)
     if (login.password !== input.password) {
       if (login.password !== '') login.previous.unshift(login.password)
       login.passwordChangedAt = this.now()
@@ -1676,12 +1691,15 @@ export class FakeCore implements CoreApi {
   async saveCode(id: string, input: CodeInput): Promise<CodeView> {
     this.log('saveCode')
     const code = this.findCode(id)
+    this.extras.validate({ kind: 'otp', id }, input)
+    const lent = this.lent({ kind: 'otp', id }).from.length > 0
     const name = input.name?.trim()
     if (input.name !== undefined) {
       if (name === '') delete code.name
       else code.name = name
     }
-    if (input.websites !== undefined)
+    // The websites a linked item lends are changed there, not here
+    if (input.websites !== undefined && !lent)
       code.websites = input.websites.map((site) => site.trim()).filter((site) => site !== '')
     if (input.note !== undefined) {
       if (input.note.trim() === '') delete code.note
@@ -1695,6 +1713,7 @@ export class FakeCore implements CoreApi {
     this.log('saveBackupCodes')
     const backup = this.need().backups.find((b) => b.serviceId === serviceId)
     if (backup === undefined) throw new FakeError('notFound')
+    this.extras.validate({ kind: 'backup-codes', id: serviceId }, input)
     if (input.name !== undefined) {
       if (input.name.trim() === '') delete backup.name
       else backup.name = input.name.trim()

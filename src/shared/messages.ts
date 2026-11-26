@@ -241,7 +241,15 @@ export const itemKinds: readonly ItemKind[] = [
   'pgp-key',
   'certificate',
   'passkey',
+  'key',
+  'key-otp',
 ]
+/**
+ * The kind of an item a link names: any word of 1 to 40 lower-case letters, digits and dashes, so a link the core holds to a kind this
+ * build does not list round-trips instead of failing the whole save (the core checks what the vault holds).
+ */
+const itemKind: Parser<ItemKind> = (value) =>
+  typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? (value as ItemKind) : bad
 export const matchRules: readonly MatchRule[] = [
   'default',
   'domain',
@@ -253,7 +261,7 @@ export const matchRules: readonly MatchRule[] = [
 ]
 /** An entry id (a UUID, or what the vault names an entry). */
 const entryId = text(100, 1)
-const itemRef = obj({ kind: req(oneOf(...itemKinds)), id: req(entryId) })
+const itemRef = obj({ kind: req(itemKind), id: req(entryId) })
 const exactlyTrue: Parser<true> = (value) => (value === true ? true : bad)
 export const maxFieldRows = 100
 export const maxLinks = 100
@@ -266,7 +274,8 @@ const fieldInput = obj({
   keepValue: opt(exactlyTrue),
   adminField: opt(text(100, 1)),
 })
-const websiteRule = obj({ uri: req(text(2000, 1)), match: req(oneOf(...matchRules)) })
+// A blank row (an editor row nobody typed in) is let through, and the core drops it
+const websiteRule = obj({ uri: req(text(2000)), match: req(oneOf(...matchRules)) })
 /** `fields` and `links` of an input: a missing one leaves them as they are. */
 const itemExtras = {
   fields: opt(list(fieldInput, maxFieldRows)),
@@ -314,7 +323,7 @@ const backupCodesInput = obj({
 })
 /** What the core names a staged or opened file by. */
 const itemFileHandle = text(64, 1)
-const stagedFile = obj({ handle: req(itemFileHandle), name: req(text(512, 1)), type: optText(255) })
+const stagedFile = obj({ handle: req(itemFileHandle), name: req(text(255, 1)), type: optText(255) })
 const fileInput = obj({
   name: req(text(512)),
   notes: optText(20_000),

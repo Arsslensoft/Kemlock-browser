@@ -4,8 +4,10 @@ import 'dart:convert';
 
 import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
 import 'package:kemlock_core/models/item_link.dart';
+import 'package:kemlock_core/models/key_account.dart';
 import 'package:kemlock_core/models/login.dart';
 import 'package:kemlock_core/models/otp_account.dart';
+import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_core/models/website_rule.dart';
 import 'package:kemlock_extension_core/src/core_service.dart';
 import 'package:kemlock_extension_core/src/failure.dart';
@@ -287,6 +289,28 @@ void main() {
       expect((await list(core, 'linkCandidates', [loginRef, ''])).map((v) => v['name']), ['Beta']);
       // For a new item nothing is excluded but what the vault doesn't offer
       expect(await list(core, 'linkCandidates', [null, '']), hasLength(3));
+    });
+
+    test('an item with no item id yet is not offered, and the link an account on a security key holds is neither made nor dropped', () async {
+      const loginId = '11111111-1111-4111-8111-111111111111';
+      const keyId = '33333333-3333-4333-8333-333333333333';
+      await core.vault.applySynced(
+        const Lists(
+          logins: [Login(id: loginId, name: 'Orbit', username: 'sam', password: 'pw', links: [ItemLink(keyId)], addedAt: 1)],
+          notes: [SecureNote(id: 'legacy-note', title: 'Old', text: '', addedAt: 1)],
+          keyAccounts: [KeyAccount(id: keyId, device: 'd', name: 'Orbit', label: 'sam', addedAt: 1, links: [ItemLink(loginId)])],
+        ),
+      );
+      expect(await list(core, 'linkCandidates', [ref('login', loginId), '']), isEmpty);
+      expect((await list(core, 'linkedItems', [ref('login', loginId)])).map((v) => v['ref']), [ref('key-otp', keyId)]);
+      await core.call('setLinks', [ref('login', loginId), <Object?>[]]);
+      expect(core.vault.lists.logins.single.links.names(keyId), isTrue);
+      expect(core.vault.lists.keyAccounts.single.links.names(loginId), isTrue);
+      await core.call('setLinks', [
+        ref('login', loginId),
+        [ref('key-otp', keyId)],
+      ]);
+      expect((await list(core, 'linkedItems', [ref('login', loginId)])), hasLength(1));
     });
 
     test('a link an end can not make is named, and the others are made', () async {

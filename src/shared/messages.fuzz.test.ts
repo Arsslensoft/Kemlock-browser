@@ -164,6 +164,8 @@ const itemKinds = [
   'pgp-key',
   'certificate',
   'passkey',
+  'key',
+  'key-otp',
 ] as const
 const itemRef = rec({ kind: fc.constantFrom(...itemKinds), id: short(1) })
 const fieldRow = rec(

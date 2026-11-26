@@ -1,3 +1,5 @@
+import 'package:kemlock_core/models/backup_service.dart';
+import 'package:kemlock_core/models/json.dart' show unset;
 import 'package:kemlock_core/models/key_account.dart';
 import 'package:kemlock_core/models/login.dart';
 import 'package:kemlock_core/models/otp_account.dart';
@@ -37,6 +39,15 @@ void main() {
       'links': 0,
     });
     expect(view.values.join(), isNot(contains('JBSWY3DPEHPK3PXP')));
+  });
+
+  test('a code and backup codes carry their note, so an edit page does not start with a blank one', () {
+    expect(codeView(totp.copyWith(note: 'Recovery in the safe'), order: 0)['note'], 'Recovery in the safe');
+    expect(codeView(totp, order: 0).containsKey('note'), isFalse);
+    expect(codeView(totp.copyWith(note: '  '), order: 0).containsKey('note'), isFalse);
+    const service = BackupService(id: 's', serviceName: 'Orbit', codes: [], note: 'Printed', addedAt: 1);
+    expect(backupView(service)['note'], 'Printed');
+    expect(backupView(service.copyWith(note: unset)).containsKey('note'), isFalse);
   });
 
   test('an account on a security key is named, never computed', () {

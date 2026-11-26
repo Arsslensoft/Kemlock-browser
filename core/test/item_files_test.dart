@@ -4,6 +4,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:kemlock_core/features/sync/kemlock/km_cache.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_models.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_session.dart' show keyKemlockCache;
 import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_core/models/vault_file.dart';
@@ -32,6 +35,18 @@ Future<List<Map<String, Object?>>> list(CoreService core, String method, [List<O
 
 Matcher failure(String code) => throwsA(isA<CoreFailure>().having((e) => e.code, 'code', code));
 
+/// Makes the vault one that syncs with a Kemlock Server account (nobody is signed in: a call to the server fails).
+Future<void> useKemlock(CoreService core) => core.sync.saveSyncSettings(
+  core.sync.syncSettings.copyWith(
+    kemlock: const KemlockTarget(
+      accountId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      email: 'sam@example.co',
+      servers: [KemlockServer(url: 'https://kem.example.co', role: KemlockServer.home)],
+      deviceId: 'device',
+    ),
+  ),
+);
+
 String piece(int length) => base64Encode(Uint8List(length)..fillRange(0, length, 7));
 
 NoteAttachment attachment(String id, {bool onServer = false}) => NoteAttachment(
@@ -49,6 +64,17 @@ void main() {
   late MemoryArea area;
   late CoreService core;
 
+  /// The cache of a run that wrote the item [id]: what says the server holds it.
+  Future<void> serverHolds(String id, String kind, Map<String, Object?> entry) => core.vault.vault.saveEncryptedValue(
+    keyKemlockCache,
+    KmCache(
+      items: {id: KmCachedItem(revision: 1, kind: kind, keyVersion: 1, hash: 'hash', entry: entry, entryId: id)},
+    ).toJson(),
+    core.vault.session!,
+  );
+
+  Future<Object?> pendingRecords() => core.vault.vault.loadEncryptedValue(keyExtensionPendingFiles, core.vault.session!);
+
   setUp(() async {
     area = MemoryArea();
     core = await startCore(area);
@@ -56,20 +82,20 @@ void main() {
   });
 
   group('the files waiting to go up', () {
-    test('are held in memory, handed to a run by id, and zeroed when dropped', () async {
+    test('are held in memory, handed to a run by id, and let go of when dropped', () async {
       final store = PendingFiles();
       final bytes = Uint8List.fromList([1, 2, 3]);
       store.put('a', bytes);
       expect(store.holds('a'), isTrue);
       expect(await store.readSealed('a'), bytes);
       expect(await store.readSealed('b'), isNull);
-      // A browser keeps no file: a run is told every file is held, so it never fetches one
-      expect(await store.exists('b'), isTrue);
+      // A browser keeps no file: it has none to say it holds, and a run is told not to fetch one
+      expect(await store.exists('b'), isFalse);
       await store.writeSealed('b', Uint8List(2));
       expect(store.holds('b'), isFalse);
       store.drop('a');
       expect(store.holds('a'), isFalse);
-      expect(bytes, [0, 0, 0]);
+      expect(bytes, [1, 2, 3], reason: 'sealed bytes are no secret, and a run may still be sending them');
       store.put('c', Uint8List.fromList([9]));
       store.clear();
       expect(store.holds('c'), isFalse);
@@ -231,6 +257,79 @@ void main() {
       );
     });
 
+    test('keep their notes when a save names none, and what a save leaves as it is, spaces and all', () async {
+      await core.vault.applySynced(
+        Lists(
+          files: [
+            ...core.vault.lists.files,
+            VaultFile(id: f3, name: ' Padded ', notes: ' kept ', file: attachment('a3'), addedAt: 1),
+          ],
+        ),
+      );
+      await core.call('saveFile', [
+        f1,
+        {'name': 'Passport scan'},
+      ]);
+      expect(core.vault.lists.files.first.notes, 'front and back', reason: 'a call with no notes keeps them');
+      await core.call('saveFile', [
+        f3,
+        {'name': 'Padded', 'notes': 'kept', 'pinned': true},
+      ]);
+      final held = core.vault.lists.files.last;
+      expect(held.name, ' Padded ', reason: 'a name that is the same once trimmed is not rewritten');
+      expect(held.notes, ' kept ');
+      expect(held.pinned, isTrue);
+    });
+
+    test('keep the item and its server file as they were when a new file does not go up', () async {
+      await useKemlock(core);
+      await serverHolds(f1, 'file', core.vault.lists.files.first.toJson());
+      final staged = await object(core, 'stageItemFile', [piece(10), null]);
+      await expectLater(
+        core.call('saveFile', [
+          f1,
+          {
+            'name': 'Passport scan',
+            'staged': {'handle': staged['handle'], 'name': 'new.pdf'},
+          },
+        ]),
+        failure(CoreFailure.failed),
+      );
+      final file = core.vault.lists.files.first.file;
+      expect(file.id, 'a1', reason: 'the item never named the new file, so the old one is not lost with it');
+      expect(file.extra['kemlockFile'], 'server-a1');
+      expect(await pendingRecords(), isNull);
+      await core.call('stageItemFile', [piece(1), staged['handle']]);
+    });
+
+    test('are not kept when their new file does not go up, and a replaced file of an item no run wrote comes back', () async {
+      await useKemlock(core);
+      final staged = await object(core, 'stageItemFile', [piece(10), null]);
+      await expectLater(
+        core.call('saveFile', [
+          null,
+          {
+            'name': 'New',
+            'staged': {'handle': staged['handle'], 'name': 'new.pdf'},
+          },
+        ]),
+        failure(CoreFailure.failed),
+      );
+      expect(core.vault.lists.files.map((f) => f.id), [f1, f2]);
+      await expectLater(
+        core.call('saveFile', [
+          f2,
+          {
+            'name': 'Draft',
+            'staged': {'handle': staged['handle'], 'name': 'again.pdf'},
+          },
+        ]),
+        failure(CoreFailure.failed),
+      );
+      expect(core.vault.lists.files.last.file.id, 'a2');
+      expect(await pendingRecords(), isNull);
+    });
+
     test('are deleted', () async {
       await core.call('deleteFile', [f2]);
       expect((await list(core, 'files')).map((v) => v['id']), [f1]);
@@ -283,6 +382,7 @@ void main() {
     });
 
     test('one is removed, and the others stay as they were', () async {
+      await useKemlock(core);
       final before = core.vault.lists.notes.single.files.first.toJson();
       final full = await object(core, 'removeAttachment', ['n1', 'a2']);
       expect((full['attachments']! as List<Object?>), hasLength(1));
@@ -292,12 +392,53 @@ void main() {
       expect(empty['attachments'], isEmpty);
       expect(core.vault.lists.notes.single.attachments, isNull);
     });
+
+    test('keep their files as they were when new ones do not go up, whether the server holds the note or not', () async {
+      await useKemlock(core);
+      final staged = await object(core, 'stageItemFile', [piece(10), null]);
+      final args = [
+        'n1',
+        [
+          {'handle': staged['handle'], 'name': 'new.pdf'},
+        ],
+      ];
+      await expectLater(core.call('addAttachments', args), failure(CoreFailure.failed));
+      expect(core.vault.lists.notes.single.files.map((f) => f.id), ['a1', 'a2'], reason: 'a note the server does not hold');
+      final held = SecureNote(id: f3, title: 'Held', text: '', attachments: [attachment('b1', onServer: true)], addedAt: 1);
+      await core.vault.applySynced(Lists(notes: [...core.vault.lists.notes, held]));
+      await serverHolds(f3, 'note', held.toJson());
+      await expectLater(
+        core.call('addAttachments', [
+          f3,
+          [
+            {'handle': staged['handle'], 'name': 'new.pdf'},
+          ],
+        ]),
+        failure(CoreFailure.failed),
+      );
+      expect(core.vault.lists.notes.last.files.map((f) => f.id), ['b1'], reason: 'a note the server holds');
+      expect(await pendingRecords(), isNull);
+      await core.call('stageItemFile', [piece(1), staged['handle']]);
+    });
+
+    test('none is removed without Kemlock Server, which would leave the server file behind', () async {
+      await expectLater(core.call('removeAttachment', ['n1', 'a2']), failure(CoreFailure.unavailable));
+      expect(core.vault.lists.notes.single.files, hasLength(2));
+    });
   });
 
   group('an opened file', () {
     test('is unknown unless the core holds it, and closing one it does not hold is harmless', () async {
       await expectLater(core.call('readOpened', ['nope', 0]), failure(CoreFailure.lost));
       await core.call('closeOpened', ['nope']);
+    });
+
+    test('and a staged file can be let go of while the vault is locked', () async {
+      final staged = await object(core, 'stageItemFile', [piece(3), null]);
+      await core.call('lock');
+      await core.call('closeOpened', ['nope']);
+      await core.call('releaseStaged', [staged['handle']]);
+      await expectLater(core.call('files'), failure(CoreFailure.locked));
     });
   });
 
@@ -347,7 +488,7 @@ void main() {
       expect(await core.vault.vault.loadEncryptedValue(keyExtensionPendingFiles, core.vault.session!), isNotNull);
     });
 
-    test('is settled when the vault opens', () async {
+    test('is not settled when the vault opens, or before a run: the server may name it already', () async {
       await core.vault.applySynced(
         Lists(
           files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)],
@@ -358,6 +499,37 @@ void main() {
       ]);
       await core.call('lock');
       await core.call('unlock', [password]);
+      expect(core.vault.lists.files, hasLength(1));
+    });
+
+    test('is settled once a run has merged, which brings in what the server named', () async {
+      await core.vault.applySynced(
+        Lists(
+          files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)],
+        ),
+      );
+      await remember([
+        {'item': f1, 'kind': 'file', 'file': 'a3', 'fresh': true},
+      ]);
+      // The merge named the file (a run that went through before the worker stopped), so nothing is taken out
+      await core.vault.applySynced(
+        Lists(
+          files: [VaultFile(id: f1, name: 'New', file: attachment('a3', onServer: true), addedAt: 1)],
+        ),
+      );
+      await core.sync.afterMerge!();
+      expect(core.vault.lists.files.single.file.extra['kemlockFile'], 'server-a3');
+      expect(await core.vault.vault.loadEncryptedValue(keyExtensionPendingFiles, core.vault.session!), isNull);
+      // What the merge left unnamed goes
+      await remember([
+        {'item': f1, 'kind': 'file', 'file': 'a9', 'fresh': true},
+      ]);
+      await core.vault.applySynced(
+        Lists(
+          files: [VaultFile(id: f1, name: 'New', file: attachment('a9'), addedAt: 1)],
+        ),
+      );
+      await core.sync.afterMerge!();
       expect(core.vault.lists.files, isEmpty);
     });
   });

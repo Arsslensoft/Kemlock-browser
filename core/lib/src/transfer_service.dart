@@ -675,7 +675,8 @@ class TransferService {
         'keyAccounts': lists.keyAccounts.length,
       },
       'spaceItems': scope.spaceItems,
-      'attachedFiles': lists.notes.fold<int>(0, (sum, note) => sum + note.files.length),
+      // The files its notes name and its File items hold, which this browser keeps no bytes of, so no export holds them
+      'attachedFiles': lists.notes.fold<int>(lists.files.length, (sum, note) => sum + note.files.length),
       'cxf': {
         'sendable': {for (final kind in ExportKind.values) kind.name: plan.sendable(kind)},
         'leftOut': {for (final MapEntry(:key, :value) in plan.leftOut(kinds).entries) key.name: value},
@@ -705,7 +706,7 @@ class TransferService {
     final now = DateTime.fromMillisecondsSinceEpoch(vault.nowMs, isUtc: true);
     final scope = exportScope(vault.lists);
     final lists = scope.lists;
-    final attached = lists.notes.fold<int>(0, (sum, note) => sum + note.files.length);
+    final attached = lists.notes.fold<int>(lists.files.length, (sum, note) => sum + note.files.length);
     final counts = <String, int>{
       'codes': lists.accounts.length,
       'backupServices': lists.backupServices.length,

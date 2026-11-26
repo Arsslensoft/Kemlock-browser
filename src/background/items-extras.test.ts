@@ -9,6 +9,7 @@ import type {
   ItemRef,
   LinkedItemView,
   LoginView,
+  NoteFull,
   NoteView,
 } from '../shared/api'
 import type { ContactView } from '../shared/keys-api'
@@ -17,6 +18,11 @@ import { content, harness, menuFrame, popup, setup, useClock, type Harness } fro
 const filesTab = {
   id: 'kemlockid',
   url: 'chrome-extension://kemlockid/src/files/index.html',
+  origin: 'chrome-extension://kemlockid',
+}
+const keysTab = {
+  id: 'kemlockid',
+  url: 'chrome-extension://kemlockid/src/keys/index.html',
   origin: 'chrome-extension://kemlockid',
 }
 const sendsTab = {
@@ -138,7 +144,7 @@ describe('custom fields', () => {
     ).toEqual([])
   })
 
-  it('drop a nameless row, and refuse a checkbox that is neither true nor false', async () => {
+  it('drop a nameless row, and make a checkbox that is neither true nor false false', async () => {
     const note = await saveNote({
       fields: [
         { name: '  ', kind: 'text', value: 'lost' },
@@ -146,13 +152,99 @@ describe('custom fields', () => {
       ],
     })
     expect(note.fields.map((f: FieldView) => f.name)).toEqual(['Kept'])
+    const boxed = await h.ok<NoteView>({
+      kind: 'saveNote',
+      id: note.id,
+      input: { title: 't', text: '', fields: [{ name: 'Box', kind: 'boolean', value: 'maybe' }] },
+    })
+    expect(boxed.fields).toEqual([
+      { index: 0, name: 'Box', kind: 'boolean', value: 'false', hasValue: true, editable: true },
+    ])
+  })
+
+  it('are read, linked and copied from the keys tab, for a contact, and a note is read from the files tab', async () => {
+    const note = await saveNote({ fields: [{ name: 'PIN', kind: 'hidden', value: '4321' }] })
+    const ref = noteRef(note)
+    for (const message of [
+      { kind: 'revealField' as const, ref, index: 0 },
+      { kind: 'revealFields' as const, ref },
+      { kind: 'linkedItems' as const, ref },
+      { kind: 'linkCandidates' as const, ref, query: '' },
+      { kind: 'setLinks' as const, ref, refs: [] },
+      { kind: 'copy' as const, what: 'field' as const, id: note.id, ref, index: 0 },
+    ])
+      expect(await h.send(message, keysTab)).toMatchObject({ ok: true })
+    expect(await h.send({ kind: 'revealNote', id: note.id }, keysTab)).toEqual({
+      ok: false,
+      error: 'refused',
+    })
+    expect(await h.ok<NoteFull>({ kind: 'revealNote', id: note.id }, filesTab)).toMatchObject({
+      id: note.id,
+    })
     expect(
-      await h.send({
-        kind: 'saveNote',
-        id: note.id,
-        input: { title: 't', text: '', fields: [{ name: 'Box', kind: 'boolean', value: 'maybe' }] },
-      }),
-    ).toEqual({ ok: false, error: 'invalid' })
+      await h.send({ kind: 'copy', what: 'field', id: note.id, ref, index: 0 }, sendsTab),
+    ).toEqual({ ok: false, error: 'refused' })
+  })
+
+  it('keep a nameless field and a linked one where they are, show the linked one with no value, and reveal neither', async () => {
+    const note = await saveNote()
+    const ref = noteRef(note)
+    h.core.disk.items.extras[`note:${note.id}`] = {
+      fields: [
+        { name: '', kind: 'text', value: 'unseen' },
+        { name: 'Cost centre', kind: 'linked', value: '7', adminField: 'a1' },
+        { name: 'Site', kind: 'text', value: 'here', adminField: 'a2' },
+      ],
+      links: [],
+    }
+    const shown = await h.ok<NoteFull>({ kind: 'revealNote', id: note.id })
+    expect(shown.fields.map((f: FieldView) => f.name)).toEqual(['Cost centre', 'Site'])
+    expect(shown.fields[0]).toEqual({
+      index: 1,
+      name: 'Cost centre',
+      kind: 'linked',
+      hasValue: true,
+      adminField: 'a1',
+      editable: false,
+    })
+    for (const index of [0, 1])
+      expect(await h.send({ kind: 'revealField', ref, index })).toEqual({
+        ok: false,
+        error: 'notFound',
+      })
+    expect(await h.ok({ kind: 'revealFields', ref })).toEqual([{ index: 2, value: 'here' }])
+    // A save that edits the one field, with no adminField on its row, keeps the one it had
+    const saved = await h.ok<NoteView>({
+      kind: 'saveNote',
+      id: note.id,
+      input: {
+        title: 'Wi-Fi',
+        text: '',
+        fields: [{ origin: 2, name: 'Site', kind: 'text', value: 'there' }],
+      },
+    })
+    expect(saved.fields.map((f: FieldView) => [f.name, f.adminField])).toEqual([
+      ['Cost centre', 'a1'],
+      ['Site', 'a2'],
+    ])
+    expect(h.core.disk.items.extras[`note:${note.id}`].fields.map((f) => f.name)).toEqual([
+      '',
+      'Cost centre',
+      'Site',
+    ])
+  })
+
+  it('refuse a save with a bad row before changing anything', async () => {
+    const note = await saveNote({ title: 'Before' })
+    const links = Array.from({ length: 101 }, (_, i) => ({ kind: 'note' as const, id: `n${i}` }))
+    // Past what the parser lets through: the core itself refuses, and nothing of the save is made
+    await expect(
+      h.core.saveNote(note.id, { title: 'Never', text: 'never', links }),
+    ).rejects.toThrow('invalid')
+    expect(h.core.disk.items.notes.find((held) => held.id === note.id)).toMatchObject({
+      title: 'Before',
+      text: 'hunter2',
+    })
   })
 
   it('go with a login and a card', async () => {
@@ -206,8 +298,8 @@ describe('the administrator’s fields', () => {
     })
   })
 
-  it('are asked for by the popup, the setup tab and the files tab only', async () => {
-    for (const sender of [popup, setup, filesTab])
+  it('are asked for by the popup, the setup tab, the files tab and the keys tab only', async () => {
+    for (const sender of [popup, setup, filesTab, keysTab])
       expect(await h.send({ kind: 'customFieldDefs' }, sender)).toMatchObject({ ok: true })
     for (const sender of [menuFrame, sendsTab, content('https://evil.example/')])
       expect(await h.send({ kind: 'customFieldDefs' }, sender)).toEqual({
@@ -299,8 +391,16 @@ describe('links', () => {
     })
   })
 
-  it('answer the candidates: not the item itself, matching the query, and 50 at most', async () => {
+  it('answer the candidates: not the item itself or one linked already, matching the query, and 50 at most', async () => {
     const ref = await loginRef()
+    const taken = await saveNote({ title: 'Taken' })
+    await h.ok({ kind: 'setLinks', ref, refs: [noteRef(taken)] })
+    expect(
+      (await h.ok<LinkedItemView[]>({ kind: 'linkCandidates', ref, query: 'taken' })).map(
+        (item) => item.name,
+      ),
+    ).toEqual([])
+    await h.ok({ kind: 'setLinks', ref, refs: [] })
     for (let i = 0; i < 55; i += 1) await saveNote({ title: `Note ${i}` })
     const all = await h.ok<LinkedItemView[]>({ kind: 'linkCandidates', ref, query: '' })
     expect(all).toHaveLength(50)
@@ -323,12 +423,14 @@ describe('links', () => {
     expect(h.core.disk.items.extras).toEqual({})
   })
 
-  it('refuse a link to an item that is not there, and tell sync of the write', async () => {
+  it('name a link to an item that is not there, make the others, and tell sync of the write', async () => {
     const ref = await loginRef()
-    expect(await h.send({ kind: 'setLinks', ref, refs: [{ kind: 'note', id: 'nope' }] })).toEqual({
-      ok: false,
-      error: 'notFound',
-    })
+    const made = await saveNote()
+    expect(
+      await h.ok({ kind: 'setLinks', ref, refs: [{ kind: 'note', id: 'nope' }, noteRef(made)] }),
+    ).toEqual({ linkFailures: ['nope'] })
+    expect(await linked(ref)).toMatchObject([{ ref: noteRef(made) }])
+    await h.ok({ kind: 'setLinks', ref, refs: [] })
     const note = await saveNote()
     const spy = vi.spyOn(h.bg['d'].sync, 'changed')
     await h.ok({ kind: 'setLinks', ref, refs: [noteRef(note)] })
@@ -442,16 +544,18 @@ describe('a code’s own details', () => {
   it('show the websites of the login they are linked to, and say whose they are', async () => {
     const before = await code()
     const l = await login()
-    const saved = await h.ok<CodeView>({
+    // The sample code is linked to its login (a link both items show), whose websites are then the code's and are changed there:
+    // a save that names some leaves the code's own as they were
+    const lent = await h.ok<CodeView>({
       kind: 'saveCode',
       id: before.id,
       input: { websites: ['own.example'] },
     })
-    // The sample code is linked to its login (a link both items show)
-    expect(saved.websites).toEqual(l.websites)
-    expect(saved.ownWebsites).toEqual(['own.example'])
-    expect(saved.websitesFrom).toEqual([{ kind: 'login', id: l.id }])
+    expect(lent.websites).toEqual(l.websites)
+    expect(lent.ownWebsites).toEqual(before.ownWebsites)
+    expect(lent.websitesFrom).toEqual([{ kind: 'login', id: l.id }])
     await h.ok({ kind: 'setLinks', ref: { kind: 'otp', id: before.id }, refs: [] })
+    await h.ok({ kind: 'saveCode', id: before.id, input: { websites: ['own.example'] } })
     const alone = await code()
     expect(alone.websites).toEqual(['own.example'])
     expect(alone.websitesFrom).toBeUndefined()

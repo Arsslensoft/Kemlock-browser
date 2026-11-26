@@ -43,6 +43,8 @@ export interface FakeFilesHost {
 
 /** The most staged files, and the most opened ones, the core holds at once. */
 const maxHeld = 4
+/** The longest name of a staged file. */
+const maxFileNameLength = 255
 
 function random(length: number): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
@@ -84,6 +86,11 @@ export class FakeFiles {
   private readonly staged = new Map<string, Uint8Array[]>()
   /** The files opened for reading, by handle. */
   private readonly opened = new Map<string, Uint8Array>()
+  /**
+   * A test's way to make an upload fail for the files it names (the server refuses one, the network drops): such a file is not
+   * attached, and is answered in `failed`, as the real core does when only some went up.
+   */
+  refuseUpload: (file: StagedAttachment) => boolean = () => false
 
   /** How many files are staged and how many are open, for the tests. */
   held(): { staged: number; opened: number } {
@@ -148,12 +155,17 @@ export class FakeFiles {
     const items = this.begin()
     const name = input.name.trim()
     if (name === '') throw new FilesFakeError('invalid')
-    if (input.staged !== undefined) this.serverOnly()
+    if (input.staged !== undefined) {
+      this.serverOnly()
+      if (input.staged.name.trim() === '' || input.staged.name.length > maxFileNameLength)
+        throw new FilesFakeError('invalid')
+    }
     if (id === null && input.staged === undefined) throw new FilesFakeError('invalid')
     const staged = input.staged === undefined ? undefined : this.staged.get(input.staged.handle)
     if (input.staged !== undefined && staged === undefined) throw new FilesFakeError('lost')
     const held = id === null ? undefined : this.find(id)
     if (held === undefined) this.host.extras.check('file', { links: input.links })
+    else this.host.extras.validate({ kind: 'file', id: held.id }, { links: input.links })
     const file: StoredFile = held ?? {
       id: `file-${items.nextId++}`,
       name,
@@ -191,20 +203,33 @@ export class FakeFiles {
   ): Promise<{ handle: string; length: number }> {
     this.begin()
     this.serverOnly()
-    if (data.length > Math.ceil(itemFileChunkBytes / 3) * 4) throw new FilesFakeError('tooLarge')
-    const piece = fromBase64(data)
+    // A piece over 1 MiB is not one the core takes (`invalid`)
+    if (data.length > Math.ceil(itemFileChunkBytes / 3) * 4) throw new FilesFakeError('invalid')
+    let piece: Uint8Array
+    try {
+      piece = fromBase64(data)
+    } catch {
+      throw new FilesFakeError('invalid')
+    }
+    if (piece.length > itemFileChunkBytes) throw new FilesFakeError('invalid')
     if (handle !== null && !this.staged.has(handle)) throw new FilesFakeError('lost')
-    if (handle === null && this.staged.size >= maxHeld) throw new FilesFakeError('tooMany')
+    // A fifth file pushes the oldest out, and the new one is answered a handle
+    if (handle === null)
+      while (this.staged.size >= maxHeld) this.staged.delete(this.staged.keys().next().value!)
     const held = handle ?? random(22)
-    if (this.size(held) + piece.length > maxAttachmentBytes) throw new FilesFakeError('tooLarge')
+    if (this.size(held) + piece.length > maxAttachmentBytes) {
+      // Over 50 MiB the file is dropped: its next piece is a handle nobody holds
+      this.staged.delete(held)
+      throw new FilesFakeError('tooLarge')
+    }
     const pieces = this.staged.get(held) ?? []
     pieces.push(piece)
     this.staged.set(held, pieces)
     return { handle: held, length: this.size(held) }
   }
 
+  /** Letting go of a file needs no open vault: a lock let go of every one already. */
   async releaseStaged(handle: string): Promise<void> {
-    this.begin()
     this.staged.delete(handle)
   }
 
@@ -219,12 +244,22 @@ export class FakeFiles {
   async addAttachments(noteId: string, files: StagedAttachment[]): Promise<NoteFull> {
     const items = this.begin()
     this.serverOnly()
+    if (files.length === 0) throw new FilesFakeError('invalid')
+    if (files.length > maxAttachments) throw new FilesFakeError('tooMany')
+    for (const file of files)
+      if (file.name.trim() === '' || file.name.length > maxFileNameLength)
+        throw new FilesFakeError('invalid')
     const note = this.note(noteId)
     if (note.attachments.length + files.length > maxAttachments) throw new FilesFakeError('tooMany')
     const made: { view: AttachmentView; bytes: Uint8Array; handle: string }[] = []
+    const failed: string[] = []
     for (const file of files) {
       const pieces = this.staged.get(file.handle)
       if (pieces === undefined) throw new FilesFakeError('lost')
+      if (this.refuseUpload(file)) {
+        failed.push(file.handle)
+        continue
+      }
       const bytes = concat(pieces)
       made.push({
         handle: file.handle,
@@ -239,6 +274,8 @@ export class FakeFiles {
         },
       })
     }
+    // None went up: the call fails, and every file stays staged
+    if (made.length === 0) throw new FilesFakeError('failed')
     for (const { view, bytes, handle } of made) {
       note.attachments.push(view)
       blobsOf(items).set(view.id, bytes)
@@ -246,7 +283,9 @@ export class FakeFiles {
     }
     note.files = note.attachments.length
     note.changedAt = this.host.now()
-    return this.host.revealNote(noteId)
+    const full = await this.host.revealNote(noteId)
+    // Some went up and some did not: the note, with the handles of those that did not (they stay staged)
+    return failed.length === 0 ? full : { ...full, failed }
   }
 
   async removeAttachment(noteId: string, attachmentId: string): Promise<NoteFull> {
@@ -286,7 +325,8 @@ export class FakeFiles {
     const bytes = blobsOf(items).get(key)
     // A file the server has but this fake was never given: the download fails as an unreachable one does
     if (bytes === undefined) throw new FilesFakeError('failed')
-    if (this.opened.size >= maxHeld) throw new FilesFakeError('tooMany')
+    // A fifth open file closes the oldest
+    while (this.opened.size >= maxHeld) this.opened.delete(this.opened.keys().next().value!)
     const handle = random(22)
     this.opened.set(handle, bytes)
     return { handle, size: bytes.length, name, ...(type === undefined ? {} : { type }) }

@@ -35,6 +35,10 @@ const fieldValueMax = 10000;
 
 /// The most items one call links, websites it gives, and the longest website; and the longest line of a contact's details.
 const linkRefsMax = 100;
+
+/// The most links a call is read with: more than [linkRefsMax], since an item an import made may hold more and send them all back
+/// (`setLinksOf` refuses more than the item holds or [linkRefsMax]).
+const linkRefsReadMax = 1000;
 const websiteRulesMax = 50;
 const websiteUriMax = 2000;
 const contactDetailLimit = 2048;
@@ -96,7 +100,8 @@ String _fieldBodyKind(String name) => switch (name) {
 List<CustomField> applyFields(List<CustomField> current, Object? input) {
   if (input == null) return current;
   if (input is! List<Object?>) throw _invalid('the fields are not a list');
-  if (input.length > fieldRowsMax) throw _invalid('too many fields');
+  // A list that holds more than the limit already (an import made it) may be sent back as it is
+  if (input.length > fieldRowsMax && input.length > current.length) throw _invalid('too many fields');
   final byOrigin = <int, Map<String, Object?>>{};
   final added = <Map<String, Object?>>[];
   for (final row in input) {
@@ -108,14 +113,15 @@ List<CustomField> applyFields(List<CustomField> current, Object? input) {
       added.add(row);
     }
   }
-  ({String name, String kind, String value, bool keepValue, String? admin}) read(Map<String, Object?> row) {
+  // A name or a value over the limit is refused only when it is new: the one a field already holds is written back as it is
+  ({String name, String kind, String value, bool keepValue, String? admin}) read(Map<String, Object?> row, [CustomField? held]) {
     final name = row['name'];
     final value = row['value'];
     final admin = row['adminField'];
-    if (name is! String || name.length > fieldNameMax) throw _invalid('a field name is too long');
+    if (name is! String || (name.length > fieldNameMax && name != held?.name)) throw _invalid('a field name is too long');
     if (value != null && value is! String && value is! bool) throw _invalid('a field value is not text');
     final text = value is bool ? '$value' : (value as String?) ?? '';
-    if (text.length > fieldValueMax) throw _invalid('a field value is too long');
+    if (text.length > fieldValueMax && text != held?.value) throw _invalid('a field value is too long');
     if (admin != null && (admin is! String || admin.length > 100)) throw _invalid('a field definition is not an id');
     final kind = _fieldBodyKind(asString(row['kind'], 'text'));
     return (
@@ -135,7 +141,7 @@ List<CustomField> applyFields(List<CustomField> current, Object? input) {
     }
     final row = byOrigin[index];
     if (row == null) continue;
-    final next = read(row);
+    final next = read(row, field);
     if (next.name.trim().isEmpty) continue;
     // A hidden value the page never held is the field's own, unless the row is changed to another kind
     final keepsValue = next.keepValue && next.kind == CustomFieldKind.hidden && field.kind == CustomFieldKind.hidden;
@@ -176,19 +182,29 @@ List<Map<String, Object?>> ruleViews(Iterable<WebsiteRule> rules) => [
 ];
 
 final _scheme = RegExp(r'^([a-z][a-z0-9+.-]*):', caseSensitive: false);
-final _hostPort = RegExp(r'^[a-z0-9.-]+:\d{1,5}(?:[/?#].*)?$', caseSensitive: false);
+final _hostPort = RegExp(r'^([a-z0-9.-]+):\d{1,5}(?:[/?#].*)?$', caseSensitive: false);
 const _schemes = {'http', 'https', 'androidapp', 'iosapp'};
 
-/// What a website the person typed may be, as the web vault's form holds it: a host, a web address or an app's package name. Any other
-/// scheme (`javascript:`) is refused.
+/// Whether [text] is a host with a port (`localhost:8080`, `example.com:8443/path`) and not a scheme that looks like one
+/// (`javascript:1/alert(1)`): the host must be `localhost` or hold a dot.
+bool _isHostPort(String text) {
+  final host = _hostPort.firstMatch(text)?.group(1)?.toLowerCase();
+  return host != null && (host == 'localhost' || host.contains('.'));
+}
+
+/// What a website the person typed may be, as the web vault's form holds it: a host, a web address, a host with a port or an app's
+/// package name (`androidapp:`, `iosapp:`). Any other scheme (`javascript:`, `data:`, `file:`, `vbscript:`) is refused. The scheme is
+/// checked before the host-and-port shortcut, which a scheme followed by digits (`javascript:1/…`) would otherwise pass through.
 void _checkWebsite(String text) {
-  if (_hostPort.hasMatch(text)) return;
   final scheme = _scheme.firstMatch(text)?.group(1)?.toLowerCase();
   if (scheme == null) {
     if (RegExp(r'\s').hasMatch(text)) throw _invalid('a website holds a space');
     return;
   }
-  if (!_schemes.contains(scheme)) throw _invalid('a website is a web address');
+  if (!_schemes.contains(scheme)) {
+    if (_isHostPort(text)) return;
+    throw _invalid('a website is a web address');
+  }
   if (scheme == 'http' || scheme == 'https') {
     final host = Uri.tryParse(text)?.host ?? '';
     if (host.isEmpty) throw _invalid('a website has no host');
@@ -218,25 +234,27 @@ String _ruleUri(String text, String name) {
 /// is left out. Refuses a scheme that isn't a web or app one, an expression that doesn't compile, and more than 50 websites.
 List<WebsiteRule> readRules(Object? input, List<WebsiteRule> current) {
   if (input is! List<Object?>) throw _invalid('the websites are not a list');
-  if (input.length > websiteRulesMax) throw _invalid('too many websites');
+  // An item that holds more than the limit already (an import made it) may be saved with the ones it has
+  if (input.length > websiteRulesMax && input.length > current.length) throw _invalid('too many websites');
   final rules = <WebsiteRule>[];
   final used = <int>{};
   for (final row in input) {
     if (row is! Map<String, Object?>) throw _invalid('a website is not an object');
     final text = asString(row['uri']).trim();
     if (text.isEmpty) continue;
-    if (text.length > websiteUriMax) throw _invalid('a website is too long');
     final name = asString(row['match'], 'default');
     final number = _ruleNumber(name);
     final same = [
       for (final (i, rule) in current.indexed)
         if (!used.contains(i) && rule.uri == text && ruleName(rule.match) == name) i,
     ];
+    // A website the item holds is kept as it is, however long; a new one is at most 2000 characters
     if (same.isNotEmpty) {
       used.add(same.first);
       rules.add(current[same.first]);
       continue;
     }
+    if (text.length > websiteUriMax) throw _invalid('a website is too long');
     final uri = _ruleUri(text, name);
     final alike = [
       for (final (i, rule) in current.indexed)
@@ -279,7 +297,7 @@ typedef ItemRef = ({String kind, String id});
 /// The `ItemRef`s of [raw]; none for a call that has no links.
 List<ItemRef> parseRefs(Object? raw) {
   if (raw is! List<Object?>) throw _invalid('the links are not a list');
-  if (raw.length > linkRefsMax) throw _invalid('too many links');
+  if (raw.length > linkRefsReadMax) throw _invalid('too many links');
   return [for (final item in raw) parseRef(item)];
 }
 
@@ -295,10 +313,10 @@ ItemRef parseRef(Object? raw) {
 }
 
 /// [entry] as the `ItemRef` the pages hold it by.
-Map<String, Object?> refOf(VaultEntry<dynamic> entry) => {'kind': itemKindOf(entry), 'id': entry.id};
+Map<String, Object?> refOf(VaultEntry<Object?> entry) => {'kind': itemKindOf(entry), 'id': entry.id};
 
 /// The entry of [lists] with this [kind] and [id], or null.
-VaultEntry<dynamic>? findEntry(Lists lists, String kind, String id) {
+VaultEntry<Object?>? findEntry(Lists lists, String kind, String id) {
   for (final entry in entriesOf(lists)) {
     if (entry.id == id && itemKindOf(entry) == kind) return entry;
   }
@@ -306,7 +324,7 @@ VaultEntry<dynamic>? findEntry(Lists lists, String kind, String id) {
 }
 
 /// What [entry] is called, as a list of items shows it.
-String entryNameOf(VaultEntry<dynamic> entry) => switch (entry) {
+String entryNameOf(VaultEntry<Object?> entry) => switch (entry) {
   final Login login => login.name,
   final OtpAccount code => _firstText([code.name, code.issuer, code.label]),
   final BackupService service => _firstText([service.name, service.serviceName]),
@@ -329,7 +347,7 @@ String _firstText(List<String?> texts) {
 }
 
 /// The line under [entry]'s name, when it has one.
-String? entryDetailOf(VaultEntry<dynamic> entry) {
+String? entryDetailOf(VaultEntry<Object?> entry) {
   final String? text = switch (entry) {
     final Login login => login.username,
     final OtpAccount code => code.label,
@@ -343,7 +361,7 @@ String? entryDetailOf(VaultEntry<dynamic> entry) {
 }
 
 /// The text a search for an item to link looks in.
-String entrySearchText(VaultEntry<dynamic> entry) {
+String entrySearchText(VaultEntry<Object?> entry) {
   final parts = <String?>[entryNameOf(entry), entryDetailOf(entry)];
   switch (entry) {
     case final Login login:
@@ -367,7 +385,7 @@ String entrySearchText(VaultEntry<dynamic> entry) {
 }
 
 /// [lists] with [entry] put in place of the entry of its kind with its id.
-Lists listsWithEntry(Lists lists, VaultEntry<dynamic> entry) {
+Lists listsWithEntry(Lists lists, VaultEntry<Object?> entry) {
   List<T> put<T extends VaultEntry<T>>(List<T> list, T item) => [for (final held in list) held.id == item.id ? item : held];
   return Lists(
     accounts: entry is OtpAccount ? put(lists.accounts, entry) : lists.accounts,
@@ -420,7 +438,7 @@ Map<String, int> linkCountsOf(Lists lists, {Owner? account}) {
 }
 
 /// The websites an entry holds, with their rules; none for a kind with no websites.
-List<WebsiteRule> rulesOf(VaultEntry<dynamic> entry) => switch (entry) {
+List<WebsiteRule> rulesOf(VaultEntry<Object?> entry) => switch (entry) {
   final Login login => login.rules,
   final OtpAccount code => code.rules,
   final BackupService service => service.rules,
@@ -432,7 +450,7 @@ List<String> hostsOf(Iterable<WebsiteRule> rules) => <String>{for (final rule in
 
 /// What the items [entry] is linked to lend it as websites: the hosts of those that have some, each once, and who they are from, in
 /// the order of their ids; null when none has a website. A code shows these instead of its own.
-({List<String> hosts, List<Map<String, Object?>> from})? lentWebsites(Lists lists, VaultEntry<dynamic> entry, {Owner? account}) {
+({List<String> hosts, List<Map<String, Object?>> from})? lentWebsites(Lists lists, VaultEntry<Object?> entry, {Owner? account}) {
   final hosts = <String>{};
   final from = <Map<String, Object?>>[];
   for (final linked in linkedItemsOf(lists, entry, account: account)) {

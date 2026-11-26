@@ -14,7 +14,7 @@ extension VaultLinks on VaultService {
 
   // ─── Fields ───────────────────────────────────────────────────────────
 
-  List<CustomField> _fieldsOf(VaultEntry<dynamic> entry) => switch (entry) {
+  List<CustomField> _fieldsOf(VaultEntry<Object?> entry) => switch (entry) {
     final Login item => item.fields,
     final OtpAccount item => item.fields,
     final BackupService item => item.fields,
@@ -26,7 +26,7 @@ extension VaultLinks on VaultService {
     _ => throw const CoreFailure(CoreFailure.invalid, 'this item has no custom fields'),
   };
 
-  VaultEntry<dynamic> _entryOf(ItemRef ref) =>
+  VaultEntry<Object?> _entryOf(ItemRef ref) =>
       findEntry(_lists, ref.kind, ref.id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
 
   /// The value of one custom field of the item [ref], hidden or not: the page asks for one at a time.
@@ -57,7 +57,7 @@ extension VaultLinks on VaultService {
     };
   }
 
-  int _byName(VaultEntry<dynamic> a, VaultEntry<dynamic> b) {
+  int _byName(VaultEntry<Object?> a, VaultEntry<Object?> b) {
     final order = entryNameOf(a).toLowerCase().compareTo(entryNameOf(b).toLowerCase());
     return order != 0 ? order : a.id.compareTo(b.id);
   }
@@ -91,6 +91,8 @@ extension VaultLinks on VaultService {
       for (final entry in entriesOf(lists))
         if (entry is! KeyAccount &&
             (self == null || entry.id != self.id) &&
+            // An item with no item id yet (a legacy id and no account) can't be linked to: the link would name nothing
+            isLinkId(linkIdOf(entry, account: owner)) &&
             !taken.contains(linkIdOf(entry, account: owner).toLowerCase()) &&
             (needle.isEmpty || entrySearchText(entry).contains(needle)))
           entry,
@@ -115,6 +117,8 @@ extension VaultLinks on VaultService {
     return out;
   }
 
+  bool _pagesCannotHold(VaultEntry<Object?> entry) => entry is KeyAccount;
+
   /// Makes the item [kind] [id] linked to the items of [wanted] and to no other it can see: each end is written, both together, so a
   /// link is never made at one end alone. A link the item holds that the vault has no item for stays. An end this account may not
   /// edit, an item that isn't there and one that has no item id yet are left as they were and named in the answer.
@@ -125,20 +129,23 @@ extension VaultLinks on VaultService {
     final self = findEntry(lists, kind, id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
     editGuard?.call(self.spaceId, self.id);
     final failed = <String>[];
+    // An end the pages can't hold (an account on a security key is never offered to link to) is kept as it is: never made, never dropped
     final current = {
       for (final item in linkedItemsOf(lists, self, account: owner))
-        if (item.entry != null) item.id: item,
+        if (item.entry != null && !_pagesCannotHold(item.entry!)) item.id: item,
     };
+    // An item that holds more links than the limit already may be saved with the ones it has
+    if (wanted.length > linkRefsMax && wanted.length > current.length) throw const CoreFailure(CoreFailure.invalid, 'too many links');
     final desired = <String, VaultEntry<Object?>>{};
     for (final ref in wanted) {
       final other = findEntry(lists, ref.kind, ref.id);
       if (other == null) {
         failed.add(ref.id);
-      } else if (other.id != self.id) {
+      } else if (other.id != self.id && !_pagesCannotHold(other)) {
         desired[linkIdOf(other, account: owner).toLowerCase()] = other;
       }
     }
-    bool writable(VaultEntry<dynamic> other) {
+    bool writable(VaultEntry<Object?> other) {
       try {
         editGuard?.call(other.spaceId, other.id);
         return true;
@@ -160,7 +167,7 @@ extension VaultLinks on VaultService {
     if (adds.isEmpty && drops.isEmpty) return failed;
     await saveChanged((held) {
       var next = held;
-      void change(VaultEntry<dynamic> other, {required bool link}) {
+      void change(VaultEntry<Object?> other, {required bool link}) {
         final a = findEntry(next, kind, id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
         final b = findEntry(next, itemKindOf(other), other.id);
         if (b == null) return;
@@ -199,19 +206,24 @@ extension VaultLinks on VaultService {
     requireSession();
     final current = _account(id);
     editGuard?.call(current.spaceId, id);
-    var next = current;
-    if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
-    if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
-    if (input['pinned'] is bool) next = next.copyWith(pinned: input['pinned'] == true ? true : unset);
-    if (input.containsKey('websites') && lentWebsites(_lists, current, account: accountOwner?.call()) == null) {
-      final hosts = readHosts(input['websites']);
-      next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+    final lent = lentWebsites(_lists, current, account: accountOwner?.call()) != null;
+    // The edit is made on the code the write holds, so what a run wrote meanwhile (an HOTP counter) is not put back
+    OtpAccount edit(OtpAccount held) {
+      var next = held;
+      if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
+      if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
+      if (input['pinned'] is bool) next = next.copyWith(pinned: input['pinned'] == true ? true : unset);
+      if (input.containsKey('websites') && !lent) {
+        final hosts = readHosts(input['websites']);
+        next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+      }
+      final fields = applyFields(next.fields, input['fields']);
+      return identical(fields, next.fields) ? next : next.copyWith(fields: fields);
     }
-    final fields = applyFields(next.fields, input['fields']);
-    if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+
+    edit(current);
     final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
-    final saved = next;
-    await _saveAccounts((held) => [for (final account in held) account.id == id ? saved : account]);
+    await _saveAccounts((held) => [for (final account in held) account.id == id ? edit(account) : account]);
     final failures = refs == null ? const <String>[] : await setLinksOf('otp', id, refs);
     final index = _lists.accounts.indexWhere((account) => account.id == id);
     return {..._codeView(_lists.accounts[index], index), if (failures.isNotEmpty) 'linkFailures': failures};
@@ -223,18 +235,22 @@ extension VaultLinks on VaultService {
     final current = _lists.backupServices.where((service) => service.id == serviceId).firstOrNull;
     if (current == null) throw const CoreFailure(CoreFailure.notFound, 'no such service');
     editGuard?.call(current.spaceId, serviceId);
-    var next = current;
-    if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
-    if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
-    if (input.containsKey('websites')) {
-      final hosts = readHosts(input['websites']);
-      next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+    // The edit is made on the service the write holds, so a code used meanwhile stays used
+    BackupService edit(BackupService held) {
+      var next = held;
+      if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
+      if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
+      if (input.containsKey('websites')) {
+        final hosts = readHosts(input['websites']);
+        next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+      }
+      final fields = applyFields(next.fields, input['fields']);
+      return identical(fields, next.fields) ? next : next.copyWith(fields: fields);
     }
-    final fields = applyFields(next.fields, input['fields']);
-    if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+
+    edit(current);
     final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
-    final saved = next;
-    await _saveServices((held) => [for (final service in held) service.id == serviceId ? saved : service]);
+    await _saveServices((held) => [for (final service in held) service.id == serviceId ? edit(service) : service]);
     final failures = refs == null ? const <String>[] : await setLinksOf('backup-codes', serviceId, refs);
     final stored = _lists.backupServices.firstWhere((service) => service.id == serviceId);
     return {...backupViewOf(stored), if (failures.isNotEmpty) 'linkFailures': failures};

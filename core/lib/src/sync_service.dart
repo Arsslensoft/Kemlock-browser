@@ -288,10 +288,16 @@ class SyncService implements SpacesHost {
   /// no other file, so no other place is given a store.
   final PendingFiles pendingFiles = PendingFiles();
 
-  /// Called before each run (item_files.dart takes out the entry of a file that never went up) and after one that went through
-  /// (custom_fields.dart reads the admin's fields again). Set by the core service.
-  Future<void> Function()? beforeRun;
+  /// Called after a run that merged (item_files.dart takes out the entry of a file that never went up, which only a merge can say),
+  /// and, after any run, once the loop is over (custom_fields.dart reads the admin's fields again). Set by the core service.
+  Future<void> Function()? afterMerge;
   void Function()? afterRun;
+
+  /// Whether a run of this loop merged what it read.
+  var _merged = false;
+
+  @override
+  KmFileStore get fileStore => pendingFiles;
 
   CoreDataAccess get _data => CoreDataAccess(_vault);
 
@@ -1057,8 +1063,9 @@ class SyncService implements SpacesHost {
     values: SealedValues(_store, _vault.requireSession()),
     clientFor: _vault.platform.clientFor,
     proofsFor: _proofsFor,
-    // The files waiting to go up; the store says every file is held, so a run never fetches one (they are opened on demand)
+    // The files waiting to go up; a run fetches none (`fetchMissing: false`: they are opened on demand)
     fileStore: pendingFiles,
+    fetchMissing: false,
     // The anchors of the account's spaces travel with the vault's own scope, as the phone's do
     anchors: kmAnchorsOf(anchors, _vault.requireSession()),
     clock: _clock,
@@ -1181,17 +1188,20 @@ class SyncService implements SpacesHost {
   Future<void> _runLoop() async {
     _running = true;
     try {
+      _merged = false;
       do {
         _again = false;
-        try {
-          await beforeRun?.call();
-        } catch (_) {
-          // A file entry that couldn't be settled is tried again at the next run
-        }
         await _runOnce();
         // The spaces go after the vault's own scope; one the person changed under is run again with the rest
         if (!_again && await spaces.runAll()) _again = true;
       } while (_again);
+      if (_merged) {
+        try {
+          await afterMerge?.call();
+        } catch (_) {
+          // A file entry that couldn't be settled is tried again after the next merge
+        }
+      }
       afterRun?.call();
     } finally {
       _running = false;
@@ -1269,6 +1279,7 @@ class SyncService implements SpacesHost {
       await _saveStates();
       _status[key] = ScopeStatus(lastSyncAt: at);
       _removalChoice = null;
+      _merged = true;
     } finally {
       client?.close();
     }

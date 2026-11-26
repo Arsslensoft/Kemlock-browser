@@ -168,6 +168,7 @@ export class FakeItems {
       return this.noteView(note, this.extras.apply(this.ref('note', note.id), input))
     }
     const note = this.find(notes, id)
+    this.extras.validate(this.ref('note', note.id), input)
     note.title = title
     note.text = input.text
     if (input.tags !== undefined) note.tags = [...input.tags]
@@ -259,6 +260,7 @@ export class FakeItems {
       return this.cardView(card, this.extras.apply(this.ref('card', card.id), input))
     }
     const card = this.find(cards, id)
+    this.extras.validate(this.ref('card', card.id), input)
     for (const key of [
       'cardholder',
       'brand',
@@ -377,6 +379,7 @@ export class FakeItems {
       identities.push(identity)
       return this.identityView(identity, this.extras.apply(this.ref('identity', identity.id), input))
     }
+    this.extras.validate(this.ref('identity', held.id), input)
     for (const key of [
       'title',
       'givenName',

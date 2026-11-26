@@ -77,11 +77,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 // Added by sends: the Sends tab holds a port while it holds a Send, so the worker is not stopped under it. Added by item format: the
-// files tab holds one while a file is staged, uploading or being read. Each accepts its own name and closes any other, so one listener
+// files tab holds one while a file is staged, uploading or being read, and the popup while it downloads one; the files a page made are
+// let go when its last port closes. Each accepts its own name and closes any other, so one listener
 // hands a port to the one it is for.
 chrome.runtime.onConnect.addListener((port) =>
   port.name === itemFilesKeepAlivePort
-    ? acceptItemFilesPort(port, self)
+    ? acceptItemFilesPort(
+        port,
+        self,
+        ready.then((background) => background.fileHandles),
+      )
     : acceptSendsPort(port, self),
 )
 
