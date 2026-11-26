@@ -39,6 +39,8 @@ const dynamic = [
     'contact',
     'file',
     'identity',
+    'key',
+    'key_otp',
     'login',
     'note',
     'otp',
@@ -120,5 +122,30 @@ describe('MFA codes', () => {
       .filter(([, text]) => /\bcodes?\b/i.test(text.replace(frenchNamed, '')))
       .map(([name]) => name)
     expect(plain).toEqual([])
+  })
+})
+
+describe('MFA codes in the other parts', () => {
+  const part = (name: string, lang: 'en' | 'fr'): Record<string, string> =>
+    JSON.parse(
+      readFileSync(join(src, '..', 'locales', 'parts', `${name}.${lang}.json`), 'utf8'),
+    ) as Record<string, string>
+
+  // What means a two-step code, by part and name (a backup, security or postal code keeps its own word)
+  const renamed: Record<string, string[]> = {
+    background: ['bgMenuFillCode', 'bgClipboardJustification'],
+    content: ['menu_empty_codes'],
+    spaces: ['spaces_kindCode'],
+    account: ['account_move_kind_otp', 'account_move_kind_keyotp'],
+    transfer: ['transfer_kind_codes', 'transfer_sample_code'],
+    tools: ['tools_breachEntryCode', 'tools_reason_sameCode', 'tools_reorderCodes'],
+    setup: ['setup_place_lead', 'setup_next_open'],
+  }
+
+  it('say MFA code wherever the string means a two-step code', () => {
+    for (const [name, keys] of Object.entries(renamed))
+      for (const lang of ['en', 'fr'] as const)
+        for (const key of keys)
+          expect(part(name, lang)[key], `${name}.${lang} ${key}`).toMatch(/\bMFA\b/)
   })
 })
