@@ -125,7 +125,7 @@ export function CodeRow(props: {
   const { entry, warn, nextHotp } = useLiveCode(code, live)
   const name = codeName(code)
   const sites = siteLine(code.websites)
-  const edit = props.onEdit !== undefined && (
+  const edit = props.onEdit !== undefined && code.space?.canEdit !== false && (
     <IconButton
       icon="edit"
       size={16}
@@ -264,7 +264,7 @@ export function BackupCodes(props: {
                   {count}
                 </span>
               </span>
-              {props.onEdit !== undefined && (
+              {props.onEdit !== undefined && backup.space?.canEdit !== false && (
                 <IconButton
                   icon="edit"
                   size={16}
@@ -308,6 +308,7 @@ export function BackupCodes(props: {
                 item={{ kind: 'backup-codes', id: backup.serviceId }}
                 onRoute={props.onRoute}
                 onChanged={() => void props.onChanged()}
+                readOnly={backup.space?.canEdit === false}
               />
             )}
           </article>

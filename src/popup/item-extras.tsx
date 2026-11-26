@@ -488,6 +488,8 @@ export function LinksSection(props: {
         : Promise.resolve(props.linked),
     [props.item.kind, props.item.id],
   )
+  /** The item can't be changed here (a read-only space's): the links show, with no Unlink. */
+  readOnly?: boolean
   const [busy, setBusy] = useState(false)
   const list = loaded.value ?? []
   if (list.length === 0) return null
@@ -520,7 +522,7 @@ export function LinksSection(props: {
               linked={linked}
               busy={busy}
               {...(route === undefined || go === undefined ? {} : { onOpen: () => go(route) })}
-              onUnlink={() => void unlink(linked)}
+              {...(props.readOnly === true ? {} : { onUnlink: () => void unlink(linked) })}
             />
           )
         })}

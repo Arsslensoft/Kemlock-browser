@@ -85,9 +85,10 @@ export function NotePage(props: {
   }
   const text: NoteFull | undefined = full.value
   const ref = { kind: 'note' as const, id: note.id }
-  // Files change only where the vault syncs with Kemlock Server, and in a space the account may write to
+  // Files come and go only where the vault syncs with Kemlock Server, and are added or removed in a space the account may write to
   const fileSync = sync === undefined ? undefined : fileSyncOf(sync)
-  const canChange = fileSync === 'kemlock' && note.space?.canEdit !== false
+  const canDownload = fileSync === 'kemlock'
+  const canChange = canDownload && note.space?.canEdit !== false
   const removeFile = async (file: AttachmentView) => {
     setRemoveBusy(true)
     try {
@@ -181,7 +182,7 @@ export function NotePage(props: {
                               .join(' · ')}
                           </span>
                         </span>
-                        {canChange && (
+                        {canDownload && (
                           <span class="note-file-actions">
                             <LinkButton
                               label={t('files_downloadNamed', file.name)}
@@ -190,13 +191,15 @@ export function NotePage(props: {
                             >
                               {downloading === file.id ? t('files_preparing') : t('files_download')}
                             </LinkButton>
-                            <LinkButton
-                              quiet
-                              label={t('files_removeNamed', file.name)}
-                              onClick={() => setRemoving(file)}
-                            >
-                              {t('files_remove')}
-                            </LinkButton>
+                            {canChange && (
+                              <LinkButton
+                                quiet
+                                label={t('files_removeNamed', file.name)}
+                                onClick={() => setRemoving(file)}
+                              >
+                                {t('files_remove')}
+                              </LinkButton>
+                            )}
                           </span>
                         )}
                       </div>
@@ -241,7 +244,12 @@ export function NotePage(props: {
           </Section>
         )}
         <FieldsSection item={ref} fields={note.fields} />
-        <LinksSection item={ref} onRoute={props.onRoute} onChanged={() => void vault.reload()} />
+        <LinksSection
+          item={ref}
+          onRoute={props.onRoute}
+          onChanged={() => void vault.reload()}
+          readOnly={note.space?.canEdit === false}
+        />
       </div>
     </div>
   )

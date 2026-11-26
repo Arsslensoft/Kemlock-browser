@@ -291,17 +291,20 @@ export function LoginPage(props: {
                   item={{ kind: 'otp', id: code.id }}
                   onRoute={props.onRoute}
                   onChanged={() => void vault.reload()}
+                  readOnly={code.space?.canEdit === false}
                 />
               )}
-              <div class="actions start">
-                <Button
-                  kind="ghost"
-                  icon="edit"
-                  onClick={() => props.onRoute({ name: 'codeEdit', id: code.id })}
-                >
-                  {t('extras_editCode')}
-                </Button>
-              </div>
+              {code.space?.canEdit !== false && (
+                <div class="actions start">
+                  <Button
+                    kind="ghost"
+                    icon="edit"
+                    onClick={() => props.onRoute({ name: 'codeEdit', id: code.id })}
+                  >
+                    {t('extras_editCode')}
+                  </Button>
+                </div>
+              )}
             </>
           ) : unlinked.length > 0 ? (
             <Group pad>
@@ -387,6 +390,7 @@ export function LoginPage(props: {
           item={{ kind: 'login', id: login.id }}
           onRoute={props.onRoute}
           onChanged={() => void vault.reload()}
+          readOnly={login.space?.canEdit === false}
         />
       </div>
 

@@ -228,6 +228,7 @@ export function IdentityPage(props: {
           item={{ kind: 'identity', id: identity.id }}
           onRoute={props.onRoute}
           onChanged={() => void vault.reload()}
+          readOnly={identity.space?.canEdit === false}
         />
       </div>
       {tab !== undefined && (

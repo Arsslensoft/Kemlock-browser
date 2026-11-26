@@ -57,7 +57,9 @@ export function FilePage(props: {
     )
   }
 
+  // Downloading needs Kemlock Server; changing the item also needs a space the account may write to
   const canChange = sync === 'kemlock'
+  const canWrite = canChange && file.space?.canEdit !== false
   const shownName = file.fileName ?? file.name
   const remove = async () => {
     setRemoving(true)
@@ -87,7 +89,7 @@ export function FilePage(props: {
         <KemlockIcon size={24} class="mark" />
         <Tile name={file.name} size={32} />
         <h1 class="login-title">{file.name}</h1>
-        {canChange && (
+        {canWrite && (
           <>
             <button
               type="button"
@@ -134,7 +136,7 @@ export function FilePage(props: {
           <Button icon="copy" onClick={() => void copyName()}>
             {t('files_copyName')}
           </Button>
-          {canChange && (
+          {canWrite && (
             <Button icon="refresh" onClick={() => openFilesTab(`replace/${file.id}`)}>
               {t('files_replace')}
             </Button>
@@ -142,7 +144,12 @@ export function FilePage(props: {
         </div>
         {canChange && !file.onServer && <p class="strength-line">{t('files_notUploadedYet')}</p>}
         {failed !== undefined && <Notice kind="error">{failed}</Notice>}
-        <LinksSection item={ref} onRoute={props.onRoute} onChanged={() => void full.reload()} />
+        <LinksSection
+          item={ref}
+          onRoute={props.onRoute}
+          onChanged={() => void full.reload()}
+          readOnly={file.space?.canEdit === false}
+        />
       </div>
     </div>
   )
