@@ -16,6 +16,7 @@ const kindNames: Record<string, string> = {
   backupCodes: 'popup_removalKindBackupCodes',
   login: 'popup_removalKindLogin',
   note: 'popup_removalKindNote',
+  file: 'popup_removalKindFile',
   card: 'popup_removalKindCard',
   identity: 'popup_removalKindIdentity',
   key: 'popup_removalKindKey',

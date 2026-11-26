@@ -1,7 +1,8 @@
 // Tags: every tag the vault holds with how many items hold it (rename it everywhere, or take it off every item), and the items of
-// every kind the core tags (codes, logins, passkeys, notes, cards and identities) to tag one by one. An item's own page is the tag
+// every kind the core tags (codes, logins, passkeys, notes, cards, identities and files) to tag one by one. An item's own page is the tag
 // editor, which each kind's own page reuses (`TagEditor`).
 import { useState } from 'preact/hooks'
+import type { FileView } from '../../shared/api'
 import {
   Button,
   Confirm,
@@ -22,7 +23,15 @@ import { Icon } from '../../shared/ui/icons'
 import { codeName } from '../codes'
 import type { Vault } from '../data'
 import { codeMatches, loginMatches } from '../format'
-import { cardLine, cardMatches, identityLine, identityMatches, noteMatches } from '../items-data'
+import { fileDetail } from '../file-actions'
+import {
+  cardLine,
+  cardMatches,
+  fileMatches,
+  identityLine,
+  identityMatches,
+  noteMatches,
+} from '../items-data'
 import { passkeyMatches } from '../passkey-format'
 import { ask } from '../send'
 import type { ToolsRoute } from './routes'
@@ -124,11 +133,15 @@ export function TagsPage(props: {
   const tags = useLoad(() => ask('tags'))
   // The passkeys are not part of the vault's lists: asked for here, and left out if they can't be read
   const passkeys = useLoad(() => ask('passkeys'))
+  // So are the File items, which Home asks for on its own
+  const files = useLoad(() => ask('files'))
   const [query, setQuery] = useState('')
   const reload = async () => {
-    await Promise.all([tags.reload(), vault.reload(), passkeys.reload()])
+    await Promise.all([tags.reload(), vault.reload(), passkeys.reload(), files.reload()])
   }
-  const rows = taggableItems(vault, passkeys.value ?? []).filter((row) => row.matches(query))
+  const rows = taggableItems(vault, passkeys.value ?? [], files.value ?? []).filter((row) =>
+    row.matches(query),
+  )
   return (
     <div class="screen">
       <PageHeader title={t('tools_tagsTitle')} onBack={props.onBack} backLabel={t('popup_back')} />
@@ -209,8 +222,12 @@ interface TaggableRow {
   matches: (query: string) => boolean
 }
 
-/** The items of every kind the core tags and the popup lists: codes, logins, passkeys, notes, cards and identities. */
-export function taggableItems(vault: Vault, passkeys: PasskeyView[]): TaggableRow[] {
+/** The items of every kind the core tags and the popup lists: codes, logins, passkeys, notes, cards, identities and files. */
+export function taggableItems(
+  vault: Vault,
+  passkeys: PasskeyView[],
+  files: FileView[] = [],
+): TaggableRow[] {
   return [
     ...vault.codes
       .filter((code) => !code.onSecurityKey)
@@ -262,6 +279,18 @@ export function taggableItems(vault: Vault, passkeys: PasskeyView[]): TaggableRo
       tags: identity.tags,
       matches: (query: string) => identityMatches(identity, query),
     })),
+    ...files.map((file) => ({
+      kind: 'file' as const,
+      id: file.id,
+      name: file.name,
+      detail: fileDetail({
+        name: file.fileName ?? file.name,
+        ...(file.type === undefined ? {} : { type: file.type }),
+        ...(file.size === undefined ? {} : { size: file.size }),
+      }),
+      tags: file.tags,
+      matches: (query: string) => fileMatches(file, query),
+    })),
   ]
 }
 
@@ -274,11 +303,15 @@ export function ItemTagsPage(props: {
 }) {
   const { vault } = props
   const passkeys = useLoad(() => ask('passkeys'))
-  const items = taggableItems(vault, passkeys.value ?? [])
+  const files = useLoad(() => ask('files'))
+  const items = taggableItems(vault, passkeys.value ?? [], files.value ?? [])
   const item = items.find((held) => held.kind === props.kind && held.id === props.id)
   const name = item?.name ?? ''
-  // A passkey's page is not in the list until the passkeys are read: that is not "gone"
-  const pending = props.kind === 'passkey' && passkeys.value === undefined && item === undefined
+  // A passkey's or a file's page is not in the list until they are read: that is not "gone"
+  const pending =
+    ((props.kind === 'passkey' && passkeys.value === undefined) ||
+      (props.kind === 'file' && files.value === undefined)) &&
+    item === undefined
   const everyTag = [...new Set(items.flatMap((held) => held.tags))].sort((a, b) =>
     a.localeCompare(b),
   )
@@ -308,6 +341,7 @@ export function ItemTagsPage(props: {
               onChange={() => {
                 void vault.reload()
                 if (props.kind === 'passkey') void passkeys.reload()
+                if (props.kind === 'file') void files.reload()
               }}
             />
           </Group>

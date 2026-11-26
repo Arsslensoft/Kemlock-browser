@@ -642,7 +642,7 @@ export type SyncProblem =
   | 'spaceKeysPending'
   | (string & {})
 
-/** An entry the removal guard would remove: its name, and its kind (code, backupCodes, login, note, card, identity, key, passkey, contact). */
+/** An entry the removal guard would remove: its name, and its kind (code, backupCodes, login, note, file, card, identity, key, passkey, contact). */
 export interface RemovalItem {
   name: string
   kind: string

@@ -9,6 +9,7 @@ const kindOfList: Readonly<Record<string, ItemKind>> = {
   notes: 'note',
   cards: 'card',
   identities: 'identity',
+  files: 'file',
 }
 
 /** The kind of item Home's [list] holds when the core tags that kind, else undefined (the list has no tag button). */

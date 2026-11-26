@@ -158,6 +158,7 @@
   "popup_removalKindCard": "Card",
   "popup_removalKindCode": "MFA code",
   "popup_removalKindContact": "Contact",
+  "popup_removalKindFile": "File",
   "popup_removalKindIdentity": "Identity",
   "popup_removalKindKey": "Key",
   "popup_removalKindLogin": "Login",

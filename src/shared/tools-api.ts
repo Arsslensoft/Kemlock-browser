@@ -6,7 +6,7 @@ import type { BackupCodeView } from './api'
 
 /** The kinds of item that hold tags. */
 export type ItemKind =
-  'code' | 'login' | 'passkey' | 'note' | 'card' | 'identity' | 'key' | 'keyAccount'
+  'code' | 'login' | 'passkey' | 'note' | 'card' | 'identity' | 'file' | 'key' | 'keyAccount'
 
 /** What the order and the pin apply to. */
 export type OrderedKind = 'code' | 'login'
@@ -55,6 +55,7 @@ export type DuplicateReason =
   | 'samePasskey'
   | 'sameCard'
   | 'sameNote'
+  | 'sameFile'
   | 'sameKey'
   | 'sameCodes'
   | 'sameIdentity'
@@ -73,7 +74,7 @@ export interface DuplicateGroup {
   /** What a dismissal of the group is remembered by. */
   key: string
   reason: DuplicateReason
-  /** `login`, `account` (a code), `note`, `passkey`, `key`, `contact`, `card`, `identity`, `service` (backup codes). */
+  /** `login`, `account` (a code), `note`, `file`, `passkey`, `key`, `contact`, `card`, `identity`, `service` (backup codes). */
   kind: string
   items: DuplicateItem[]
 }
