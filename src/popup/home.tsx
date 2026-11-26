@@ -15,7 +15,10 @@ import { Icon } from '../shared/ui/icons'
 import { CodeRow } from './codes'
 import { useCopy } from './copy'
 import { computable, type Vault } from './data'
+import { fileSyncOf } from './file-actions'
+import { FilesPanel } from './files-rows'
 import { allTags, codeMatches, healthCounts, hostOf, loginMatches } from './format'
+import { fileMatches } from './items-data'
 import { findItems, ItemPanels } from './items-rows'
 import { useLiveCodes, secondsLeft, warnSeconds } from './live'
 import { LoginRow } from './logins'
@@ -33,8 +36,23 @@ import { taggableKind } from './tools/tag-kinds'
 import { byPinnedThenOrder } from './tools/order'
 
 /** The lists Home has tabs for. */
-export type HomeList = 'codes' | 'logins' | 'passkeys' | 'notes' | 'cards' | 'identities'
-const homeLists: readonly string[] = ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities']
+export type HomeList =
+  | 'codes'
+  | 'logins'
+  | 'passkeys'
+  | 'notes'
+  | 'cards'
+  | 'identities'
+  | 'files'
+const homeLists: readonly string[] = [
+  'codes',
+  'logins',
+  'passkeys',
+  'notes',
+  'cards',
+  'identities',
+  'files',
+]
 
 /** What the person has chosen on Home, kept while a page is open over it. */
 export interface HomeUi {
@@ -123,6 +141,9 @@ export function Home(props: {
   const recent = useLoad(() => ask('recentPasswords'))
   const passkeysLoaded = useLoad(() => ask('passkeys'))
   const allPasskeys = passkeysLoaded.value ?? []
+  // Files are listed from the background, never with their contents; a vault that can't list them shows none
+  const filesLoaded = useLoad(() => ask('files'))
+  const allFiles = filesLoaded.value ?? []
   const setQuery = (next: string) => props.onUi({ ...props.ui, query: next })
   const setList = (next: HomeList) => props.onUi({ ...props.ui, list: next })
   const setTag = (next: string | null) => props.onUi({ ...props.ui, tag: next })
@@ -139,6 +160,7 @@ export function Home(props: {
   const passkeys = passkeysByOrder(allPasskeys).filter(
     (passkey) => passkeyMatches(passkey, needle) && inTag({ tags: passkey.tags ?? [] }),
   )
+  const files = byOrder(allFiles).filter((file) => fileMatches(file, needle) && inTag(file))
   // The Passkeys tab is there once the vault holds one (a passkey is made when a site asks for one)
   const hasPasskeys = allPasskeys.length > 0
   const found = findItems(vault, needle, tag)
@@ -149,10 +171,16 @@ export function Home(props: {
     vault.cards,
     vault.identities,
     allPasskeys.map((passkey) => ({ tags: passkey.tags ?? [] })),
+    allFiles,
   )
   const items = siteItems(tab, vault)
   // The last passkey went: its tab with it, and the list falls back to the codes
-  const shownList = list === 'passkeys' && !hasPasskeys ? 'codes' : list
+  // The Files tab is there where files can be added (Kemlock Server sync) or once the vault holds one
+  const fileSync = sync === undefined ? undefined : fileSyncOf(sync)
+  const hasFilesTab = fileSync === 'kemlock' || allFiles.length > 0
+  const shownList =
+    (list === 'passkeys' && !hasPasskeys) || (list === 'files' && !hasFilesTab) ? 'codes' : list
+  const showFiles = searching ? files.length > 0 : shownList === 'files'
   const showCodes = searching || shownList === 'codes'
   const showLogins = searching || shownList === 'logins'
   const showPasskeys = searching ? passkeys.length > 0 : shownList === 'passkeys'
@@ -306,6 +334,9 @@ export function Home(props: {
                 { id: 'notes', label: t('items_notes'), count: vault.notes.length },
                 { id: 'cards', label: t('items_cards'), count: vault.cards.length },
                 { id: 'identities', label: t('items_identities'), count: vault.identities.length },
+                ...(hasFilesTab
+                  ? [{ id: 'files', label: t('files_tab'), count: allFiles.length }]
+                  : []),
               ]}
             />
             {/* Added by tools: tags and order */}
@@ -509,12 +540,23 @@ export function Home(props: {
           onRoute={props.onRoute}
         />
 
+        {showFiles && (
+          <FilesPanel
+            files={files}
+            total={allFiles.length}
+            sync={fileSync}
+            searching={searching}
+            onRoute={props.onRoute}
+          />
+        )}
+
         {!searching && <SendsEntry onOpen={() => props.onRoute({ name: 'sends' })} />}
 
         {searching &&
           codes.length === 0 &&
           logins.length === 0 &&
           passkeys.length === 0 &&
+          files.length === 0 &&
           found.notes.length === 0 &&
           found.cards.length === 0 &&
           found.identities.length === 0 && (
