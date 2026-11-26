@@ -170,7 +170,7 @@ test.describe('Kemlock Server', () => {
       const tab = await openFilesTab(kemlock.context, (path) => kemlock.url(path), hash)
       await chooseFile(tab, file)
       await tab
-        .getByRole('button', { name: /^(upload|attach|add)( files?)?$/i })
+        .getByRole('button', { name: /^(save file|add to the note|replace file)$/i })
         .click({ timeout: 2000 })
         .catch(() => undefined)
       return tab

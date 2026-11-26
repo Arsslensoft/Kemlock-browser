@@ -66,6 +66,11 @@ export function routeOfRef(item: ItemRef): Route | undefined {
     case 'pgp-key':
     case 'certificate':
       return { name: 'keys' }
+    default: {
+      // The other kinds of key (`key`, `key-otp`) live on the keys screens too; one a later version made has no page here
+      const other: string = (item as ItemRef).kind
+      return other === 'key' || other === 'key-otp' ? { name: 'keys' } : undefined
+    }
   }
 }
 
@@ -173,17 +178,61 @@ export function fieldsProblem(value: FieldInput[]): string | undefined {
 }
 
 function FieldRow(props: {
+  /** The item the row belongs to; null while it is new (its rows hold no unread value). */
+  item: ItemRef | null
   field: FieldInput
   n: number
   onChange: (patch: Partial<FieldInput>) => void
   onRemove: () => void
 }) {
   const { field, n } = props
+  const say = useToast()
   const [reveal, setReveal] = useState(false)
+  // The value Show read for this row alone; the row still says "keep it as it is" until something is typed over it
+  const [peek, setPeek] = useState<string | undefined>()
   const admin = field.adminField !== undefined
   const title = field.name.trim() === '' ? t('extras_fieldN', n) : field.name
   // A hidden value that was not read stays as it is until something is typed over it
   const kept = field.keepValue === true
+  const readable = kept && props.item !== null && field.origin !== undefined
+  /** This row's value, asked for by itself; undefined when it can't be read. */
+  const read = async (): Promise<string | undefined> => {
+    if (props.item === null || field.origin === undefined) return undefined
+    try {
+      return await ask('revealField', { ref: props.item, index: field.origin })
+    } catch (error) {
+      say(errorMessage(error))
+      return undefined
+    }
+  }
+  const toggle = async () => {
+    if (reveal) {
+      setReveal(false)
+      return
+    }
+    if (readable && peek === undefined) {
+      const value = await read()
+      if (value === undefined) return
+      setPeek(value)
+    }
+    setReveal(true)
+  }
+  const switchKind = async (kind: FieldKind) => {
+    if (kind === field.kind) return
+    if (kind === 'boolean') {
+      props.onChange({ kind, value: 'false', keepValue: undefined })
+      return
+    }
+    // A value nobody has read can't move to another type unseen: read it, or leave the type as it is
+    let value = field.kind === 'boolean' ? '' : field.value
+    if (kept) {
+      const current = peek ?? (await read())
+      if (current === undefined) return
+      value = current
+    }
+    setPeek(undefined)
+    props.onChange({ kind, value, ...(kind === 'hidden' ? {} : { keepValue: undefined }) })
+  }
   const control =
     field.kind === 'boolean' ? (
       <Switch
@@ -194,12 +243,15 @@ function FieldRow(props: {
     ) : (
       <TextField
         label={admin ? t('extras_fieldValue') : t('extras_fieldValueN', n)}
-        value={kept ? '' : (field.value ?? '')}
+        value={kept ? (peek ?? '') : (field.value ?? '')}
         mono={field.kind === 'hidden'}
         type={field.kind === 'hidden' && !reveal ? 'password' : 'text'}
         autocomplete="off"
-        {...(kept ? { placeholder: t('extras_keptValue') } : {})}
-        onInput={(value) => props.onChange({ value, keepValue: undefined })}
+        {...(kept && peek === undefined ? { placeholder: t('extras_keptValue') } : {})}
+        onInput={(value) => {
+          setPeek(undefined)
+          props.onChange({ value, keepValue: undefined })
+        }}
         trailing={
           field.kind === 'hidden' ? (
             <IconButton
@@ -207,7 +259,7 @@ function FieldRow(props: {
               size={16}
               label={reveal ? t('extras_hideField', title) : t('extras_showField', title)}
               pressed={reveal}
-              onClick={() => setReveal((on) => !on)}
+              onClick={() => void toggle()}
             />
           ) : undefined
         }
@@ -248,19 +300,7 @@ function FieldRow(props: {
             label={t('extras_fieldTypeN', n)}
             value={field.kind}
             options={typeOptions()}
-            onChange={(kind) =>
-              props.onChange(
-                kind === field.kind
-                  ? {}
-                  : {
-                      kind,
-                      // Another type starts from a value that type can hold
-                      value:
-                        kind === 'boolean' ? 'false' : field.kind === 'boolean' ? '' : field.value,
-                      ...(kind === 'hidden' ? {} : { keepValue: undefined }),
-                    },
-              )
-            }
+            onChange={(kind) => void switchKind(kind)}
           />
         </div>
       )}
@@ -276,6 +316,8 @@ function FieldRow(props: {
  */
 export function FieldsEditor(props: {
   kind: ItemKind
+  /** The item being edited, so a hidden value is read, for its own row, only when asked for; null or left out for a new item. */
+  item?: ItemRef | null
   value: FieldInput[]
   fields: FieldView[]
   onChange: (next: FieldInput[]) => void
@@ -310,6 +352,7 @@ export function FieldsEditor(props: {
         {value.map((field, index) => (
           <FieldRow
             key={field.origin ?? `new-${index}`}
+            item={props.item ?? null}
             field={field}
             n={index + 1}
             onChange={(patch) =>
@@ -318,7 +361,11 @@ export function FieldsEditor(props: {
             onRemove={() => props.onChange(value.filter((_, i) => i !== index))}
           />
         ))}
-        {apart > 0 && <p class="muted">{t('extras_notEditable', apart)}</p>}
+        {apart > 0 && (
+          <p class="muted">
+            {apart === 1 ? t('extras_notEditableOne') : t('extras_notEditable', apart)}
+          </p>
+        )}
         {(choices.length > 0 || allowOwn) && !full && (
           <div class="actions start">
             <Button
@@ -441,6 +488,8 @@ export function LinksSection(props: {
   onChanged?: () => void
   /** The items already read, when the page has them. */
   linked?: LinkedItemView[]
+  /** The item can't be changed here (a read-only space's): the links show, with no Unlink. */
+  readOnly?: boolean
 }) {
   const say = useToast()
   const loaded = useLoad<LinkedItemView[]>(
@@ -482,7 +531,7 @@ export function LinksSection(props: {
               linked={linked}
               busy={busy}
               {...(route === undefined || go === undefined ? {} : { onOpen: () => go(route) })}
-              onUnlink={() => void unlink(linked)}
+              {...(props.readOnly === true ? {} : { onUnlink: () => void unlink(linked) })}
             />
           )
         })}
@@ -670,6 +719,7 @@ function inputsOf(views: FieldView[] | undefined): FieldInput[] {
 export interface ItemExtras {
   fieldsProps: {
     kind: ItemKind
+    item: ItemRef | null
     value: FieldInput[]
     fields: FieldView[]
     onChange: (next: FieldInput[]) => void
@@ -681,11 +731,16 @@ export interface ItemExtras {
   problem: string | undefined
   /** The members a save sends: only what the person changed, so what they left alone is never rewritten. */
   members: () => { fields?: FieldInput[]; links?: ItemRef[] }
+  /**
+   * Starts over from what was saved: the fields of the saved view, nothing changed, the links read again. A page that stays open after
+   * a save calls it, or its next save would send the rows it already wrote a second time.
+   */
+  reset: (views: FieldView[] | undefined) => void
 }
 
 /**
- * The state of an edit page's fields and links. `item` is null for a new item; `views` are the fields the item came with. The
- * hidden values are read once for the form (`revealFields`); if that fails they are kept as they are.
+ * The state of an edit page's fields and links. `item` is null for a new item; `views` are the fields the item came with. A hidden
+ * value is not read here: its row is kept as it is until the person asks to see it (that row alone) or types over it.
  */
 export function useItemExtras(
   kind: ItemKind,
@@ -695,34 +750,14 @@ export function useItemExtras(
   const [fields, setFields] = useState<FieldInput[]>(() => inputsOf(views))
   const [fieldsChanged, setFieldsChanged] = useState(false)
   const [links, setLinks] = useState<ItemRef[]>([])
-  const [linksChanged, setLinksChanged] = useState(false)
   const [linksRead, setLinksRead] = useState(item === null)
   const [linksFailed, setLinksFailed] = useState(false)
+  // The links the person changed are never replaced by a read that finishes later
+  const linksChanged = useRef(false)
+  const [linksTouched, setLinksTouched] = useState(false)
+  // Counts the starts over: each reads the links again
+  const [round, setRound] = useState(0)
   const itemKey = item === null ? '' : refKey(item)
-
-  useEffect(() => {
-    if (item === null || !(views ?? []).some((field) => field.kind === 'hidden' && field.editable))
-      return
-    let alive = true
-    ask('revealFields', { ref: item }).then(
-      (values) => {
-        if (!alive) return
-        // Only a row still untouched takes its value
-        setFields((rows) =>
-          rows.map((row) => {
-            const read = values.find((entry) => entry.index === row.origin)
-            if (row.kind !== 'hidden' || row.keepValue !== true || read === undefined) return row
-            const { keepValue: _kept, ...rest } = row
-            return { ...rest, value: read.value }
-          }),
-        )
-      },
-      () => undefined,
-    )
-    return () => {
-      alive = false
-    }
-  }, [itemKey])
 
   useEffect(() => {
     if (item === null) return
@@ -730,7 +765,8 @@ export function useItemExtras(
     ask('linkedItems', { ref: item }).then(
       (linked) => {
         if (!alive) return
-        setLinks((before) => (linksChanged ? before : linked.map((view) => view.ref)))
+        if (!linksChanged.current) setLinks(linked.map((view) => view.ref))
+        setLinksFailed(false)
         setLinksRead(true)
       },
       () => {
@@ -742,11 +778,12 @@ export function useItemExtras(
     return () => {
       alive = false
     }
-  }, [itemKey])
+  }, [itemKey, round])
 
   return {
     fieldsProps: {
       kind,
+      item,
       value: fields,
       fields: views ?? [],
       onChange: (next) => {
@@ -759,15 +796,26 @@ export function useItemExtras(
       value: links,
       disabled: !linksRead || linksFailed,
       onChange: (next) => {
+        linksChanged.current = true
+        setLinksTouched(true)
         setLinks(next)
-        setLinksChanged(true)
       },
     },
     loading: !linksRead,
     problem: fieldsProblem(fields),
     members: () => ({
       ...(fieldsChanged ? { fields } : {}),
-      ...(linksChanged ? { links } : {}),
+      ...(linksTouched ? { links } : {}),
     }),
+    reset: (next) => {
+      setFields(inputsOf(next))
+      setFieldsChanged(false)
+      linksChanged.current = false
+      setLinksTouched(false)
+      if (item !== null) {
+        setLinksRead(false)
+        setRound((before) => before + 1)
+      }
+    },
   }
 }

@@ -31,6 +31,9 @@ export function ReplaceFile(props: { id: string }) {
       <Notice kind="error">{loaded.error}</Notice>
     )
 
+  // A space the account may only read can't have its files changed
+  if (current.space?.canEdit === false) return <Notice>{t('files_spaceReadOnly')}</Notice>
+
   const choose = (picked: File[]) => {
     const [first] = picked
     if (first === undefined) return

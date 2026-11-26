@@ -63,8 +63,9 @@ export function unlinkButton(popup: Page, name: string): Locator {
     .first()
 }
 
-/** Links an item from an edit page's picker: search for it, then pick it. */
+/** Links an item from an edit page's picker: "Link an item" opens it, then search for the item and pick it. */
 export async function pickLink(popup: Page, query: string, name: string): Promise<void> {
+  await control(popup, /^link an item$/i).click()
   const box = popup
     .getByRole('searchbox', { name: /link|item|search/i })
     .or(popup.getByPlaceholder(/search/i))
@@ -78,12 +79,13 @@ export async function pickLink(popup: Page, query: string, name: string): Promis
 export async function addOwnField(popup: Page, name: string, value: string): Promise<void> {
   await control(popup, /add a field/i).click()
   await control(popup, /your own field/i).click()
+  // The rows are "Field 1 name" and "Field 1 value" (an admin's field has a plain "Value"): the new row is the last
   await popup
-    .getByLabel(/field name|^name$/i)
+    .getByLabel(/^field \d+ name$/i)
     .last()
     .fill(name)
   await popup
-    .getByLabel(/^value\b|field value/i)
+    .getByLabel(/^field \d+ value$|^value$/i)
     .last()
     .fill(value)
 }

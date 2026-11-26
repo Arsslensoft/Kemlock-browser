@@ -194,6 +194,25 @@ describe('the list', () => {
     expect(text(root)).not.toContain('laptop')
   })
 
+  it('shows a contact with no key by its email and company, with no fingerprint and no comparison', async () => {
+    vault({
+      contacts: [
+        ada({
+          hasKey: false,
+          fingerprint: '',
+          email: 'pat@example.org',
+          company: 'Orbit',
+          line: '',
+        }),
+      ],
+    })
+    const root = await open()
+    await click(button(root, 'Contacts 1'))
+    expect(text(root)).toContain('pat@example.org · Orbit')
+    expect(text(root)).not.toContain('Not compared')
+    expect(root.querySelector('.label.mono')).toBeNull()
+  })
+
   it('searches, filters by tag, and says when nothing matches or nothing is there', async () => {
     vault({ keys: [sshKey(), pgpKey()] })
     const root = await open()

@@ -46,7 +46,7 @@
   "setup_unlock_wrong": "Wrong password. {count} wrong tries since the vault last opened.",
 
   "setup_place_title": "Where does your phone sync?",
-  "setup_place_lead": "Join the place your phone already uses, so this browser holds the same codes and logins.",
+  "setup_place_lead": "Join the place your phone already uses, so this browser holds the same MFA codes and logins.",
   "setup_place_current": "Now syncing with {place}: {server}. The browser keeps its items, and nothing is removed from there.",
   "setup_place_kemlock": "Kemlock Server",
   "setup_place_kemlock_body": "Your Kemlock account on a Kemlock Server.",
@@ -194,7 +194,7 @@
   "setup_done_device": "This device",
   "setup_next_title": "What's next",
   "setup_next_pin": "Pin Kemlock: click the puzzle-piece icon in the toolbar, then the pin beside Kemlock.",
-  "setup_next_open": "Open Kemlock from the toolbar to see your codes and logins.",
+  "setup_next_open": "Open Kemlock from the toolbar to see your MFA codes and logins.",
   "setup_next_sync": "Kemlock syncs every five minutes while the vault is unlocked.",
   "setup_next_button": "Open Kemlock",
   "setup_next_close": "Close this tab",

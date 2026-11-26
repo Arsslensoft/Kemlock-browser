@@ -89,9 +89,23 @@ describe('the address’s hash', () => {
     })
   })
 
-  it('is a new file for anything else', () => {
-    for (const hash of ['', '#', '#replace/', '#replace/a b', '#attach/<script>', '#other', `#replace/${'a'.repeat(101)}`])
+  it('is a new file for a hash that names no page', () => {
+    for (const hash of ['', '#', '#other', '#newFile/x'])
       expect(routeFromHash(hash), hash).toEqual({ name: 'newFile' })
+  })
+
+  it('is invalid, never a new file, for a replace or attach that names no item', () => {
+    const bad = ['#replace/', '#replace/a b', '#attach/<script>', '#attach/']
+    for (const hash of [...bad, `#replace/${'a'.repeat(101)}`])
+      expect(routeFromHash(hash), hash).toEqual({ name: 'invalid' })
+  })
+
+  it('says so, and offers no form, for an address that names no item', async () => {
+    location.hash = '#replace/a b'
+    background.reset(handlers())
+    const root = await mountTab()
+    expect(text(root)).toContain(t('files_badAddress'))
+    expect(root.querySelector('form')).toBeNull()
   })
 })
 
@@ -283,7 +297,7 @@ describe('files for a note', () => {
     background.reset(handlers({ revealNote: () => noteWith({ attachments: [] }) }))
     const root = await mountTab()
     expect(text(root)).toContain(t('files_attaching', 'Wi-Fi'))
-    expect(text(root)).toContain(t('files_noteHolds', 0, 100))
+    expect(text(root)).toContain(t('files_noteHoldsNone', 100))
   })
 
   it('stages each file and adds them to the note four at a time', async () => {

@@ -25,7 +25,7 @@ function message(name: string, substitutions: string[] = []): string {
 }
 
 const prompt = (over: Partial<PasskeyPrompt> = {}): PasskeyPrompt => ({
-  state: { exists: true, unlocked: true, wrongPasswords: 0, fileSync: 'readOnly' },
+  state: { exists: true, unlocked: true, wrongPasswords: 0 },
   kind: 'create',
   site: 'orbit-cloud.com',
   rpName: 'Orbit Cloud',

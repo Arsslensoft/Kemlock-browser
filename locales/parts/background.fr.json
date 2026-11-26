@@ -1,6 +1,6 @@
 {
   "bgMenuFillLogin": "Remplir l’identifiant",
-  "bgMenuFillCode": "Remplir le code",
+  "bgMenuFillCode": "Remplir le code MFA",
   "bgMenuNewPassword": "Nouveau mot de passe",
-  "bgClipboardJustification": "Copie un code ou un mot de passe dans le presse-papiers et l’efface plus tard, tant que la fenêtre contextuelle est fermée."
+  "bgClipboardJustification": "Copie un code MFA ou un mot de passe dans le presse-papiers et l’efface plus tard, tant que la fenêtre contextuelle est fermée."
 }

@@ -34,7 +34,7 @@ test.describe('the vault tools', () => {
       otpauth: 'otpauth://totp/Beta:sam?secret=JBSWY3DPEHPK3PXQ&issuer=Beta',
     })
     const popup = await kemlock.popup()
-    await control(popup, 'Reorder codes').click()
+    await control(popup, 'Reorder MFA codes').click()
     await control(popup, 'Move Beta up').click()
     await expect
       .poll(async () => (await kemlock.call('codes')).find((c) => c.id === second.id)?.order)

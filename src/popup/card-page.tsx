@@ -195,6 +195,7 @@ export function CardPage(props: {
           item={{ kind: 'card', id: card.id }}
           onRoute={props.onRoute}
           onChanged={() => void vault.reload()}
+          readOnly={card.space?.canEdit === false}
         />
       </div>
       {tab !== undefined && (

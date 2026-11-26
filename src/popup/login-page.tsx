@@ -146,11 +146,11 @@ export function LoginPage(props: {
         <Group>
           <div class="detail-row">
             <span class="detail-label">{t('popup_websites')}</span>
-            {login.websites.length > 0 ? (
+            {login.websites.length > 0 || (login.websiteRules ?? []).length > 0 ? (
               <span class="mono grow websites">
                 {(login.websiteRules ?? []).length > 0
-                  ? (login.websiteRules ?? []).map((rule) => (
-                      <SiteRuleLine key={rule.uri} rule={rule} />
+                  ? (login.websiteRules ?? []).map((rule, index) => (
+                      <SiteRuleLine key={`${index}:${rule.uri}`} rule={rule} />
                     ))
                   : login.websites.map((site) => (
                       <span key={site} class="ellipsis">
@@ -291,17 +291,20 @@ export function LoginPage(props: {
                   item={{ kind: 'otp', id: code.id }}
                   onRoute={props.onRoute}
                   onChanged={() => void vault.reload()}
+                  readOnly={code.space?.canEdit === false}
                 />
               )}
-              <div class="actions start">
-                <Button
-                  kind="ghost"
-                  icon="edit"
-                  onClick={() => props.onRoute({ name: 'codeEdit', id: code.id })}
-                >
-                  {t('extras_editCode')}
-                </Button>
-              </div>
+              {code.space?.canEdit !== false && (
+                <div class="actions start">
+                  <Button
+                    kind="ghost"
+                    icon="edit"
+                    onClick={() => props.onRoute({ name: 'codeEdit', id: code.id })}
+                  >
+                    {t('extras_editCode')}
+                  </Button>
+                </div>
+              )}
             </>
           ) : unlinked.length > 0 ? (
             <Group pad>
@@ -387,6 +390,7 @@ export function LoginPage(props: {
           item={{ kind: 'login', id: login.id }}
           onRoute={props.onRoute}
           onChanged={() => void vault.reload()}
+          readOnly={login.space?.canEdit === false}
         />
       </div>
 

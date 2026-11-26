@@ -94,9 +94,11 @@ export function EditFile(props: {
   const shownNotes = notes ?? file?.notes ?? ''
   const shownPin = pinned ?? file?.pinned ?? false
   const shownLinks = links ?? held.value ?? []
+  // Saving or picking before the links are known could replace them all with the one picked
+  const linksKnown = held.value !== undefined
 
   const save = async () => {
-    if (props.id === null || !loaded) return
+    if (props.id === null || !loaded || !linksKnown) return
     if (shownName.trim() === '') {
       setError(t('files_nameNeeded'))
       return
@@ -132,8 +134,8 @@ export function EditFile(props: {
         }}
       >
         <div class="body form-body">
-          {(error ?? full.error) !== undefined && (
-            <Notice kind="error">{error ?? full.error}</Notice>
+          {(error ?? full.error ?? held.error) !== undefined && (
+            <Notice kind="error">{error ?? full.error ?? held.error}</Notice>
           )}
           <TextField label={t('files_fieldName')} value={shownName} onInput={setName} />
           <TextField
@@ -146,7 +148,12 @@ export function EditFile(props: {
           <Group>
             <Switch checked={shownPin} label={t('items_pin')} onChange={setPinned} />
           </Group>
-          <LinkPicker item={current ?? null} value={shownLinks} onChange={setLinks} />
+          <LinkPicker
+            item={current ?? null}
+            value={shownLinks}
+            disabled={!linksKnown}
+            onChange={setLinks}
+          />
           <div class="actions start">
             <Button icon="refresh" onClick={() => openFilesTab(`replace/${props.id}`)}>
               {t('files_replace')}
@@ -157,7 +164,7 @@ export function EditFile(props: {
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded}>
+          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded || !linksKnown}>
             {t('popup_save')}
           </Button>
         </div>

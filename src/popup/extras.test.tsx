@@ -24,6 +24,7 @@ import type { Vault } from './data'
 import { EditLogin } from './edit'
 import { FieldsEditor, FieldsSection, LinkPicker, LinksSection } from './item-extras'
 import { AddContact, ContactPage } from './keys/contacts'
+import { EditNote } from './note-page'
 import type { KeysData } from './keys/data'
 import {
   backup,
@@ -37,6 +38,7 @@ import {
   installChrome,
   login,
   mount,
+  note,
   selectOf,
   settings,
   settle,
@@ -142,7 +144,12 @@ describe('the custom fields on a page', () => {
     expect(text(root)).toContain('4321')
 
     await click(button(root, t('extras_copyField', 'Account no.')))
-    expect(background.of('copy')[0]?.args).toEqual({ what: 'field', ref: loginRef, index: 0 })
+    expect(background.of('copy')[0]?.args).toEqual({
+      what: 'field',
+      id: 'l1',
+      ref: loginRef,
+      index: 0,
+    })
     expect(button(root, t('extras_copyField', 'Remote'))).toBeNull()
   })
 
@@ -163,6 +170,7 @@ function Fields(props: {
   props.seen.value = value
   return h(FieldsEditor, {
     kind: props.kind,
+    item: loginRef,
     value,
     fields: props.views ?? [],
     onChange: setValue,
@@ -234,11 +242,58 @@ describe('the custom fields editor', () => {
     expect(seen.value).toEqual([{ origin: 3, name: 'PIN', kind: 'hidden', value: '9999' }])
   })
 
+  it('reads a hidden value for its own row only, when Show is pressed, and still keeps it as it is', async () => {
+    background.reset({
+      customFieldDefs: (() => defs) as never,
+      revealField: (() => '4321') as never,
+    })
+    const seen = { value: [] as FieldInput[] }
+    const start: FieldInput[] = [
+      { origin: 3, name: 'PIN', kind: 'hidden', keepValue: true },
+      { origin: 4, name: 'Token', kind: 'hidden', keepValue: true },
+    ]
+    const root = await page(h(Fields, { kind: 'login', start, seen }))
+    expect(background.of('revealField')).toHaveLength(0)
+    await click(button(root, t('extras_showField', 'PIN')))
+    expect(background.of('revealField').map((call) => call.args)).toEqual([
+      { ref: loginRef, index: 3 },
+    ])
+    expect(input(root, t('extras_fieldValueN', 1))?.value).toBe('4321')
+    // Seeing a value changes nothing: both rows are still kept as they are
+    expect(seen.value.map((row) => row.keepValue)).toEqual([true, true])
+    await change(input(root, t('extras_fieldValueN', 1)), '8888')
+    expect(seen.value[0]).toEqual({ origin: 3, name: 'PIN', kind: 'hidden', value: '8888' })
+  })
+
+  it('reads an unread hidden value before it moves to another type, and leaves the type if it can’t', async () => {
+    let fail = true
+    background.reset({
+      customFieldDefs: (() => defs) as never,
+      revealField: (() => {
+        if (fail) throw new Error('failed')
+        return '4321'
+      }) as never,
+    })
+    const seen = { value: [] as FieldInput[] }
+    const start: FieldInput[] = [{ origin: 3, name: 'PIN', kind: 'hidden', keepValue: true }]
+    const root = await page(h(Fields, { kind: 'login', start, seen }))
+    await choose(selectOf(root, t('extras_fieldTypeN', 1)), 'text')
+    expect(seen.value).toEqual(start)
+    fail = false
+    await choose(selectOf(root, t('extras_fieldTypeN', 1)), 'text')
+    expect(seen.value).toEqual([{ origin: 3, name: 'PIN', kind: 'text', value: '4321' }])
+  })
+
   it('counts the fields it can’t edit and leaves them out', async () => {
     background.reset({ customFieldDefs: (() => defs) as never })
     const views = [field({ index: 0, kind: 'linked', editable: false })]
     const root = await page(h(Fields, { kind: 'login', start: [], views, seen: { value: [] } }))
-    expect(text(root)).toContain(t('extras_notEditable', 1))
+    expect(text(root)).toContain(t('extras_notEditableOne'))
+    const more = [views[0]!, field({ index: 1, name: 'Other', kind: 'other', editable: false })]
+    const again = await page(
+      h(Fields, { kind: 'login', start: [], views: more, seen: { value: [] } }),
+    )
+    expect(text(again)).toContain(t('extras_notEditable', 2))
   })
 })
 
@@ -269,6 +324,13 @@ describe('the links on a page', () => {
       ref: loginRef,
       refs: [{ kind: 'otp', id: 'c1' }],
     })
+  })
+
+  it('shows the links of an item in a read-only space with no way to unlink', async () => {
+    background.reset({ linkedItems: (() => linked) as never })
+    const root = await page(h(LinksSection, { item: loginRef, readOnly: true }))
+    expect(text(root)).toContain('Wi-Fi')
+    expect(button(root, t('extras_unlinkOf', 'Wi-Fi'))).toBeNull()
   })
 
   it('says nothing when nothing is linked', async () => {
@@ -372,14 +434,39 @@ describe('a login’s page of websites and rules', () => {
     expect('links' in input).toBe(false)
   })
 
-  it('sends the fields once one is changed, hidden values read for the form included', async () => {
+  it('sends the fields once one is changed, a hidden value it never read kept as it is', async () => {
     const root = await open()
     await change(input(root, t('extras_fieldValueN', 1)), '56-78')
     await submit(root.querySelector('form'))
     expect(saved().fields).toEqual([
       { origin: 0, name: 'Account no.', kind: 'text', value: '56-78' },
-      { origin: 1, name: 'PIN', kind: 'hidden', value: '4321' },
+      { origin: 1, name: 'PIN', kind: 'hidden', keepValue: true },
     ])
+    // No hidden value was read to open the page: Show reads one, for its own row
+    expect(background.of('revealFields')).toHaveLength(0)
+    expect(background.of('revealField')).toHaveLength(0)
+  })
+
+  it('starts from the rules of a login whose websites are all expressions, and does not erase them', async () => {
+    const pattern = '^https://orbit\\.[a-z]+/'
+    const root = await open({
+      websites: [],
+      websiteRules: [{ uri: pattern, match: 'regex' }],
+    })
+    expect(input(root, 'Website')?.value).toBe(pattern)
+    expect(selectOf(root, t('extras_ruleOfN', 1))?.value).toBe('regex')
+    await submit(root.querySelector('form'))
+    // Nothing about the websites changed: the login's own rules are left to the core, not written again
+    expect('websiteRules' in saved()).toBe(false)
+    expect(saved().websites).toEqual([])
+  })
+
+  it('refuses a javascript address that is dressed as a host and a port', async () => {
+    const root = await open()
+    await change(input(root, 'Website'), 'javascript:1/alert(1)')
+    await submit(root.querySelector('form'))
+    expect(text(root)).toContain(t('extras_siteBad'))
+    expect(background.of('saveLogin')).toHaveLength(0)
   })
 
   it('refuses a website that is no address, and a regular expression that isn’t one', async () => {
@@ -434,6 +521,14 @@ describe('an MFA code’s page of details', () => {
     expect(background.of('saveCode')[0]?.args).toEqual({ id: 'c1', input: { name: 'Work VPN' } })
   })
 
+  it('opens with the note it holds, and keeps it when only the name changes', async () => {
+    const root = await open({ note: 'the spare is in the safe' })
+    expect(input(root, 'Note')?.value).toBe('the spare is in the safe')
+    await change(input(root, 'Name'), 'Work VPN')
+    await submit(root.querySelector('form'))
+    expect(background.of('saveCode')[0]?.args).toEqual({ id: 'c1', input: { name: 'Work VPN' } })
+  })
+
   it('edits its own websites, and sends only what changed', async () => {
     const root = await open({ ownWebsites: ['orbit-cloud.com'], websites: ['orbit-cloud.com'] })
     await change(input(root, 'Website'), 'orbit.example')
@@ -458,6 +553,17 @@ describe('an MFA code’s page of details', () => {
     expect(text(root)).toContain('a.example · b.example')
     await click(button(root, t('extras_editCodeOf', 'Work VPN')))
     expect(edited).toEqual(['c1'])
+  })
+
+  it('offers no edit on a code in a space the account may only read', async () => {
+    const root = await page(
+      h(CodeRow, {
+        code: code({ name: 'Work VPN', space: { canEdit: false } } as never),
+        live: { entries: {}, now: 0, hold: () => undefined },
+        onEdit: () => undefined,
+      }),
+    )
+    expect(button(root, t('extras_editCodeOf', 'Work VPN'))).toBeNull()
   })
 })
 
@@ -560,6 +666,54 @@ describe('a contact with details and no key', () => {
     expect(background.of('saveContact')[0]?.args).toEqual({ id: 'p1', company: 'Babbage & Co' })
   })
 
+  it('starts over from what it saved, so a second save does not send the same field again', async () => {
+    const written = field({ index: 0, name: 'Badge', value: '77' })
+    background.reset({
+      customFieldDefs: (() => ({ fields: [], allowOwn: true })) as never,
+      linkedItems: (() => []) as never,
+      contactPublic: (() => ({ pem: 'x', fileName: 'x.asc' })) as never,
+      saveContact: (() => ada({ fields: [written] })) as never,
+    })
+    const root = await page(
+      h(ContactPage, {
+        id: 'p1',
+        data: data([ada()]),
+        onBack: () => undefined,
+        onRoute: () => undefined,
+      }),
+    )
+    await click(button(root, t('extras_addField')))
+    await click(pick(root, t('extras_ownField')))
+    await change(input(root, t('extras_fieldNameN', 1)), 'Badge')
+    await change(input(root, t('extras_fieldValueN', 1)), '77')
+    await submit(root.querySelector('form.keys-form'))
+    expect((background.of('saveContact')[0]?.args as { fields: unknown[] }).fields).toHaveLength(1)
+    // The page now holds the saved row: another change to the details sends no fields
+    await change(input(root, 'Company'), 'Babbage & Co')
+    await submit(root.querySelector('form.keys-form'))
+    expect(background.of('saveContact')).toHaveLength(2)
+    expect(background.of('saveContact')[1]?.args).toEqual({ id: 'p1', company: 'Babbage & Co' })
+  })
+
+  it('takes an address with an s in it, and refuses one with a space', async () => {
+    background.reset({
+      customFieldDefs: (() => defs) as never,
+      saveContact: (() => ada({ id: 'p2', hasKey: false })) as never,
+    })
+    const root = await page(
+      h(AddContact, { data: data([]), onBack: () => undefined, onAdded: () => undefined }),
+    )
+    await click(button(root, t('extras_contactNoKey')))
+    await change(input(root, 'Name'), 'Sasha Stone')
+    await change(input(root, 'Email'), 'sasha@sites.example')
+    await submit(root.querySelector('form'))
+    expect(text(root)).not.toContain(t('extras_emailBad'))
+    expect(background.of('saveContact')).toHaveLength(1)
+    await change(input(root, 'Email'), 'sasha stone@sites.example')
+    await submit(root.querySelector('form'))
+    expect(text(root)).toContain(t('extras_emailBad'))
+  })
+
   it('is added from a name and details alone', async () => {
     const added: (string | null)[] = []
     background.reset({
@@ -591,6 +745,43 @@ describe('a contact with details and no key', () => {
       email: 'pat@example.org',
     })
     expect(added).toEqual(['p2'])
+  })
+})
+
+describe('a note’s edit page', () => {
+  it('has custom fields and links, and sends them only once they are changed', async () => {
+    const item = note({ id: 'n1', title: 'Wi-Fi' })
+    background.reset({
+      customFieldDefs: (() => ({ fields: [], allowOwn: true })) as never,
+      linkedItems: (() => []) as never,
+      revealNote: (() => ({ ...item, text: 'hello', attachments: [] })) as never,
+      saveNote: (() => item) as never,
+    })
+    const root = await page(
+      h(EditNote, {
+        id: 'n1',
+        vault: vaultOf({ notes: [item] }),
+        onBack: () => undefined,
+        onSaved: () => undefined,
+      }),
+    )
+    expect(text(root)).toContain(t('extras_fieldsTitle'))
+    expect(text(root)).toContain(t('extras_linksTitle'))
+    await change(input(root, 'Title'), 'Wi-Fi 2')
+    await submit(root.querySelector('form'))
+    expect(background.of('saveNote')[0]?.args).toEqual({
+      id: 'n1',
+      input: { title: 'Wi-Fi 2', text: 'hello', pinned: false },
+    })
+
+    await click(button(root, t('extras_addField')))
+    await click(pick(root, t('extras_ownField')))
+    await change(input(root, t('extras_fieldNameN', 1)), 'Router')
+    await change(input(root, t('extras_fieldValueN', 1)), 'admin')
+    await submit(root.querySelector('form'))
+    expect(background.of('saveNote')[1]?.args).toMatchObject({
+      input: { fields: [{ name: 'Router', kind: 'text', value: 'admin' }] },
+    })
   })
 })
 

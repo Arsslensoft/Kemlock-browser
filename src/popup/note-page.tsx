@@ -30,7 +30,7 @@ import {
 } from './file-actions'
 import './files.css'
 import { allTags } from './format'
-import { FieldsSection, LinksSection } from './item-extras'
+import { FieldsEditor, FieldsSection, LinkPicker, LinksSection, useItemExtras } from './item-extras'
 import { DeleteQuestion, ItemBar } from './items-ui'
 import type { Route } from './route'
 import { ask } from './send'
@@ -85,9 +85,10 @@ export function NotePage(props: {
   }
   const text: NoteFull | undefined = full.value
   const ref = { kind: 'note' as const, id: note.id }
-  // Files change only where the vault syncs with Kemlock Server, and in a space the account may write to
+  // Files come and go only where the vault syncs with Kemlock Server, and are added or removed in a space the account may write to
   const fileSync = sync === undefined ? undefined : fileSyncOf(sync)
-  const canChange = fileSync === 'kemlock' && note.space?.canEdit !== false
+  const canDownload = fileSync === 'kemlock'
+  const canChange = canDownload && note.space?.canEdit !== false
   const removeFile = async (file: AttachmentView) => {
     setRemoveBusy(true)
     try {
@@ -181,7 +182,7 @@ export function NotePage(props: {
                               .join(' · ')}
                           </span>
                         </span>
-                        {canChange && (
+                        {canDownload && (
                           <span class="note-file-actions">
                             <LinkButton
                               label={t('files_downloadNamed', file.name)}
@@ -190,13 +191,15 @@ export function NotePage(props: {
                             >
                               {downloading === file.id ? t('files_preparing') : t('files_download')}
                             </LinkButton>
-                            <LinkButton
-                              quiet
-                              label={t('files_removeNamed', file.name)}
-                              onClick={() => setRemoving(file)}
-                            >
-                              {t('files_remove')}
-                            </LinkButton>
+                            {canChange && (
+                              <LinkButton
+                                quiet
+                                label={t('files_removeNamed', file.name)}
+                                onClick={() => setRemoving(file)}
+                              >
+                                {t('files_remove')}
+                              </LinkButton>
+                            )}
                           </span>
                         )}
                       </div>
@@ -241,7 +244,12 @@ export function NotePage(props: {
           </Section>
         )}
         <FieldsSection item={ref} fields={note.fields} />
-        <LinksSection item={ref} onRoute={props.onRoute} onChanged={() => void vault.reload()} />
+        <LinksSection
+          item={ref}
+          onRoute={props.onRoute}
+          onChanged={() => void vault.reload()}
+          readOnly={note.space?.canEdit === false}
+        />
       </div>
     </div>
   )
@@ -265,6 +273,11 @@ export function EditNote(props: {
   const [pinned, setPinned] = useState<boolean | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
+  const extras = useItemExtras(
+    'note',
+    props.id === null ? null : { kind: 'note', id: props.id },
+    note?.fields,
+  )
 
   if (props.id !== null && note === undefined) return <Gone onBack={props.onBack} />
   // An existing note saves only once its text is read: saving the empty box would erase it
@@ -283,12 +296,16 @@ export function EditNote(props: {
       setError(t('items_noteTooLong', over))
       return
     }
+    if (extras.problem !== undefined) {
+      setError(extras.problem)
+      return
+    }
     setBusy(true)
     setError(undefined)
     try {
       const saved = await ask('saveNote', {
         id: props.id,
-        input: { title: shownTitle.trim(), text: shownText, pinned: shownPin },
+        input: { title: shownTitle.trim(), text: shownText, pinned: shownPin, ...extras.members() },
       })
       await vault.reload()
       props.onSaved(saved.id)
@@ -330,12 +347,20 @@ export function EditNote(props: {
           <Group>
             <Switch checked={shownPin} label={t('items_pin')} onChange={setPinned} />
           </Group>
+          <FieldsEditor {...extras.fieldsProps} />
+          <LinkPicker {...extras.linkProps} />
         </div>
         <div class="foot-bar">
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded}>
+          <Button
+            kind="primary"
+            tall
+            type="submit"
+            busy={busy}
+            disabled={!loaded || extras.loading}
+          >
             {t('popup_save')}
           </Button>
         </div>

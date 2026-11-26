@@ -28,6 +28,17 @@ interface Chosen {
 
 let nextKey = 1
 
+/**
+ * The files of a group the core could not put on the note: it answers with the note and, when only some failed, their staged handles
+ * (`failed`). A name is taken for a handle too, so a core that names the files by name is understood.
+ */
+function failedOf(note: NoteFull): Set<string> {
+  const named = (note as NoteFull & { failed?: unknown }).failed
+  return new Set(
+    Array.isArray(named) ? named.filter((id): id is string => typeof id === 'string') : [],
+  )
+}
+
 export function AttachFiles(props: { noteId: string }) {
   const note = useLoad<NoteFull>(() => ask('revealNote', { id: props.noteId }), [props.noteId])
   const [chosen, setChosen] = useState<Chosen[]>([])
@@ -46,6 +57,8 @@ export function AttachFiles(props: { noteId: string }) {
     ) : (
       <Notice kind="error">{note.error}</Notice>
     )
+
+  if (current.space?.canEdit === false) return <Notice>{t('files_spaceReadOnly')}</Notice>
 
   const waiting = chosen.filter((item) => item.state.kind !== 'added')
   // What the note can still take besides the files already chosen (the note's own count includes the ones added so far)
@@ -88,7 +101,7 @@ export function AttachFiles(props: { noteId: string }) {
           )
           handles.push({ key: item.key, handle: staged.handle })
         }
-        await ask('addAttachments', {
+        const result = await ask('addAttachments', {
           noteId: props.noteId,
           files: group.map((item) => ({
             handle: handles.find((held) => held.key === item.key)!.handle,
@@ -96,8 +109,21 @@ export function AttachFiles(props: { noteId: string }) {
             ...(item.file.type === '' ? {} : { type: item.file.type }),
           })),
         })
-        for (const item of group) setState(item.key, { kind: 'added' })
-        setAdded((count) => count + group.length)
+        // Only the files the core says did not go are left to try again
+        const failed = failedOf(result)
+        let went = 0
+        for (const item of group) {
+          const handle = handles.find((held) => held.key === item.key)!.handle
+          if (failed.has(handle) || failed.has(item.file.name)) {
+            await ask('releaseStaged', { handle }).catch(() => undefined)
+            setState(item.key, { kind: 'failed', why: t('files_errorNotAdded', item.file.name) })
+          } else {
+            setState(item.key, { kind: 'added' })
+            went += 1
+          }
+        }
+        setAdded((count) => count + went)
+        if (went < group.length) setError(t('files_errorSomeNotAdded'))
       } catch (failure) {
         // What was staged for this group and did not get added is let go of; the groups after it are left for another try
         for (const held of handles)
@@ -147,7 +173,13 @@ export function AttachFiles(props: { noteId: string }) {
       }}
     >
       <p>{t('files_attaching', current.title)}</p>
-      <p class="muted">{t('files_noteHolds', current.attachments.length, noteFileLimit)}</p>
+      <p class="muted">
+        {current.attachments.length === 0
+          ? t('files_noteHoldsNone', noteFileLimit)
+          : current.attachments.length === 1
+            ? t('files_noteHoldsOne', noteFileLimit)
+            : t('files_noteHolds', current.attachments.length, noteFileLimit)}
+      </p>
       {error !== undefined && <Notice kind="error">{error}</Notice>}
       {room > 0 ? (
         <FilePicker multiple disabled={busy} label={t('files_chooseMany')} onChoose={choose} />
