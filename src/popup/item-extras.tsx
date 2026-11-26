@@ -66,6 +66,11 @@ export function routeOfRef(item: ItemRef): Route | undefined {
     case 'pgp-key':
     case 'certificate':
       return { name: 'keys' }
+    default: {
+      // The other kinds of key (`key`, `key-otp`) live on the keys screens too; one a later version made has no page here
+      const other: string = (item as ItemRef).kind
+      return other === 'key' || other === 'key-otp' ? { name: 'keys' } : undefined
+    }
   }
 }
 
@@ -356,7 +361,11 @@ export function FieldsEditor(props: {
             onRemove={() => props.onChange(value.filter((_, i) => i !== index))}
           />
         ))}
-        {apart > 0 && <p class="muted">{t('extras_notEditable', apart)}</p>}
+        {apart > 0 && (
+          <p class="muted">
+            {apart === 1 ? t('extras_notEditableOne') : t('extras_notEditable', apart)}
+          </p>
+        )}
         {(choices.length > 0 || allowOwn) && !full && (
           <div class="actions start">
             <Button
@@ -479,6 +488,8 @@ export function LinksSection(props: {
   onChanged?: () => void
   /** The items already read, when the page has them. */
   linked?: LinkedItemView[]
+  /** The item can't be changed here (a read-only space's): the links show, with no Unlink. */
+  readOnly?: boolean
 }) {
   const say = useToast()
   const loaded = useLoad<LinkedItemView[]>(
@@ -488,8 +499,6 @@ export function LinksSection(props: {
         : Promise.resolve(props.linked),
     [props.item.kind, props.item.id],
   )
-  /** The item can't be changed here (a read-only space's): the links show, with no Unlink. */
-  readOnly?: boolean
   const [busy, setBusy] = useState(false)
   const list = loaded.value ?? []
   if (list.length === 0) return null
