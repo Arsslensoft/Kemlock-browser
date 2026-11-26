@@ -11,7 +11,6 @@ import 'package:kemlock_core/models/json.dart';
 import 'failure.dart';
 import 'tools_service.dart' show listsWith;
 import 'vault_service.dart';
-import 'views.dart';
 
 /// The most codes one service holds, and the longest a code is: past those the text isn't backup codes.
 const maxBackupCodes = 500;
@@ -41,7 +40,7 @@ class BackupTools {
         ],
       ),
     );
-    return backupView(_service(id));
+    return vault.backupViewOf(_service(id));
   }
 
   /// The codes [text] holds, as the app splits them: one to a line, or split by commas, tabs and spaces, with a code of two short
@@ -95,7 +94,7 @@ class BackupTools {
       addedAt: vault.nowMs,
     );
     await vault.saveChanged((lists) => listsWith(lists, backupServices: [...lists.backupServices, service]));
-    return backupView(_service(service.id));
+    return vault.backupViewOf(_service(service.id));
   }
 
   /// Changes a service's name or note; [clearNote] removes the note.

@@ -2,12 +2,15 @@
 // full forms in src/shared/api.ts): plain JSON. A list view holds no secret: a note's title but not its text, a card's last
 // four digits but not its number, security code or PIN, an identity's details but not its document numbers. The reveal forms
 // are what `revealNote`, `revealCard` and `revealIdentity` answer, and only they carry the secrets.
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show kmServerFileId;
 import 'package:kemlock_core/models/identity.dart';
 import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
+import 'package:kemlock_core/models/vault_file.dart';
 
-/// [note] as a `NoteView`: its title, never its text. [order] is its place in the vault's list.
-Map<String, Object?> noteView(SecureNote note, {required int order}) => {
+/// [note] as a `NoteView`: its title, never its text. [order] is its place in the vault's list. [fields] are its custom fields as
+/// `fieldViews` gives them (no hidden value) and [links] how many items it is linked to.
+Map<String, Object?> noteView(SecureNote note, {required int order, List<Map<String, Object?>> fields = const [], int links = 0}) => {
   'id': note.id,
   'title': note.title,
   'tags': note.tags ?? const <String>[],
@@ -15,20 +18,36 @@ Map<String, Object?> noteView(SecureNote note, {required int order}) => {
   'pinned': note.isPinned,
   'files': note.files.length,
   'changedAt': note.changedAt,
+  'fields': fields,
+  'links': links,
   if (note.piv != null) 'keyNote': true,
 };
 
-/// [note] as a `NoteFull`: the text, and the files it holds by name (their keys never leave the core).
-Map<String, Object?> noteFull(SecureNote note, {required int order}) => {
-  ...noteView(note, order: order),
+/// [file] as an `AttachmentView`: what it is called and how big, never its key. `onServer` says whether the server holds its bytes.
+Map<String, Object?> attachmentView(NoteAttachment file) => {
+  'id': file.id,
+  'name': file.name,
+  'size': file.size,
+  'type': ?file.type,
+  'sha256': ?file.sha256,
+  'onServer': kmServerFileId(file) != null,
+};
+
+/// [note] as a `NoteFull`: the text, and the files it holds (their keys never leave the core).
+Map<String, Object?> noteFull(SecureNote note, {required int order, List<Map<String, Object?>> fields = const [], int links = 0}) => {
+  ...noteView(note, order: order, fields: fields, links: links),
   'text': note.text,
-  'attachments': [
-    for (final file in note.files) {'name': file.name, 'size': file.size, 'type': ?file.type},
-  ],
+  'attachments': [for (final file in note.files) attachmentView(file)],
 };
 
 /// [card] as a `CardView`: no number, security code or PIN, only the last four digits and whether each is there.
-Map<String, Object?> cardView(PaymentCard card, {required int order, required DateTime now}) => {
+Map<String, Object?> cardView(
+  PaymentCard card, {
+  required int order,
+  required DateTime now,
+  List<Map<String, Object?>> fields = const [],
+  int links = 0,
+}) => {
   'id': card.id,
   'name': card.name,
   'cardholder': ?_text(card.cardholder),
@@ -47,11 +66,19 @@ Map<String, Object?> cardView(PaymentCard card, {required int order, required Da
   'order': order,
   'pinned': card.isPinned,
   'changedAt': card.changedAt,
+  'fields': fields,
+  'links': links,
 };
 
 /// [card] as a `CardFull`: its view and the number, security code and PIN.
-Map<String, Object?> cardFull(PaymentCard card, {required int order, required DateTime now}) => {
-  ...cardView(card, order: order, now: now),
+Map<String, Object?> cardFull(
+  PaymentCard card, {
+  required int order,
+  required DateTime now,
+  List<Map<String, Object?>> fields = const [],
+  int links = 0,
+}) => {
+  ...cardView(card, order: order, now: now, fields: fields, links: links),
   'number': card.number ?? '',
   'code': card.code ?? '',
   'pin': card.pin ?? '',
@@ -77,7 +104,14 @@ Map<String, Object?> _document(IdentityDocument document, DateTime now, {require
   if (withNumber) 'number': document.number,
 };
 
-Map<String, Object?> _identity(Identity identity, {required int order, required DateTime now, required bool withNumbers}) => {
+Map<String, Object?> _identity(
+  Identity identity, {
+  required int order,
+  required DateTime now,
+  required bool withNumbers,
+  required List<Map<String, Object?>> fields,
+  required int links,
+}) => {
   'id': identity.id,
   'name': identity.name,
   'title': ?_text(identity.title),
@@ -97,15 +131,50 @@ Map<String, Object?> _identity(Identity identity, {required int order, required 
   'order': order,
   'pinned': identity.isPinned,
   'changedAt': identity.changedAt,
+  'fields': fields,
+  'links': links,
 };
 
 /// [identity] as an `IdentityView`: its details and address, its documents without their numbers.
-Map<String, Object?> identityView(Identity identity, {required int order, required DateTime now}) =>
-    _identity(identity, order: order, now: now, withNumbers: false);
+Map<String, Object?> identityView(
+  Identity identity, {
+  required int order,
+  required DateTime now,
+  List<Map<String, Object?>> fields = const [],
+  int links = 0,
+}) => _identity(identity, order: order, now: now, withNumbers: false, fields: fields, links: links);
 
 /// [identity] as an `IdentityFull`: its view with the number of each document.
-Map<String, Object?> identityFull(Identity identity, {required int order, required DateTime now}) =>
-    _identity(identity, order: order, now: now, withNumbers: true);
+Map<String, Object?> identityFull(
+  Identity identity, {
+  required int order,
+  required DateTime now,
+  List<Map<String, Object?>> fields = const [],
+  int links = 0,
+}) => _identity(identity, order: order, now: now, withNumbers: true, fields: fields, links: links);
 
 /// [value] unless it is empty or blank, so the views never carry an empty string for a field that isn't set.
 String? _text(String? value) => value == null || value.trim().isEmpty ? null : value;
+
+/// [file] as a `FileView`: what the item and its file are called, how big the file is, whether the server holds it. Never the file's key.
+/// [links] is how many items it is linked to.
+Map<String, Object?> fileView(VaultFile file, {required int order, int links = 0, Map<String, Object?>? space}) => {
+  'id': file.id,
+  'name': file.name,
+  'fileName': ?(file.file.name.isEmpty ? null : file.file.name),
+  'size': file.file.size,
+  'type': ?file.file.type,
+  'pinned': file.isPinned,
+  'tags': file.tags ?? const <String>[],
+  'order': order,
+  'changedAt': file.changedAt,
+  'onServer': kmServerFileId(file.file) != null,
+  'links': links,
+  'space': ?space,
+};
+
+/// [file] as a `FileFull`: its view and its notes.
+Map<String, Object?> fileFull(VaultFile file, {required int order, int links = 0, Map<String, Object?>? space}) => {
+  ...fileView(file, order: order, links: links, space: space),
+  'notes': file.notes ?? '',
+};
