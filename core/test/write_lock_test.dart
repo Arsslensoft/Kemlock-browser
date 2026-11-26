@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
+import 'package:kemlock_core/models/item_link.dart';
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_extension_core/src/core_service.dart';
 import 'package:kemlock_extension_core/src/failure.dart';
@@ -223,6 +224,63 @@ void main() {
       ]);
       expect(core.vault.lists.notes.single.title, 'Renamed');
       expect(core.vault.lists.notes.single.files.map((f) => f.id), ['a1']);
+    });
+
+    test('a login saved with a new name keeps the pin and the link another write gave it', () async {
+      final id = await addLogin(core, 'Orbit');
+      final other = (await object(core, 'saveNote', [null, note('Recovery')]))['id']! as String;
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.logins.single.copyWith(pinned: true))),
+        core.call('setLinks', [
+          {'kind': 'login', 'id': id},
+          [
+            {'kind': 'note', 'id': other},
+          ],
+        ]),
+        core.call('saveLogin', [
+          id,
+          {'name': 'Renamed', 'username': 'sam', 'password': 'Hunter2-hunter2', 'websites': ['orbit-cloud.com']},
+        ]),
+      ]);
+      final login = core.vault.lists.logins.single;
+      expect(login.name, 'Renamed');
+      expect(login.pinned, isTrue);
+      expect(login.links.names(core.vault.lists.notes.single.id), isTrue);
+    });
+
+    test('a login saved with keepPassword keeps the password another write set', () async {
+      final id = await addLogin(core, 'Orbit');
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.logins.single.withPassword('Second-pass-99', 5))),
+        core.call('saveLogin', [
+          id,
+          {'name': 'Renamed', 'username': 'sam', 'keepPassword': true, 'websites': ['orbit-cloud.com']},
+        ]),
+      ]);
+      expect(core.vault.lists.logins.single.name, 'Renamed');
+      expect(core.vault.lists.logins.single.password, 'Second-pass-99');
+    });
+
+    test('a card saved with a new name keeps the pin another write gave it', () async {
+      final saved = await object(core, 'saveCard', [null, {'name': 'Visa', 'number': '4111111111111111'}]);
+      final id = saved['id']! as String;
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.cards.single.copyWith(pinned: true))),
+        core.call('saveCard', [id, {'name': 'Visa Gold', 'number': '4111111111111111'}]),
+      ]);
+      expect(core.vault.lists.cards.single.name, 'Visa Gold');
+      expect(core.vault.lists.cards.single.pinned, isTrue);
+    });
+
+    test('an identity saved with a new name keeps the pin another write gave it', () async {
+      final saved = await object(core, 'saveIdentity', [null, {'name': 'Me', 'email': 'me@orbit-cloud.com'}]);
+      final id = saved['id']! as String;
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.identities.single.copyWith(pinned: true))),
+        core.call('saveIdentity', [id, {'name': 'Myself', 'email': 'me@orbit-cloud.com'}]),
+      ]);
+      expect(core.vault.lists.identities.single.name, 'Myself');
+      expect(core.vault.lists.identities.single.pinned, isTrue);
     });
 
     test('a code saved with a new name keeps the counter a press moved', () async {
