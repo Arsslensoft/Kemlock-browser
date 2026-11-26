@@ -619,7 +619,14 @@ class TransferService {
         // File items aren't imported, but the ones the vault holds stay
         files: held.files,
       );
-      final editable = vault.keepingEditable(held, next);
+      // A code or a backup service the file leaves out is removed, and so are the links to it (a login's `accountId` naming the code, a
+      // note naming the service), in the same write: none is left naming an item that is gone
+      var linked = next;
+      final kept = {for (final account in next.accounts) account.id, for (final service in next.backupServices) service.id};
+      for (final removed in <VaultEntry<Object?>>[...held.accounts, ...held.backupServices]) {
+        if (!kept.contains(removed.id)) linked = VaultLinks(vault).withLinksDroppedTo(linked, removed);
+      }
+      final editable = vault.keepingEditable(held, linked);
       skipped = editable.skipped;
       return editable.lists;
     });

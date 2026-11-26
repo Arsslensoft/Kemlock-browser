@@ -879,27 +879,35 @@ class SpacesService {
   });
 
   Future<void> deleteHeld(String id, String item) async {
+    // Looked for before the server deletes it: a space sync that follows takes the entry away, and then nothing says what names it
+    final entry = _heldEntry(id, item);
     await _run((connection, account) async {
       _requireServerSpace(id);
       await _sync(id, connection, account).deleteHeld(item, now: _millis);
     });
-    await _dropLinksToHeld(id, item);
+    await _dropLinksToHeld(id, item, entry);
   }
 
-  /// Takes the links to the held item [item] of [space], which the server has just deleted, off the entries that named it, when this
-  /// device still holds the item's last accepted copy to know what names it. The entries are saved apart from the delete, which is
-  /// the server's: a link that can't be taken off (an end this account may not edit, or a write that fails) stays one-way, since the
-  /// item is gone and nothing mends a link to it, and the delete is not undone for it.
-  Future<void> _dropLinksToHeld(String space, String item) async {
+  /// The entry of [space] this device holds for the held item [item], by its id or its item id; null when it holds none.
+  VaultEntry<Object?>? _heldEntry(String space, String item) {
     final owner = _vault.accountOwner?.call();
     final wanted = item.toLowerCase();
     bool named(VaultEntry<Object?> entry) =>
         entry.spaceId == space && (entry.id.toLowerCase() == wanted || linkIdOf(entry, account: owner).toLowerCase() == wanted);
-    final entry = entriesOf(_vault.lists).where(named).firstOrNull;
-    if (entry == null) return;
+    return entriesOf(_vault.lists).where(named).firstOrNull;
+  }
+
+  /// Takes the links to the held item [item] of [space], which the server has just deleted, off the entries that named it. [entry] is the
+  /// copy this device held, which says every id that names it; without one the item's own id is all there is, and a stand-in with that id
+  /// finds the `links` that name it (not a login's `accountId`, which needs the kind). The entries are saved apart from the delete, which
+  /// is the server's: a link that can't be taken off (an end this account may not edit, or a write that fails, even one that leaves
+  /// storage in part written) stays one-way, since the item is gone and nothing mends a link to it, and the delete must not fail for it:
+  /// it is done on the server, and a retry would be refused as no longer held.
+  Future<void> _dropLinksToHeld(String space, String item, VaultEntry<Object?>? entry) async {
+    final gone = entry ?? SecureNote(id: item.toLowerCase(), title: '', addedAt: _millis).inSpace(space);
     try {
-      await _vault.saveChanged((lists) => _vault.withLinksDroppedTo(lists, entry));
-    } on CoreFailure {
+      await _vault.saveChanged((lists) => _vault.withLinksDroppedTo(lists, gone));
+    } catch (_) {
       // Left as it is: see above
     }
   }

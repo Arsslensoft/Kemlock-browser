@@ -304,14 +304,7 @@ class DuplicateTools {
         if (_stale(group, lists) || !sameLinks || !sameRelink) {
           throw const CoreFailure(CoreFailure.stale, 'an item changed since the check: check again');
         }
-        var next = _replacing(_without(lists, goneIds), [relinkedNow.kept]);
-        if (relink.isNotEmpty) {
-          final ids = {for (final login in relink) login.id};
-          next = listsWith(
-            next,
-            logins: [for (final login in next.logins) ids.contains(login.id) ? login.copyWith(accountId: keptId) : login],
-          );
-        }
+        final next = _replacing(_without(lists, goneIds), [relinkedNow.kept]);
         // The other entries are written in the same change; one in a space this account may not edit keeps what it holds, which Undo
         // (it puts a member back only where the entry still holds what the merge wrote) then leaves alone
         return _putting(next, relinkedNow.others);
@@ -372,14 +365,12 @@ class DuplicateTools {
         return lists;
       }
       var next = _replacing(lists, [plan.kept, ...plan.removed]);
-      if (plan.relinks.isNotEmpty) {
-        next = listsWith(
-          next,
-          logins: [
-            for (final login in next.logins) plan.relinks.containsKey(login.id) ? login.copyWith(accountId: plan.relinks[login.id]) : login,
-          ],
-        );
-      }
+      // A login the merge pointed at the code that stays goes back to the code that went (only a record from before `relinkUndo` needs
+      // this; a newer one is put back below), unless it is in a space this account may not edit
+      next = _putting(next, [
+        for (final login in next.logins)
+          if (plan.relinks.containsKey(login.id)) login.copyWith(accountId: plan.relinks[login.id]),
+      ]);
       // What the merge wrote on the other entries goes back where they still hold it: one linked or edited since keeps what it holds
       return _putting(next, undoRelink(next, plan.relinkUndo, now: vault.nowMs));
     });

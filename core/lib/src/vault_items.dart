@@ -279,11 +279,16 @@ extension VaultItems on VaultService {
       }
 
       saved = edit(current);
-      await _saveCards((held) => [for (final card in held) card.id == id ? edit(card) : card]);
+      await _saveCards((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((card) => card.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such card');
+        return [for (final card in held) card.id == id ? edit(card) : card];
+      });
     }
     final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('card', saved.id, refs);
-    final index = _lists.cards.indexWhere((card) => card.id == saved.id);
-    return {..._cardView(_lists.cards[index], index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
+    final stored = _find(_lists.cards, saved.id, 'card');
+    final index = _lists.cards.indexOf(stored);
+    return {..._cardView(stored, index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   Future<void> deleteCard(String id) async {
@@ -480,11 +485,16 @@ extension VaultItems on VaultService {
 
       // Looked at once now, so a bad input is refused before anything is written
       saved = edit(current);
-      await _saveIdentities((held) => [for (final identity in held) identity.id == id ? edit(identity) : identity]);
+      await _saveIdentities((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((identity) => identity.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such identity');
+        return [for (final identity in held) identity.id == id ? edit(identity) : identity];
+      });
     }
     final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('identity', saved.id, refs);
-    final index = _lists.identities.indexWhere((identity) => identity.id == saved.id);
-    return {..._identityView(_lists.identities[index], index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
+    final stored = _find(_lists.identities, saved.id, 'identity');
+    final index = _lists.identities.indexOf(stored);
+    return {..._identityView(stored, index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   Future<void> deleteIdentity(String id) async {

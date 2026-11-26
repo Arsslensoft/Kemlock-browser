@@ -1157,23 +1157,26 @@ class VaultService {
     } else {
       final current = _login(id);
       editGuard?.call(current.spaceId, id);
-      // The edit is made on the login the write holds, so what another write changed meanwhile (a link, a code, a field, a password a
-      // sync brought) is not put back by the copy read above: the password kept, the rules compared and the previous passwords are all
-      // the held login's
+      // The edit is made on the login the write holds, so what another write changed meanwhile (a link, a code, a field, a password or a
+      // website a sync brought) is not put back by the copy read above. What the form sends back as it was given changed nothing, and is
+      // decided against the copy the form was built from: the password, the website rules and the plain websites then stay the held
+      // login's, byte for byte, and only what the person changed is written
+      final passwordChanged = input['keepPassword'] != true && password != (current.password ?? '');
+      final websitesChanged = rules != null
+          ? !sameRules(rules, current.rules)
+          : jsonEncode(websites) != jsonEncode(current.websites ?? const <String>[]);
       Login edit(Login held) {
-        final heldPassword = input['keepPassword'] == true ? (held.password ?? '') : password;
-        final heldRules = input['websiteRules'] == null ? null : readRules(input['websiteRules'], held.rules);
+        final heldPassword = passwordChanged ? password : (held.password ?? '');
         final heldFields = applyFields(held.fields, input['fields']);
-        Object? hosts = websites.isEmpty ? unset : websites;
+        Object? hosts = keep;
         Object? uris = keep;
-        if (heldRules != null) {
-          if (sameRules(heldRules, held.rules)) {
-            // Nobody changed a website: the login keeps what it holds, byte for byte
-            hosts = keep;
-          } else {
-            final sites = websitesOf(heldRules);
+        if (websitesChanged) {
+          if (rules != null) {
+            final sites = websitesOf(readRules(input['websiteRules'], held.rules));
             hosts = sites.websites ?? unset;
             uris = sites.uris ?? unset;
+          } else {
+            hosts = websites.isEmpty ? unset : websites;
           }
         }
         final next = held.copyWith(
@@ -1191,7 +1194,11 @@ class VaultService {
 
       // Looked at once now, so a bad input is refused before anything is written
       saved = edit(current);
-      await _saveLogins((held) => [for (final login in held) login.id == id ? edit(login) : login]);
+      await _saveLogins((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((login) => login.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such login');
+        return [for (final login in held) login.id == id ? edit(login) : login];
+      });
     }
     // A login that holds a generated password now holds it for good: it is no longer "recently generated"
     if (password.isNotEmpty && _generated.any((item) => item.password == password)) {
@@ -1208,6 +1215,8 @@ class VaultService {
     }
     final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('login', saved.id, refs);
     final index = _lists.logins.indexWhere((login) => login.id == saved.id);
+    // Deleted since the write: the person is told so, not handed a view of nothing
+    if (index < 0) throw const CoreFailure(CoreFailure.notFound, 'no such login');
     final stored = _lists.logins[index];
     return {
       ...loginView(

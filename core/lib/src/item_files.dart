@@ -379,8 +379,8 @@ class ItemFiles {
       }
     }
     if (notes.isNotEmpty || lostItems.isNotEmpty || restored.isNotEmpty) {
-      await _vault.saveChanged(
-        (held) => Lists(
+      await _vault.saveChanged((held) {
+        var next = Lists(
           accounts: held.accounts,
           backupServices: held.backupServices,
           keys: held.keys,
@@ -395,8 +395,13 @@ class ItemFiles {
             for (final item in held.files)
               if (!lostItems.contains(item.id)) restored.containsKey(item.id) ? item.copyWith(file: restored[item.id]) : item,
           ],
-        ),
-      );
+        );
+        // A File item that is dropped is gone for good, and so are the links to it, in the same write
+        for (final item in held.files) {
+          if (lostItems.contains(item.id)) next = _vault.withLinksDroppedTo(next, item);
+        }
+        return next;
+      });
     }
     await _forget(done);
   }
