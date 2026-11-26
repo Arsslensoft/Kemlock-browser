@@ -99,13 +99,17 @@ export function SecretRow(props: {
   )
 }
 
-/** The bar of an item's page: back, the mark, the name, Edit and Delete. */
+/**
+ * The bar of an item's page: back, the mark, the name, Edit and Delete. An item in a space the
+ * person can only read leaves out Edit and Delete, since the core refuses both there anyway.
+ */
 export function ItemBar(props: {
   name: string
   onBack: () => void
   onEdit: () => void
   onDelete: () => void
   deleteLabel: string
+  readOnly?: boolean
 }) {
   return (
     <header class="bar login-bar">
@@ -113,10 +117,14 @@ export function ItemBar(props: {
       <KemlockIcon size={24} class="mark" />
       <Tile name={props.name} size={32} />
       <h1 class="login-title">{props.name}</h1>
-      <button type="button" class="link-btn hov" onClick={props.onEdit}>
-        {t('popup_edit')}
-      </button>
-      <IconButton icon="trash" label={props.deleteLabel} onClick={props.onDelete} />
+      {props.readOnly !== true && (
+        <button type="button" class="link-btn hov" onClick={props.onEdit}>
+          {t('popup_edit')}
+        </button>
+      )}
+      {props.readOnly !== true && (
+        <IconButton icon="trash" label={props.deleteLabel} onClick={props.onDelete} />
+      )}
     </header>
   )
 }
