@@ -59,7 +59,14 @@ describe('custom fields', () => {
     expect(note.fields).toEqual([
       { index: 0, name: 'Router', kind: 'text', value: 'Orbit-5G', hasValue: true, editable: true },
       { index: 1, name: 'PIN', kind: 'hidden', hasValue: true, editable: true },
-      { index: 2, name: 'Guest network', kind: 'boolean', value: 'true', hasValue: true, editable: true },
+      {
+        index: 2,
+        name: 'Guest network',
+        kind: 'boolean',
+        value: 'true',
+        hasValue: true,
+        editable: true,
+      },
     ])
     const listed = await h.ok<NoteView[]>({ kind: 'notes' })
     expect(JSON.stringify(listed)).not.toContain('4321')
@@ -74,7 +81,9 @@ describe('custom fields', () => {
       ok: false,
       error: 'notFound',
     })
-    expect(await h.send({ kind: 'revealField', ref: { kind: 'note', id: 'nope' }, index: 0 })).toEqual({
+    expect(
+      await h.send({ kind: 'revealField', ref: { kind: 'note', id: 'nope' }, index: 0 }),
+    ).toEqual({
       ok: false,
       error: 'notFound',
     })
@@ -124,7 +133,8 @@ describe('custom fields', () => {
     expect(await h.ok({ kind: 'revealField', ref, index: 1 })).toBe('4321')
     // An empty list removes the rows the browser can edit
     expect(
-      (await h.ok<NoteView>({ kind: 'saveNote', id: note.id, input: { ...input, fields: [] } })).fields,
+      (await h.ok<NoteView>({ kind: 'saveNote', id: note.id, input: { ...input, fields: [] } }))
+        .fields,
     ).toEqual([])
   })
 
@@ -253,7 +263,12 @@ describe('links', () => {
     await h.ok({
       kind: 'saveLogin',
       id: l.id,
-      input: { name: l.name, username: l.username, password: 'Orbit-Cloud-7731!', websites: l.websites },
+      input: {
+        name: l.name,
+        username: l.username,
+        password: 'Orbit-Cloud-7731!',
+        websites: l.websites,
+      },
     })
     expect((await login()).links).toBe(1)
   })
@@ -293,9 +308,9 @@ describe('links', () => {
     expect(
       await h.ok<LinkedItemView[]>({ kind: 'linkCandidates', ref: null, query: 'note 7' }),
     ).toMatchObject([{ name: 'Note 7' }])
-    expect(await h.ok<LinkedItemView[]>({ kind: 'linkCandidates', ref: null, query: 'zzz' })).toEqual(
-      [],
-    )
+    expect(
+      await h.ok<LinkedItemView[]>({ kind: 'linkCandidates', ref: null, query: 'zzz' }),
+    ).toEqual([])
   })
 
   it('leave nothing behind when an item is deleted', async () => {
@@ -303,15 +318,17 @@ describe('links', () => {
     const note = await saveNote()
     await h.ok({ kind: 'setLinks', ref, refs: [noteRef(note)] })
     await h.ok({ kind: 'deleteNote', id: note.id })
-    expect((await linked(ref)).map((item) => item.ref.kind)).toEqual(['otp'])
+    // The login's links were set to the note alone, which also let go of its code
+    expect(await linked(ref)).toEqual([])
     expect(h.core.disk.items.extras).toEqual({})
   })
 
   it('refuse a link to an item that is not there, and tell sync of the write', async () => {
     const ref = await loginRef()
-    expect(
-      await h.send({ kind: 'setLinks', ref, refs: [{ kind: 'note', id: 'nope' }] }),
-    ).toEqual({ ok: false, error: 'notFound' })
+    expect(await h.send({ kind: 'setLinks', ref, refs: [{ kind: 'note', id: 'nope' }] })).toEqual({
+      ok: false,
+      error: 'notFound',
+    })
     const note = await saveNote()
     const spy = vi.spyOn(h.bg['d'].sync, 'changed')
     await h.ok({ kind: 'setLinks', ref, refs: [noteRef(note)] })
@@ -515,7 +532,11 @@ describe('a contact with no key', () => {
       company: 'Engines Ltd',
     })
     expect(edited.phone).toBeUndefined()
-    expect(edited).toMatchObject({ company: 'Engines Ltd', email: 'ada@example.org', hasKey: false })
+    expect(edited).toMatchObject({
+      company: 'Engines Ltd',
+      email: 'ada@example.org',
+      hasKey: false,
+    })
     expect(
       await h.send({ kind: 'pgpEncrypt', data: { text: 'hi' }, contactIds: [made.id], keyIds: [] }),
     ).toEqual({ ok: false, error: 'noKey' })

@@ -408,7 +408,7 @@ describe('password health', () => {
       ) ?? null,
     )
     expect(text(root)).toContain('Passwords used twice · 2')
-    expect(text(root)).toContain('Without their code · 1')
+    expect(text(root)).toContain('Without their MFA code · 1')
     expect(text(root)).not.toContain('Weak passwords')
     expect(text(root)).toContain(message('en', 'popup_breachOff'))
     expect(text(root)).not.toContain('Seen in data breaches')

@@ -155,7 +155,7 @@ describe('the Codes list', () => {
       nextHotp: ((args: { id: string }) => ({ id: args.id, code: '999999' })) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Next code for Ledger'))
+    await click(button(root, 'Next MFA code for Ledger'))
     expect(background.of('nextHotp')[0]?.args).toEqual({ id: 'c3' })
     expect(text(root)).toContain('999 999')
   })
@@ -163,7 +163,7 @@ describe('the Codes list', () => {
   it('copies a code through the background', async () => {
     background.reset(unlockedHandlers(world()))
     const root = await openPopup()
-    await click(button(root, 'Copy the code of Orbit Cloud'))
+    await click(button(root, 'Copy the MFA code of Orbit Cloud'))
     expect(background.of('copy')[0]?.args).toEqual({ what: 'code', id: 'c1' })
     expect(text(root)).toContain(message('en', 'popup_copiedCode'))
   })
@@ -187,7 +187,7 @@ describe('the Logins list', () => {
     await click(button(root, 'Logins 3'))
     expect(names(root)).toEqual(['Orbit Cloud', 'Linear', 'Docs'])
     expect(text(root)).toContain('Password health')
-    expect(text(root)).toContain('2 reused · 1 without its code')
+    expect(text(root)).toContain('2 reused · 1 without its MFA code')
     expect(root.querySelectorAll('.item .sub.warn-text')).toHaveLength(3)
     expect(text(root)).toContain('Without its MFA code')
 

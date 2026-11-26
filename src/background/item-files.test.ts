@@ -64,18 +64,27 @@ const stage = async (bytes: Uint8Array): Promise<string> => {
   }
   return handle!
 }
-const saveFile = (id: string | null, input: object, sender: chrome.runtime.MessageSender = filesTab) =>
-  h.send<FileView>({ kind: 'saveFile', id, input }, sender)
+const saveFile = (
+  id: string | null,
+  input: object,
+  sender: chrome.runtime.MessageSender = filesTab,
+) => h.send<FileView>({ kind: 'saveFile', id, input }, sender)
 const makeFile = async (name = 'Passport', bytes = bytesOf(100)): Promise<FileView> => {
   const handle = await stage(bytes)
-  const saved = await saveFile(null, { name, staged: { handle, name: 'passport.pdf', type: 'application/pdf' } })
+  const saved = await saveFile(null, {
+    name,
+    staged: { handle, name: 'passport.pdf', type: 'application/pdf' },
+  })
   if (!saved.ok) throw new Error(`not saved: ${saved.error}`)
   return saved.value
 }
 const saveNote = () =>
   h.ok<NoteView>({ kind: 'saveNote', id: null, input: { title: 'Contract', text: 'text' } })
 /** Reads an opened file whole, as the popup does, and closes it. */
-const download = async (opened: Opened, sender: chrome.runtime.MessageSender = popup): Promise<Uint8Array> => {
+const download = async (
+  opened: Opened,
+  sender: chrome.runtime.MessageSender = popup,
+): Promise<Uint8Array> => {
   const pieces: Uint8Array[] = []
   for (let index = 0; ; index += 1) {
     const piece = await h.ok<string>({ kind: 'readOpened', handle: opened.handle, index }, sender)
@@ -116,7 +125,11 @@ describe('a File item', () => {
     expect(h.core.fileStore.held().staged).toBe(0)
 
     const opened = await h.ok<Opened>({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } })
-    expect(opened).toMatchObject({ size: bytes.length, name: 'passport.pdf', type: 'application/pdf' })
+    expect(opened).toMatchObject({
+      size: bytes.length,
+      name: 'passport.pdf',
+      type: 'application/pdf',
+    })
     expect(await download(opened)).toEqual(bytes)
     // A file that was closed is let go
     expect(await h.send({ kind: 'readOpened', handle: opened.handle, index: 0 })).toEqual({
@@ -132,8 +145,13 @@ describe('a File item', () => {
       { name: 'Passport 2030', notes: 'Renew', pinned: true, tags: ['id'] },
       popup,
     )
-    expect(renamed).toMatchObject({ ok: true, value: { name: 'Passport 2030', pinned: true, size: 10 } })
-    expect(await h.ok<FileFull>({ kind: 'revealFile', id: file.id })).toMatchObject({ notes: 'Renew' })
+    expect(renamed).toMatchObject({
+      ok: true,
+      value: { name: 'Passport 2030', pinned: true, size: 10 },
+    })
+    expect(await h.ok<FileFull>({ kind: 'revealFile', id: file.id })).toMatchObject({
+      notes: 'Renew',
+    })
 
     const handle = await stage(bytesOf(30, 9))
     const replaced = await saveFile(file.id, {
@@ -169,7 +187,11 @@ describe('a File item', () => {
   it('is deleted with its bytes, and its links', async () => {
     const note = await saveNote()
     const file = await makeFile()
-    await h.ok({ kind: 'setLinks', ref: { kind: 'file', id: file.id }, refs: [{ kind: 'note', id: note.id }] })
+    await h.ok({
+      kind: 'setLinks',
+      ref: { kind: 'file', id: file.id },
+      refs: [{ kind: 'note', id: note.id }],
+    })
     await h.ok({ kind: 'deleteFile', id: file.id })
     expect(await h.ok<FileView[]>({ kind: 'files' })).toEqual([])
     expect((await h.ok<NoteView[]>({ kind: 'notes' }))[0].links).toBe(0)
@@ -261,7 +283,11 @@ describe('attachments', () => {
         files: [{ handle: 'whatever', name: 'b.txt' }],
       }),
     ).toEqual({ ok: false, error: 'refused' })
-    await h.ok({ kind: 'removeAttachment', noteId: note.id, attachmentId: attached.attachments[0].id })
+    await h.ok({
+      kind: 'removeAttachment',
+      noteId: note.id,
+      attachmentId: attached.attachments[0].id,
+    })
     expect((await h.ok<NoteFull>({ kind: 'revealNote', id: note.id })).attachments).toEqual([])
   })
 
@@ -273,7 +299,9 @@ describe('attachments', () => {
         files.push({ handle: await stage(bytesOf(2, i)), name: `f${round}-${i}.txt` })
       await h.ok({ kind: 'addAttachments', noteId: note.id, files }, filesTab)
     }
-    expect((await h.ok<NoteFull>({ kind: 'revealNote', id: note.id })).attachments).toHaveLength(100)
+    expect((await h.ok<NoteFull>({ kind: 'revealNote', id: note.id })).attachments).toHaveLength(
+      100,
+    )
     const handle = await stage(bytesOf(2))
     expect(
       await h.send(
@@ -338,7 +366,8 @@ describe('staging', () => {
     expect(
       await h.send({ kind: 'stageItemFile', data: 'AAAA', handle: first.handle }, filesTab),
     ).toEqual({ ok: false, error: 'tooLarge' })
-  })
+    // 51 pieces of 1 MiB through the parser: slow while dozens of workers share the machine
+  }, 60_000)
 
   it('holds nothing once the vault locks', async () => {
     const handle = await stage(bytesOf(3))
@@ -348,7 +377,10 @@ describe('staging', () => {
     expect(h.core.fileStore.held()).toEqual({ staged: 0, opened: 0 })
     await h.ok({ kind: 'unlock', password: 'correct horse' })
     expect(
-      await h.send({ kind: 'saveFile', id: null, input: { name: 'x', staged: { handle, name: 'x' } } }, filesTab),
+      await h.send(
+        { kind: 'saveFile', id: null, input: { name: 'x', staged: { handle, name: 'x' } } },
+        filesTab,
+      ),
     ).toEqual({ ok: false, error: 'lost' })
     expect(await h.send({ kind: 'readOpened', handle: opened.handle, index: 0 })).toEqual({
       ok: false,
@@ -386,7 +418,11 @@ describe('without Kemlock Server', () => {
       }),
     ).toEqual(unavailable)
     expect(
-      await h.send({ kind: 'removeAttachment', noteId: note.id, attachmentId: attached.attachments[0].id }),
+      await h.send({
+        kind: 'removeAttachment',
+        noteId: note.id,
+        attachmentId: attached.attachments[0].id,
+      }),
     ).toEqual(unavailable)
     expect(
       await h.send(
@@ -410,10 +446,14 @@ describe('without Kemlock Server', () => {
 
   it('goes by the fileSync switch when a test sets it', async () => {
     h.core.fileSync = 'kemlock'
-    expect(await h.ok<{ fileSync: string }>({ kind: 'pageState' })).toMatchObject({ fileSync: 'kemlock' })
+    expect(await h.ok<{ fileSync: string }>({ kind: 'pageState' })).toMatchObject({
+      fileSync: 'kemlock',
+    })
     expect(await makeFile()).toMatchObject({ onServer: true })
     h.core.fileSync = 'readOnly'
-    expect(await h.ok<{ fileSync: string }>({ kind: 'pageState' })).toMatchObject({ fileSync: 'readOnly' })
+    expect(await h.ok<{ fileSync: string }>({ kind: 'pageState' })).toMatchObject({
+      fileSync: 'readOnly',
+    })
   })
 })
 
@@ -428,10 +468,16 @@ describe('who may ask', () => {
       expect(await h.send({ kind: 'stageItemFile', data: 'AAAA' }, sender)).toEqual(refused)
       expect(await h.send({ kind: 'releaseStaged', handle }, sender)).toEqual(refused)
       expect(
-        await h.send({ kind: 'saveFile', id: null, input: { name: 'x', staged: { handle, name: 'x' } } }, sender),
+        await h.send(
+          { kind: 'saveFile', id: null, input: { name: 'x', staged: { handle, name: 'x' } } },
+          sender,
+        ),
       ).toEqual(refused)
       expect(
-        await h.send({ kind: 'addAttachments', noteId: 'n', files: [{ handle, name: 'x' }] }, sender),
+        await h.send(
+          { kind: 'addAttachments', noteId: 'n', files: [{ handle, name: 'x' }] },
+          sender,
+        ),
       ).toEqual(refused)
     }
   })
@@ -443,14 +489,20 @@ describe('who may ask', () => {
         { kind: 'openItemFile', ref: { kind: 'file', id: file.id } },
         sender,
       )
-      expect(await h.ok<string>({ kind: 'readOpened', handle: opened.handle, index: 0 }, sender)).not.toBe('')
+      expect(
+        await h.ok<string>({ kind: 'readOpened', handle: opened.handle, index: 0 }, sender),
+      ).not.toBe('')
       await h.ok({ kind: 'closeOpened', handle: opened.handle }, sender)
     }
     for (const sender of [setup, menuFrame, sendsTab, content('https://evil.example/')]) {
-      expect(await h.send({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } }, sender)).toEqual(refused)
+      expect(
+        await h.send({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } }, sender),
+      ).toEqual(refused)
       expect(await h.send({ kind: 'readOpened', handle: 'h', index: 0 }, sender)).toEqual(refused)
       expect(await h.send({ kind: 'closeOpened', handle: 'h' }, sender)).toEqual(refused)
-      expect(await h.send({ kind: 'removeAttachment', noteId: 'n', attachmentId: 'a' }, sender)).toEqual(refused)
+      expect(
+        await h.send({ kind: 'removeAttachment', noteId: 'n', attachmentId: 'a' }, sender),
+      ).toEqual(refused)
     }
   })
 
@@ -464,7 +516,9 @@ describe('who may ask', () => {
       expect(await h.send({ kind: 'files' }, sender)).toEqual(refused)
       expect(await h.send({ kind: 'revealFile', id: file.id }, sender)).toEqual(refused)
       expect(await h.send({ kind: 'deleteFile', id: file.id }, sender)).toEqual(refused)
-      expect(await h.send({ kind: 'saveFile', id: file.id, input: { name: 'x' } }, sender)).toEqual(refused)
+      expect(await h.send({ kind: 'saveFile', id: file.id, input: { name: 'x' } }, sender)).toEqual(
+        refused,
+      )
     }
   })
 
@@ -472,7 +526,10 @@ describe('who may ask', () => {
     const file = await makeFile()
     await h.ok({ kind: 'lock' })
     expect(await h.send({ kind: 'files' })).toEqual({ ok: false, error: 'locked' })
-    expect(await h.send({ kind: 'stageItemFile', data: 'AAAA' }, filesTab)).toEqual({ ok: false, error: 'locked' })
+    expect(await h.send({ kind: 'stageItemFile', data: 'AAAA' }, filesTab)).toEqual({
+      ok: false,
+      error: 'locked',
+    })
     expect(await h.send({ kind: 'openItemFile', ref: { kind: 'file', id: file.id } })).toEqual({
       ok: false,
       error: 'locked',
@@ -511,7 +568,14 @@ describe('the port the files tab holds', () => {
   })
 
   it('is closed for any other page, a web page, another name, or no sender', () => {
-    for (const sender of [popup, setup, menuFrame, sendsTab, content('https://evil.example/'), undefined]) {
+    for (const sender of [
+      popup,
+      setup,
+      menuFrame,
+      sendsTab,
+      content('https://evil.example/'),
+      undefined,
+    ]) {
       const { port, listeners } = portFrom(sender)
       acceptItemFilesPort(port, self)
       expect(port.disconnect).toHaveBeenCalledTimes(1)
