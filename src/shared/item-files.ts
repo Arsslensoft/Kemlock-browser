@@ -6,8 +6,9 @@
 export const itemFileChunkBytes = 1_048_576
 
 /**
- * The name of the port the files tab holds open (and pings) while a file is staged or opened in it, so the worker the browser would
- * stop is kept: what the core holds for the tab is gone with the worker.
+ * The name of the port the files tab holds open (and pings) while a file is staged or opened in it, and the popup while it downloads
+ * one, so the worker the browser would stop is kept (what the core holds for the page is gone with the worker). When a page's last
+ * port closes, the background lets go of the files that page staged and opened.
  */
 export const itemFilesKeepAlivePort = 'item-files-keepalive'
 

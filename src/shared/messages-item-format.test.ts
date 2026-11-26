@@ -25,7 +25,11 @@ describe('the fields and links of an input', () => {
       parsePageMessage({ kind: 'saveLogin', id: null, input: { ...login, fields, links } }),
     ).toEqual({ kind: 'saveLogin', id: null, input: { ...login, ...wanted } })
     expect(
-      parsePageMessage({ kind: 'saveNote', id: 'n', input: { title: 't', text: '', fields, links } }),
+      parsePageMessage({
+        kind: 'saveNote',
+        id: 'n',
+        input: { title: 't', text: '', fields, links },
+      }),
     ).toEqual({ kind: 'saveNote', id: 'n', input: { title: 't', text: '', ...wanted } })
     expect(
       parsePageMessage({ kind: 'saveCard', id: null, input: { name: 'c', fields, links } }),
@@ -34,7 +38,13 @@ describe('the fields and links of an input', () => {
       parsePageMessage({ kind: 'saveIdentity', id: null, input: { name: 'i', fields, links } }),
     ).toEqual({ kind: 'saveIdentity', id: null, input: { name: 'i', ...wanted } })
     expect(
-      parsePageMessage({ kind: 'saveContact', id: null, name: 'Ada', company: 'Lovelace Ltd', ...wanted }),
+      parsePageMessage({
+        kind: 'saveContact',
+        id: null,
+        name: 'Ada',
+        company: 'Lovelace Ltd',
+        ...wanted,
+      }),
     ).toEqual({ kind: 'saveContact', id: null, name: 'Ada', company: 'Lovelace Ltd', ...wanted })
   })
 
@@ -75,7 +85,9 @@ describe('the fields and links of an input', () => {
   it('refuse more than 100 links, a kind that is not an item’s and an id that is empty or long', () => {
     const save = (links: unknown) =>
       parsePageMessage({ kind: 'saveNote', id: null, input: { title: 't', text: '', links } })
-    expect(save(Array.from({ length: 100 }, (_, i) => ({ kind: 'note', id: `n${i}` })))).not.toBeNull()
+    expect(
+      save(Array.from({ length: 100 }, (_, i) => ({ kind: 'note', id: `n${i}` }))),
+    ).not.toBeNull()
     expect(save(Array.from({ length: 101 }, (_, i) => ({ kind: 'note', id: `n${i}` })))).toBeNull()
     expect(save([{ kind: 'secret', id: 'x' }])).toBeNull()
     expect(save([{ kind: 'note', id: '' }])).toBeNull()
@@ -104,7 +116,8 @@ describe('a login’s website rules', () => {
     expect(save(Array.from({ length: 51 }, () => rule))).toBeNull()
     expect(save([{ ...rule, uri: 'u'.repeat(2000) }])).not.toBeNull()
     expect(save([{ ...rule, uri: 'u'.repeat(2001) }])).toBeNull()
-    expect(save([{ ...rule, uri: '' }])).toBeNull()
+    // A blank row, which an editor shows until it is typed in, passes: the core drops it
+    expect(save([{ ...rule, uri: '' }])).not.toBeNull()
     expect(save([{ ...rule, match: 'prefix' }])).toBeNull()
     expect(save([{ uri: 'a.example' }])).toBeNull()
   })
@@ -117,9 +130,9 @@ describe('the field and link requests', () => {
       kind: 'customFieldDefs',
       refresh: true,
     })
-    expect(parsePageMessage({ kind: 'revealField', ref: { ...ref, x: 1 }, index: 3, y: 1 })).toEqual(
-      { kind: 'revealField', ref, index: 3 },
-    )
+    expect(
+      parsePageMessage({ kind: 'revealField', ref: { ...ref, x: 1 }, index: 3, y: 1 }),
+    ).toEqual({ kind: 'revealField', ref, index: 3 })
     expect(parsePageMessage({ kind: 'revealFields', ref })).toEqual({ kind: 'revealFields', ref })
     expect(parsePageMessage({ kind: 'linkedItems', ref })).toEqual({ kind: 'linkedItems', ref })
     expect(parsePageMessage({ kind: 'setLinks', ref, refs: [ref] })).toEqual({
@@ -200,7 +213,10 @@ describe('the file requests', () => {
       kind: 'revealFile',
       id: 'f',
     })
-    expect(parsePageMessage({ kind: 'deleteFile', id: 'f' })).toEqual({ kind: 'deleteFile', id: 'f' })
+    expect(parsePageMessage({ kind: 'deleteFile', id: 'f' })).toEqual({
+      kind: 'deleteFile',
+      id: 'f',
+    })
     expect(
       parsePageMessage({
         kind: 'saveFile',
@@ -244,7 +260,10 @@ describe('the file requests', () => {
 
   it('take a piece of a file up to 1 MiB in base64, with or without a handle', () => {
     const data = 'A'.repeat(1_398_104)
-    expect(parsePageMessage({ kind: 'stageItemFile', data })).toEqual({ kind: 'stageItemFile', data })
+    expect(parsePageMessage({ kind: 'stageItemFile', data })).toEqual({
+      kind: 'stageItemFile',
+      data,
+    })
     expect(parsePageMessage({ kind: 'stageItemFile', data, handle: 'h' })).toEqual({
       kind: 'stageItemFile',
       data,
@@ -252,7 +271,9 @@ describe('the file requests', () => {
     })
     expect(parsePageMessage({ kind: 'stageItemFile', data: 'A'.repeat(1_398_105) })).toBeNull()
     expect(parsePageMessage({ kind: 'stageItemFile', data: 'AAAA', handle: '' })).toBeNull()
-    expect(parsePageMessage({ kind: 'stageItemFile', data: 'AAAA', handle: 'h'.repeat(65) })).toBeNull()
+    expect(
+      parsePageMessage({ kind: 'stageItemFile', data: 'AAAA', handle: 'h'.repeat(65) }),
+    ).toBeNull()
     expect(parsePageMessage({ kind: 'stageItemFile' })).toBeNull()
   })
 
@@ -273,9 +294,11 @@ describe('the file requests', () => {
     expect(
       parsePageMessage({ kind: 'addAttachments', noteId: 'n', files: [{ handle: 'h', name: '' }] }),
     ).toBeNull()
-    expect(
-      parsePageMessage({ kind: 'removeAttachment', noteId: 'n', attachmentId: 'a' }),
-    ).toEqual({ kind: 'removeAttachment', noteId: 'n', attachmentId: 'a' })
+    expect(parsePageMessage({ kind: 'removeAttachment', noteId: 'n', attachmentId: 'a' })).toEqual({
+      kind: 'removeAttachment',
+      noteId: 'n',
+      attachmentId: 'a',
+    })
   })
 
   it('read pieces of an opened file by a whole index, 100 at most', () => {
@@ -292,7 +315,32 @@ describe('the file requests', () => {
     expect(save({})).toBeNull()
     expect(save({ name: 'a', staged: { name: 'f' } })).toBeNull()
     expect(save({ name: 'a', staged: { handle: 'h', name: '' } })).toBeNull()
-    expect(save({ name: 'a', staged: { handle: 'h', name: 'f', type: 't'.repeat(256) } })).toBeNull()
+    expect(
+      save({ name: 'a', staged: { handle: 'h', name: 'f', type: 't'.repeat(256) } }),
+    ).toBeNull()
+    // A staged file's name is at most 255 characters
+    expect(save({ name: 'a', staged: { handle: 'h', name: 'f'.repeat(255) } })).not.toBeNull()
+    expect(save({ name: 'a', staged: { handle: 'h', name: 'f'.repeat(256) } })).toBeNull()
+    expect(
+      parsePageMessage({
+        kind: 'addAttachments',
+        noteId: 'n',
+        files: [{ handle: 'h', name: 'f'.repeat(256) }],
+      }),
+    ).toBeNull()
+  })
+
+  it('name a linked item by any kind of 1 to 40 lower-case letters, digits and dashes, so one the core holds round-trips', () => {
+    const save = (kind: unknown) =>
+      parsePageMessage({
+        kind: 'setLinks',
+        ref: { kind: 'login', id: 'l' },
+        refs: [{ kind, id: 'x' }],
+      })
+    for (const kind of ['key', 'key-otp', 'ssh-key', 'a-later-kind', 'k'.repeat(40)])
+      expect(save(kind), kind).not.toBeNull()
+    for (const kind of ['', 'K', 'a b', 'a_b', 'k'.repeat(41), 7, null])
+      expect(save(kind), String(kind)).toBeNull()
   })
 })
 
