@@ -55,8 +55,10 @@ import type { AccountRequest, AccountResult } from './account'
 export type CodeType = 'totp' | 'hotp' | 'steam'
 
 /** A code's account, with no secret. */
-export interface CodeView {
+export interface CodeView extends ItemExtras {
   id: string
+  /** Its own name, when it has one (the issuer names it otherwise). */
+  name?: string
   issuer: string
   account: string
   type: CodeType
@@ -70,10 +72,19 @@ export interface CodeView {
   pinned?: boolean
   /** Kept on a security key: named, never computed or filled (spec). */
   onSecurityKey: boolean
-  /** Its websites and the issuer's domains, for matching and the hint. */
+  /**
+   * Its websites and the issuer's domains, for matching and the hint. A code linked to items takes the websites of those
+   * (`websitesFrom` names them), and these are then theirs.
+   */
   websites: string[]
+  /** The websites the code names itself, whatever the linked items lend. */
+  ownWebsites: string[]
+  /** The linked items that lend their websites: changed on them, not here. */
+  websitesFrom?: ItemRef[]
   /** The login it is linked to, if any. */
   loginId?: string
+  /** Its note. */
+  note?: string
   /** Backup codes left for the service, when the vault has them. */
   backupCodesLeft?: number
 }
@@ -111,11 +122,13 @@ export interface LoginHealth {
 }
 
 /** A login, with no password. */
-export interface LoginView {
+export interface LoginView extends ItemExtras {
   id: string
   name: string
   username: string
   websites: string[]
+  /** Each website with the rule that matches it (`websites` is the same addresses, without the rules). */
+  websiteRules: WebsiteRuleView[]
   tags: string[]
   order: number
   /** Pinned to the top of its list (the app's `pinned`). */
@@ -135,21 +148,27 @@ export interface LoginSecret {
   password: string
 }
 
-export interface LoginInput {
+export interface LoginInput extends ItemExtrasInput {
   name: string
   username: string
   password: string
   websites: string[]
+  /** Wins over `websites` when present. Only http and https addresses; a regex must compile. */
+  websiteRules?: WebsiteRuleView[]
   note?: string
   tags?: string[]
   /** A login saved from "Save to Kemlock?": the app marks it `source: 'autofill'` (a new login only). */
   fromAutofill?: boolean
 }
 
-export interface BackupCodeView {
+export interface BackupCodeView extends ItemExtras {
   /** The service's id; one row per service. */
   serviceId: string
+  /** Its own name, when it has one. */
+  name?: string
   issuer: string
+  /** Its websites (the linked items' when it is linked to some). */
+  websites: string[]
   total: number
   left: number
   /** Two codes or fewer are left (the app's low warning). */
@@ -202,17 +221,200 @@ export interface HealthReport {
 }
 
 /* ----------------------------------------------------------------------------------------------- */
+/* The item format's additions: custom fields, links, website rules, files                           */
+/* ----------------------------------------------------------------------------------------------- */
+
+/** The kinds of item the vault holds, as the server names them; an item is named by one of these and its entry id. */
+export type ItemKind =
+  | 'login'
+  | 'note'
+  | 'file'
+  | 'otp'
+  | 'backup-codes'
+  | 'card'
+  | 'identity'
+  | 'contact'
+  | 'ssh-key'
+  | 'pgp-key'
+  | 'certificate'
+  | 'passkey'
+
+/** One item: its kind and its entry id (never the server's item id). */
+export interface ItemRef {
+  kind: ItemKind
+  id: string
+}
+
+/** What a custom field may be edited as. */
+export type FieldKind = 'text' | 'hidden' | 'boolean'
+
+/** A custom field as a view shows it: a hidden field's value is never here (`revealField` gives it, one at a time). */
+export interface FieldView {
+  /** Its place in the item's own list of fields: what `revealField` and `FieldInput.origin` name. */
+  index: number
+  name: string
+  /** `linked` (a field that follows another item) and `other` (a later version's kind) are shown and kept, never edited. */
+  kind: FieldKind | 'linked' | 'other'
+  /** A text field's text, or `true` or `false` for a checkbox; never for a hidden field. */
+  value?: string
+  hasValue: boolean
+  /** The id of the administrator's definition this field was made from. */
+  adminField?: string
+  editable: boolean
+}
+
+/** A field as it is saved. A field the list leaves out is removed; a nameless row is dropped; an entry that can't be edited stays. */
+export interface FieldInput {
+  /** The `FieldView.index` this row edits, so the entry's other members are kept; absent for a new field. */
+  origin?: number
+  name: string
+  kind: FieldKind
+  /** Text, or `true` or `false` for a checkbox. */
+  value?: string
+  /** A hidden field that was not revealed: its value stays as it is. */
+  keepValue?: true
+  adminField?: string
+}
+
+/** A field the administrator defines for kinds of item (`GET /kem/v1/custom-fields`). */
+export interface AdminFieldDef {
+  id: string
+  name: string
+  type: 'text' | 'hidden' | 'checkbox'
+  /** The item kinds it applies to, or `all`. */
+  kinds: string[] | 'all'
+}
+
+export interface CustomFieldDefs {
+  fields: AdminFieldDef[]
+  /** The person may add fields of their own (true when there is no Kemlock Server to say otherwise). */
+  allowOwn: boolean
+}
+
+/** An item that links to this one, or that this one links to. */
+export interface LinkedItemView {
+  ref: ItemRef
+  name: string
+  /** A line under the name, as a list shows it. */
+  detail?: string
+  /** Only one end names the other (the other item can't be written, or an older version made the link). */
+  halfMade?: boolean
+  /** The shared space it is in, as for a note. */
+  space?: Record<string, unknown>
+}
+
+/** What every item's view carries of the format's additions. */
+export interface ItemExtras {
+  fields: FieldView[]
+  /** How many links it has, counted from both ends (a login's linked code counts). */
+  links: number
+  /** On a saved view: the names of the items whose end of a new link could not be written. */
+  linkFailures?: string[]
+}
+
+/** What every item's input may carry of them: a missing `fields` or `links` leaves them as they are. */
+export interface ItemExtrasInput {
+  fields?: FieldInput[]
+  links?: ItemRef[]
+}
+
+/** How a login's website is matched: the app's `uriMatch` (absent, 0, 1, 2, 3, 4, 5). */
+export type MatchRule = 'default' | 'domain' | 'host' | 'startsWith' | 'exact' | 'regex' | 'never'
+
+export interface WebsiteRuleView {
+  uri: string
+  match: MatchRule
+}
+
+/** A file attached to a note. */
+export interface AttachmentView {
+  id: string
+  name: string
+  size: number
+  type?: string
+  sha256?: string
+  /** The file is on Kemlock Server (it is only named until the vault has synced it). */
+  onServer: boolean
+}
+
+/** What a vault may do with files: only a vault that syncs with Kemlock Server uploads, downloads and deletes them. */
+export type FileSync = 'kemlock' | 'readOnly'
+
+/** A File item's row. */
+export interface FileView {
+  id: string
+  /** The item's name. */
+  name: string
+  /** The file's own name. */
+  fileName?: string
+  size?: number
+  type?: string
+  pinned: boolean
+  tags: string[]
+  order: number
+  changedAt: number
+  onServer: boolean
+  links: number
+  /** The shared space it is in, as for a note. */
+  space?: Record<string, unknown>
+}
+
+export interface FileFull extends FileView {
+  notes: string
+}
+
+/** What the browser edits of a File item. `staged` names the file a new item or a replacement holds (`stageItemFile` first). */
+export interface FileInput {
+  name: string
+  notes?: string
+  pinned?: boolean
+  tags?: string[]
+  links?: ItemRef[]
+  staged?: { handle: string; name: string; type?: string }
+}
+
+/** A file the core opened for reading, a piece at a time with `readOpened`. */
+export interface Opened {
+  handle: string
+  size: number
+  name: string
+  type?: string
+}
+
+/** One staged file to attach to a note. */
+export interface StagedAttachment {
+  handle: string
+  name: string
+  type?: string
+}
+
+/** What the browser edits of a code's account (its secret never changes). A missing member stays as it is. */
+export interface CodeInput extends ItemExtrasInput {
+  name?: string
+  websites?: string[]
+  note?: string
+  pinned?: boolean
+}
+
+/** What the browser edits of a service's backup codes (the codes themselves have their own calls). */
+export interface BackupCodesInput extends ItemExtrasInput {
+  name?: string
+  websites?: string[]
+  note?: string
+}
+
+/* ----------------------------------------------------------------------------------------------- */
 /* Notes, cards and identities (docs/plans/add-items.md)                                             */
 /* ----------------------------------------------------------------------------------------------- */
 
 /** A note's row: its title, never its text. */
-export interface NoteView {
+export interface NoteView extends ItemExtras {
   id: string
   title: string
   tags: string[]
   order: number
   pinned: boolean
-  /** Attached files, which the phone holds: the browser counts them. */
+  /** How many files are attached. */
   files: number
   changedAt: number
   /** A note Kemlock made to keep a security key's PIV management key. */
@@ -224,11 +426,11 @@ export interface NoteView {
 /** A note whole: its text, and the names of its files. */
 export interface NoteFull extends NoteView {
   text: string
-  attachments: { name: string; size: number; type?: string }[]
+  attachments: AttachmentView[]
 }
 
 /** What the browser edits of a note. A missing `pinned` or `tags` leaves them as they are. */
-export interface NoteInput {
+export interface NoteInput extends ItemExtrasInput {
   title: string
   text: string
   pinned?: boolean
@@ -236,7 +438,7 @@ export interface NoteInput {
 }
 
 /** A card's row: its last four digits, never its number, security code or PIN. */
-export interface CardView {
+export interface CardView extends ItemExtras {
   id: string
   name: string
   cardholder?: string
@@ -268,7 +470,7 @@ export interface CardFull extends CardView {
 }
 
 /** What the browser edits of a card; a field left out is cleared, except `tags` and `pinned`, which stay. */
-export interface CardInput {
+export interface CardInput extends ItemExtrasInput {
   name: string
   cardholder?: string
   /** Digits, which may be written with spaces and dashes. */
@@ -316,7 +518,7 @@ export interface IdentityDocumentFull extends IdentityDocumentView {
 }
 
 /** An identity's row: its details and address, and its documents with no number. */
-export interface IdentityView {
+export interface IdentityView extends ItemExtras {
   id: string
   name: string
   title?: string
@@ -362,7 +564,7 @@ export interface IdentityDocumentInput {
  * What the browser edits of an identity; a detail left out is cleared, except `tags` and `pinned`, which stay. Without
  * `documents` they stay as they are; with it, a document the list leaves out is removed.
  */
-export interface IdentityInput {
+export interface IdentityInput extends ItemExtrasInput {
   name: string
   title?: string
   givenName?: string
@@ -465,6 +667,8 @@ export interface SyncStatus {
   storage?: 'sealed' | 'plain'
   /** The home's name. */
   home?: string
+  /** Added by item format: whether files can go up and down (only with Kemlock Server). */
+  fileSync?: FileSync
 }
 
 export interface VaultState {
@@ -474,6 +678,8 @@ export interface VaultState {
   wrongPasswords: number
   lastWrongAt?: number
   sync?: SyncStatus
+  /** Added by item format: `kemlock` only when the vault syncs with Kemlock Server, which then holds the files. */
+  fileSync: FileSync
 }
 
 export interface UnlockResult {
@@ -702,6 +908,40 @@ export interface CoreApi extends ToolsCoreApi {
   saveIdentity(id: string | null, input: IdentityInput): Promise<IdentityView>
   deleteIdentity(id: string): Promise<void>
 
+  // Added by item format: custom fields, links and files. A hidden field's value and a file's key are one call each and never in a
+  // list; a file's key never leaves the core.
+  /** The administrator's field definitions on this server (kept for the session; `refresh` asks again). None, and `allowOwn`, off Kemlock Server. */
+  customFieldDefs(refresh?: boolean): Promise<CustomFieldDefs>
+  /** One field's value, a hidden field's too. */
+  revealField(ref: ItemRef, index: number): Promise<string>
+  /** Every field's value, for an edit page. */
+  revealFields(ref: ItemRef): Promise<{ index: number; value: string }[]>
+  linkedItems(ref: ItemRef): Promise<LinkedItemView[]>
+  /** What may be linked: at most 50 items that can be read and written, are not in the trash and are not the item itself. */
+  linkCandidates(ref: ItemRef | null, query: string): Promise<LinkedItemView[]>
+  /** Makes the item's links these, writing both ends. */
+  setLinks(ref: ItemRef, refs: ItemRef[]): Promise<{ linkFailures: string[] }>
+  /** Changes a code's account (name, websites, note, fields, links), never its secret. */
+  saveCode(id: string, input: CodeInput): Promise<CodeView>
+  saveBackupCodes(serviceId: string, input: BackupCodesInput): Promise<BackupCodeView>
+  files(): Promise<FileView[]>
+  revealFile(id: string): Promise<FileFull>
+  deleteFile(id: string): Promise<void>
+  /** Fails `unavailable` off Kemlock Server when `staged` is given. */
+  saveFile(id: string | null, input: FileInput): Promise<FileView>
+  /** Adds a piece of a file (base64, at most 1 MiB) to the staged file under `handle`, or, with null, to a new one. */
+  stageItemFile(data: string, handle: string | null): Promise<{ handle: string; length: number }>
+  releaseStaged(handle: string): Promise<void>
+  /** Attaches staged files to a note (at most 100 in all, 50 MiB each). */
+  addAttachments(noteId: string, files: StagedAttachment[]): Promise<NoteFull>
+  removeAttachment(noteId: string, attachmentId: string): Promise<NoteFull>
+  /** Fetches and opens a File item's file, or a note's attachment, and holds it for `readOpened`. */
+  openItemFile(ref: ItemRef, attachmentId?: string): Promise<Opened>
+  /** A piece of the opened file, base64, from `index` times 1 MiB; empty past its end. */
+  readOpened(handle: string, index: number): Promise<string>
+  closeOpened(handle: string): Promise<void>
+  // End of added by item format
+
   // Matching, generating, health
   match(address: string): Promise<SiteMatch>
   generate(options: GeneratorOptions): Promise<string>
@@ -924,10 +1164,15 @@ export interface PageApi extends ToolsPageApi {
       | 'phone'
       | 'documentNumber'
       | 'noteText'
+      // Added by item format: one custom field of the item `ref`, by its index (`id` is the ref's id)
+      | 'field'
     id: string
     value?: string
     /** With `documentNumber`: the document of the identity. */
     documentId?: string
+    /** With `field`: the item, and the field's `FieldView.index`. */
+    ref?: ItemRef
+    index?: number
   }): Promise<void>
   /** Fills the tab in front, its frame that holds the field, after the site check (decision 4). */
   fill(args: {
@@ -980,6 +1225,34 @@ export interface PageApi extends ToolsPageApi {
   deleteIdentity(args: { id: string }): Promise<void>
   /** A card's number, security code or PIN, or a document's number, to show on its page. */
   showSecret(args: { what: ItemSecret; id: string; documentId?: string }): Promise<string>
+
+  // Added by item format (begin): custom fields, links and files. Staging, attaching and saving a file go from the files tab only.
+  customFieldDefs(args?: { refresh?: boolean }): Promise<CustomFieldDefs>
+  /** One field's value, to show or copy on a click. */
+  revealField(args: { ref: ItemRef; index: number }): Promise<string>
+  /** Every field's value, for an edit page. */
+  revealFields(args: { ref: ItemRef }): Promise<{ index: number; value: string }[]>
+  linkedItems(args: { ref: ItemRef }): Promise<LinkedItemView[]>
+  linkCandidates(args: { ref: ItemRef | null; query: string }): Promise<LinkedItemView[]>
+  setLinks(args: { ref: ItemRef; refs: ItemRef[] }): Promise<{ linkFailures: string[] }>
+  saveCode(args: { id: string; input: CodeInput }): Promise<CodeView>
+  saveBackupCodes(args: { serviceId: string; input: BackupCodesInput }): Promise<BackupCodeView>
+  files(): Promise<FileView[]>
+  revealFile(args: { id: string }): Promise<FileFull>
+  deleteFile(args: { id: string }): Promise<void>
+  /** With `staged`: the files tab only, and `unavailable` off Kemlock Server. */
+  saveFile(args: { id: string | null; input: FileInput }): Promise<FileView>
+  /** A piece of a file (base64, at most 1 MiB): the first has no handle and is answered one, the others name it. Files tab only. */
+  stageItemFile(args: { data: string; handle?: string }): Promise<{ handle: string; length: number }>
+  releaseStaged(args: { handle: string }): Promise<void>
+  /** Files tab only. */
+  addAttachments(args: { noteId: string; files: StagedAttachment[] }): Promise<NoteFull>
+  removeAttachment(args: { noteId: string; attachmentId: string }): Promise<NoteFull>
+  /** Opens a File item's file or a note's attachment, to be read with `readOpened`. Popup and files tab. */
+  openItemFile(args: { ref: ItemRef; attachmentId?: string }): Promise<Opened>
+  readOpened(args: { handle: string; index: number }): Promise<string>
+  closeOpened(args: { handle: string }): Promise<void>
+  // Added by item format (end)
 
   syncStatus(): Promise<SyncStatus | null>
   signInKemlock(args: KemlockSignIn): Promise<SignInStep>
