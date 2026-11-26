@@ -1243,7 +1243,10 @@ export interface PageApi extends ToolsPageApi {
   /** With `staged`: the files tab only, and `unavailable` off Kemlock Server. */
   saveFile(args: { id: string | null; input: FileInput }): Promise<FileView>
   /** A piece of a file (base64, at most 1 MiB): the first has no handle and is answered one, the others name it. Files tab only. */
-  stageItemFile(args: { data: string; handle?: string }): Promise<{ handle: string; length: number }>
+  stageItemFile(args: {
+    data: string
+    handle?: string
+  }): Promise<{ handle: string; length: number }>
   releaseStaged(args: { handle: string }): Promise<void>
   /** Files tab only. */
   addAttachments(args: { noteId: string; files: StagedAttachment[] }): Promise<NoteFull>
