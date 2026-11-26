@@ -91,6 +91,8 @@ extension VaultLinks on VaultService {
       for (final entry in entriesOf(lists))
         if (entry is! KeyAccount &&
             (self == null || entry.id != self.id) &&
+            // An item with no item id yet (a legacy id and no account) can't be linked to: the link would name nothing
+            isLinkId(linkIdOf(entry, account: owner)) &&
             !taken.contains(linkIdOf(entry, account: owner).toLowerCase()) &&
             (needle.isEmpty || entrySearchText(entry).contains(needle)))
           entry,
@@ -115,6 +117,8 @@ extension VaultLinks on VaultService {
     return out;
   }
 
+  bool _pagesCannotHold(VaultEntry<Object?> entry) => entry is KeyAccount;
+
   /// Makes the item [kind] [id] linked to the items of [wanted] and to no other it can see: each end is written, both together, so a
   /// link is never made at one end alone. A link the item holds that the vault has no item for stays. An end this account may not
   /// edit, an item that isn't there and one that has no item id yet are left as they were and named in the answer.
@@ -125,9 +129,10 @@ extension VaultLinks on VaultService {
     final self = findEntry(lists, kind, id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
     editGuard?.call(self.spaceId, self.id);
     final failed = <String>[];
+    // An end the pages can't hold (an account on a security key is never offered to link to) is kept as it is: never made, never dropped
     final current = {
       for (final item in linkedItemsOf(lists, self, account: owner))
-        if (item.entry != null) item.id: item,
+        if (item.entry != null && !_pagesCannotHold(item.entry!)) item.id: item,
     };
     // An item that holds more links than the limit already may be saved with the ones it has
     if (wanted.length > linkRefsMax && wanted.length > current.length) throw const CoreFailure(CoreFailure.invalid, 'too many links');
@@ -136,7 +141,7 @@ extension VaultLinks on VaultService {
       final other = findEntry(lists, ref.kind, ref.id);
       if (other == null) {
         failed.add(ref.id);
-      } else if (other.id != self.id) {
+      } else if (other.id != self.id && !_pagesCannotHold(other)) {
         desired[linkIdOf(other, account: owner).toLowerCase()] = other;
       }
     }
