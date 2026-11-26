@@ -423,12 +423,12 @@ describe('a login’s page of websites and rules', () => {
   const saved = () =>
     (background.of('saveLogin')[0]?.args as { input: Record<string, unknown> }).input
 
-  it('saves the rules, and sends no fields or links it was not asked to change', async () => {
+  it('sends no rules, fields or links it was not asked to change', async () => {
     const root = await open()
     expect(selectOf(root, t('extras_ruleOfN', 1))?.value).toBe('host')
     await submit(root.querySelector('form'))
     const input = saved()
-    expect(input.websiteRules).toEqual([{ uri: 'https://orbit-cloud.com', match: 'host' }])
+    expect('websiteRules' in input).toBe(false)
     expect(input.websites).toEqual(['https://orbit-cloud.com'])
     expect('fields' in input).toBe(false)
     expect('links' in input).toBe(false)

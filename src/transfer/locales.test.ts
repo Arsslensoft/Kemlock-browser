@@ -172,9 +172,7 @@ describe('the transfer strings', () => {
     // Names and words that read the same in both languages
     expect(same).toEqual([
       'transfer_export_cxf_title',
-      'transfer_kind_codes',
       'transfer_kind_notes',
-      'transfer_sample_code',
       'transfer_sample_note',
     ])
   })

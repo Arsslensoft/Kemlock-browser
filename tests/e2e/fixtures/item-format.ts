@@ -99,7 +99,6 @@ export function itemFormatDoc(): SyncDoc {
         phone: '+44 20 7946 0000',
         address: '12 St James Square\nLondon',
         // No key: a contact the person typed in
-        public: '',
         source: 'manual',
         addedAt: NOW,
         updatedAt: NOW,

@@ -298,9 +298,10 @@ test.describe('the item format, over a WebDAV vault', () => {
     const original = member(itemFormatDoc(), 'contacts', ids.ada)
     expect(stored).toMatchObject({
       company: 'Analytical Engines plc',
-      public: '',
       source: 'manual',
     })
+    // A contact with no key has no `public` (crypto.md, "Contact")
+    expect(stored).not.toHaveProperty('public')
     for (const key of ['email', 'phone', 'address', 'x-future']) {
       expect(JSON.stringify(stored[key]), key).toBe(JSON.stringify(original[key]))
     }
@@ -316,7 +317,8 @@ test.describe('the item format, over a WebDAV vault', () => {
       ownWebsites: ['vpn.example.com', 'sso.example.com'],
     })
     const orbit = codes.find((c) => c.id === ids.orbitCode)!
-    expect(orbit.loginId).toBe(ids.orbit)
+    // The phone's linkedLoginId is a link (both pages show it), not the app's own code-login pairing (loginId)
+    expect(orbit.loginId).toBeUndefined()
     expect(orbit.websitesFrom).toEqual([login])
     expect(orbit.websites).toEqual(expect.arrayContaining(['orbit-cloud.com']))
 

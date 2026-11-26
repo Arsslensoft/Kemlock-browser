@@ -82,14 +82,17 @@ describe('the fields and links of an input', () => {
     expect(save({ kind: 'text' })).toBeNull()
   })
 
-  it('refuse more than 100 links, a kind that is not an item’s and an id that is empty or long', () => {
+  it('refuse more than 100 links, a kind that is no kind’s name and an id that is empty or long', () => {
     const save = (links: unknown) =>
       parsePageMessage({ kind: 'saveNote', id: null, input: { title: 't', text: '', links } })
     expect(
       save(Array.from({ length: 100 }, (_, i) => ({ kind: 'note', id: `n${i}` }))),
     ).not.toBeNull()
     expect(save(Array.from({ length: 101 }, (_, i) => ({ kind: 'note', id: `n${i}` })))).toBeNull()
-    expect(save([{ kind: 'secret', id: 'x' }])).toBeNull()
+    // Any kind the core may name later goes through; one that could be no kind's name does not
+    expect(save([{ kind: 'secret', id: 'x' }])).not.toBeNull()
+    expect(save([{ kind: 'Not a kind!', id: 'x' }])).toBeNull()
+    expect(save([{ kind: 'k'.repeat(41), id: 'x' }])).toBeNull()
     expect(save([{ kind: 'note', id: '' }])).toBeNull()
     expect(save([{ kind: 'note', id: 'x'.repeat(101) }])).toBeNull()
     expect(save([{ kind: 'note', id: 'x'.repeat(100) }])).not.toBeNull()

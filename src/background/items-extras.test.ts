@@ -507,7 +507,7 @@ describe('a login’s website rules', () => {
 })
 
 describe('a code’s own details', () => {
-  it('are a name, websites, a note, fields and links, and never the secret', async () => {
+  it('are a name, a note, fields and links, and never the secret', async () => {
     const before = await code()
     const note = await saveNote()
     const saved = await h.ok<CodeView>({
@@ -515,11 +515,11 @@ describe('a code’s own details', () => {
       id: before.id,
       input: {
         name: 'Orbit sign-in',
-        websites: ['orbit.example', 'orbit.example.org'],
         note: 'Use the phone',
         pinned: true,
         fields: [{ name: 'Recovery email', kind: 'text', value: 'sam@example.org' }],
-        links: [noteRef(note), await loginRef()],
+        // A note lends no websites; the code's own websites are lent by its login, and tested below
+        links: [noteRef(note)],
       },
     })
     expect(saved).toMatchObject({
@@ -529,15 +529,14 @@ describe('a code’s own details', () => {
       account: before.account,
       note: 'Use the phone',
       pinned: true,
-      ownWebsites: ['orbit.example', 'orbit.example.org'],
-      links: 2,
+      links: 1,
     })
     expect(saved.fields).toHaveLength(1)
     expect(JSON.stringify(saved)).not.toContain('JBSWY3DPEHPK3PXP')
     // A save that names nothing changes nothing
     expect(await h.ok<CodeView>({ kind: 'saveCode', id: before.id, input: {} })).toMatchObject({
       name: 'Orbit sign-in',
-      links: 2,
+      links: 1,
     })
   })
 

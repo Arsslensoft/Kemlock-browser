@@ -118,7 +118,6 @@ describe('the account strings', () => {
       'account_kind_amethystora',
       'account_move_kind_contact',
       'account_move_kind_note',
-      'account_move_kind_otp',
       'account_move_screenRunning',
       'account_proof_label',
       'account_recovery_have',
