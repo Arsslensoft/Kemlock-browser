@@ -190,6 +190,27 @@ extension VaultLinks on VaultService {
     return failed;
   }
 
+  /// [held] with the links that name [removed] taken off the other entries that name it (`droppedLinksTo`), so that none is left naming an
+  /// item that is gone. A delete builds its lists with this inside the write, from the lists the write holds, so the entries that lose
+  /// the link are saved in the same write as the delete. An entry in a space this account may not edit keeps the link it holds: the
+  /// delete must not fail because the other end can't be written, and nothing mends a link to an item that is gone, so that link
+  /// stays one-way (the other end names an item that is not available, which the views already show as such).
+  Lists withLinksDroppedTo(Lists held, VaultEntry<Object?> removed) {
+    var next = held;
+    for (final other in droppedLinksTo(held, removed, now: nowMs, account: accountOwner?.call())) {
+      try {
+        editGuard?.call(other.spaceId, other.id);
+      } on CoreFailure {
+        continue;
+      }
+      next = listsWithEntry(next, other);
+    }
+    return next;
+  }
+
+  /// [held] without the entry [removed], and without the links to it (see [withLinksDroppedTo]).
+  Lists withoutEntry(Lists held, VaultEntry<Object?> removed) => listsWithoutEntry(withLinksDroppedTo(held, removed), removed);
+
   // ─── Codes and backup codes ───────────────────────────────────────────
 
   /// [service] as a `BackupCodeView`, with its custom fields (no hidden value), its links and the space it is in.

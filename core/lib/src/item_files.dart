@@ -840,12 +840,11 @@ class ItemFiles {
     _vault.requireSession();
     final file = _file(id);
     _vault.editGuard?.call(file.spaceId, id);
-    await _vault.saveChanged(
-      (held) => listsWithFiles(held, [
-        for (final item in held.files)
-          if (item.id != id) item,
-      ]),
-    );
+    // The links to the File item go in the same write, worked out from the lists the write holds
+    await _vault.saveChanged((held) {
+      final removed = held.files.where((item) => item.id == id).firstOrNull;
+      return removed == null ? held : _vault.withoutEntry(held, removed);
+    });
     pending.drop(file.file.id);
   }
 

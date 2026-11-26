@@ -402,6 +402,27 @@ Lists listsWithEntry(Lists lists, VaultEntry<Object?> entry) {
   );
 }
 
+/// [lists] without [entry], the entry of its kind with its id.
+Lists listsWithoutEntry(Lists lists, VaultEntry<Object?> entry) {
+  List<T> drop<T extends VaultEntry<T>>(List<T> list) => [
+    for (final held in list)
+      if (held.id != entry.id) held,
+  ];
+  return Lists(
+    accounts: entry is OtpAccount ? drop(lists.accounts) : lists.accounts,
+    backupServices: entry is BackupService ? drop(lists.backupServices) : lists.backupServices,
+    keys: entry is VaultKey ? drop(lists.keys) : lists.keys,
+    notes: entry is SecureNote ? drop(lists.notes) : lists.notes,
+    passkeys: entry is Passkey ? drop(lists.passkeys) : lists.passkeys,
+    keyAccounts: entry is KeyAccount ? drop(lists.keyAccounts) : lists.keyAccounts,
+    contacts: entry is Contact ? drop(lists.contacts) : lists.contacts,
+    logins: entry is Login ? drop(lists.logins) : lists.logins,
+    cards: entry is PaymentCard ? drop(lists.cards) : lists.cards,
+    identities: entry is Identity ? drop(lists.identities) : lists.identities,
+    files: entry is VaultFile ? drop(lists.files) : lists.files,
+  );
+}
+
 /// How many items each entry of [lists] is linked to, from both ends, by entry id: the figure of every view's `links`. Counts the
 /// items the vault holds, each pair once, whichever end names it (a link, a code's `linkedLoginId`, a login's code); a link to an item
 /// that isn't there is kept but not counted. The same pairs `linkedItemsOf` finds, worked out for every entry in one pass.

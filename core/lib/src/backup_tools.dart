@@ -175,15 +175,11 @@ class BackupTools {
 
   Future<void> delete(String serviceId) async {
     _service(serviceId);
-    await vault.saveChanged(
-      (lists) => listsWith(
-        lists,
-        backupServices: [
-          for (final service in lists.backupServices)
-            if (service.id != serviceId) service,
-        ],
-      ),
-    );
+    // The links to the service go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((lists) {
+      final removed = lists.backupServices.where((service) => service.id == serviceId).firstOrNull;
+      return removed == null ? lists : vault.withoutEntry(lists, removed);
+    });
   }
 
   /// Which codes have their backup codes saved: how many accounts the check looks at, how many are covered, and the others A to Z.

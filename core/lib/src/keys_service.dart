@@ -237,12 +237,11 @@ class KeysService {
   Future<void> deleteKey(String id) async {
     vault.requireSession();
     _key(id);
-    await _saveKeys(
-      (held) => [
-        for (final key in held)
-          if (key.id != id) key,
-      ],
-    );
+    // The links to the key go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((held) {
+      final removed = held.keys.where((key) => key.id == id).firstOrNull;
+      return removed == null ? held : vault.withoutEntry(held, removed);
+    });
     _facts.remove(id);
   }
 
@@ -633,11 +632,10 @@ class KeysService {
   Future<void> deleteContact(String id) async {
     vault.requireSession();
     _contact(id);
-    await _saveContacts(
-      (held) => [
-        for (final contact in held)
-          if (contact.id != id) contact,
-      ],
-    );
+    // The links to the contact go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((held) {
+      final removed = held.contacts.where((contact) => contact.id == id).firstOrNull;
+      return removed == null ? held : vault.withoutEntry(held, removed);
+    });
   }
 }

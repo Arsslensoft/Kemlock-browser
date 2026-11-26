@@ -1157,31 +1157,41 @@ class VaultService {
     } else {
       final current = _login(id);
       editGuard?.call(current.spaceId, id);
-      Object? hosts = websites.isEmpty ? unset : websites;
-      Object? uris = keep;
-      if (rules != null) {
-        if (sameRules(rules, current.rules)) {
-          // Nobody changed a website: the login keeps what it holds, byte for byte
-          hosts = keep;
-        } else {
-          final sites = websitesOf(rules);
-          hosts = sites.websites ?? unset;
-          uris = sites.uris ?? unset;
+      // The edit is made on the login the write holds, so what another write changed meanwhile (a link, a code, a field, a password a
+      // sync brought) is not put back by the copy read above: the password kept, the rules compared and the previous passwords are all
+      // the held login's
+      Login edit(Login held) {
+        final heldPassword = input['keepPassword'] == true ? (held.password ?? '') : password;
+        final heldRules = input['websiteRules'] == null ? null : readRules(input['websiteRules'], held.rules);
+        final heldFields = applyFields(held.fields, input['fields']);
+        Object? hosts = websites.isEmpty ? unset : websites;
+        Object? uris = keep;
+        if (heldRules != null) {
+          if (sameRules(heldRules, held.rules)) {
+            // Nobody changed a website: the login keeps what it holds, byte for byte
+            hosts = keep;
+          } else {
+            final sites = websitesOf(heldRules);
+            hosts = sites.websites ?? unset;
+            uris = sites.uris ?? unset;
+          }
         }
+        final next = held.copyWith(
+          name: name,
+          username: username.isEmpty ? unset : username,
+          websites: hosts,
+          uris: uris,
+          note: note == null || note.isEmpty ? unset : note,
+          tags: tags == null ? keep : (tags.isEmpty ? unset : tags),
+          fields: identical(heldFields, held.fields) ? null : heldFields,
+        );
+        // A changed password keeps the one it replaces among the previous passwords
+        return next.withPassword(heldPassword.isEmpty ? null : heldPassword, nowMs);
       }
-      var next = current.copyWith(
-        name: name,
-        username: username.isEmpty ? unset : username,
-        websites: hosts,
-        uris: uris,
-        note: note == null || note.isEmpty ? unset : note,
-        tags: tags == null ? keep : (tags.isEmpty ? unset : tags),
-        fields: identical(fields, current.fields) ? null : fields,
-      );
-      // A changed password keeps the one it replaces among the previous passwords
-      next = next.withPassword(password.isEmpty ? null : password, nowMs);
-      saved = next;
-      await _saveLogins((held) => [for (final login in held) login.id == id ? next : login]);
+
+      // Looked at once now, so a bad input is refused before anything is written
+      saved = edit(current);
+      await _saveLogins((held) => [for (final login in held) login.id == id ? edit(login) : login]);
     }
     // A login that holds a generated password now holds it for good: it is no longer "recently generated"
     if (password.isNotEmpty && _generated.any((item) => item.password == password)) {
@@ -1216,12 +1226,11 @@ class VaultService {
   Future<void> deleteLogin(String id) async {
     requireSession();
     editGuard?.call(_login(id).spaceId, id);
-    await _saveLogins(
-      (held) => [
-        for (final login in held)
-          if (login.id != id) login,
-      ],
-    );
+    // The links to the login go in the same write, worked out from the lists the write holds, so no item is left naming a login that is gone
+    await saveChanged((held) {
+      final removed = held.logins.where((login) => login.id == id).firstOrNull;
+      return removed == null ? held : VaultLinks(this).withoutEntry(held, removed);
+    });
   }
 
   Future<void> ignoreHealth(String id, bool ignored) async {
