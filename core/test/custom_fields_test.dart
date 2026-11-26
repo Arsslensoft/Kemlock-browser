@@ -36,7 +36,7 @@ class _Sync extends SyncService {
   _Sync(super.vault);
 
   var asked = 0;
-  Completer<KmCustomFields> answer = Completer();
+  Completer<KmCustomFields> reply = Completer();
 
   @override
   ({KmHost host, KemlockTarget target})? get kemlockPlace => (
@@ -52,7 +52,7 @@ class _Sync extends SyncService {
   @override
   Future<T> withAccount<T>(Future<T> Function(KmConnection connection, KmAccount account) action) {
     asked++;
-    return answer.future.then((read) => read as T);
+    return reply.future.then((read) => read as T);
   }
 }
 
@@ -75,7 +75,7 @@ void main() {
 
   test('are read once for the session, and again when asked or after a run', () async {
     final defs = CustomFieldDefs(sync);
-    sync.answer.complete(const KmCustomFields(fields: [_field], allowOwn: false));
+    sync.reply.complete(const KmCustomFields(fields: [_field], allowOwn: false));
     final first = await defs.read();
     expect(first['allowOwn'], isFalse);
     expect((first['fields']! as List<Object?>).single, containsPair('name', 'Employee ID'));
@@ -92,7 +92,7 @@ void main() {
     final defs = CustomFieldDefs(sync);
     final reading = defs.read();
     defs.unload();
-    sync.answer.complete(const KmCustomFields(fields: [_field]));
+    sync.reply.complete(const KmCustomFields(fields: [_field]));
     await reading;
     // Asked again, it reads again: nothing of the read that was under way was kept
     await defs.read();

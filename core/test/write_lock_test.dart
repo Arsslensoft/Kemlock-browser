@@ -230,20 +230,24 @@ void main() {
       final id = added['id']! as String;
       await Future.wait<Object?>([
         core.vault.nextHotp(id),
-        core.call('saveCode', [id, {'name': 'Work'}]),
+        core.call('saveCode', [
+          id,
+          {'name': 'Work'},
+        ]),
       ]);
       expect(core.vault.lists.accounts.single.name, 'Work');
       expect(core.vault.lists.accounts.single.counter, 5);
     });
 
     test('backup codes saved with a new name keep the code a press used', () async {
-      final service = await object(core, 'addBackupService', ['Orbit', 'aaaa-1111
-bbbb-2222
-cccc-3333']);
+      final service = await object(core, 'addBackupService', ['Orbit', 'aaaa-1111\nbbbb-2222\ncccc-3333']);
       final id = service['serviceId']! as String;
       await Future.wait<Object?>([
         core.vault.useBackupCode(id),
-        core.call('saveBackupCodes', [id, {'name': 'Work'}]),
+        core.call('saveBackupCodes', [
+          id,
+          {'name': 'Work'},
+        ]),
       ]);
       expect(core.vault.lists.backupServices.single.name, 'Work');
       expect(core.vault.lists.backupServices.single.codes.where((code) => code.used), hasLength(1));

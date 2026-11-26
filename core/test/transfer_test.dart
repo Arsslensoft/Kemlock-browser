@@ -232,7 +232,9 @@ void main() {
       final file = NoteAttachment(id: 'a1', name: 'a.pdf', size: 1, key: 'a2V5', addedAt: 1);
       await into.vault.applySynced(
         Lists(
-          notes: [SecureNote(id: 'n1', title: 'Papers', text: '', attachments: [file], addedAt: 1)],
+          notes: [
+            SecureNote(id: 'n1', title: 'Papers', text: '', attachments: [file], addedAt: 1),
+          ],
           files: [VaultFile(id: 'f1', name: 'Scan', file: file, addedAt: 1)],
         ),
       );

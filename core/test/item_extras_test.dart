@@ -252,7 +252,13 @@ void main() {
     test('check the scheme before the host and port shortcut, which only a host with a dot or localhost may use', () {
       for (final uri in ['javascript:1/alert(1)', 'data:1', 'file:80', 'vbscript:1/x', 'JavaScript:8080', 'intranet:8080']) {
         for (final match in ['default', 'domain', 'host', 'startsWith', 'exact', 'never']) {
-          expect(() => readRules([{'uri': uri, 'match': match}], const []), invalid(), reason: '$uri on $match');
+          expect(
+            () => readRules([
+              {'uri': uri, 'match': match},
+            ], const []),
+            invalid(),
+            reason: '$uri on $match',
+          );
         }
       }
       final rules = readRules([
@@ -265,14 +271,14 @@ void main() {
     });
 
     test('keep a website the item holds as it is whatever its length or scheme, and refuse a new one over the limit', () {
-      final held = [
-        WebsiteRule('x' * 2500),
-        for (var i = 0; i < 60; i++) WebsiteRule('h$i.example.co'),
-      ];
+      final held = [WebsiteRule('x' * 2500), for (var i = 0; i < 60; i++) WebsiteRule('h$i.example.co')];
       final same = readRules(ruleViews(held), held);
       expect(same.map((r) => r.uri), held.map((r) => r.uri));
       expect(
-        () => readRules([...ruleViews(held), {'uri': 'new.example.co', 'match': 'default'}], held),
+        () => readRules([
+          ...ruleViews(held),
+          {'uri': 'new.example.co', 'match': 'default'},
+        ], held),
         invalid(),
       );
     });

@@ -21,8 +21,8 @@ import 'package:kemlock_core/core/ids.dart';
 import 'package:kemlock_core/crypto/account/encoding.dart' show CorruptedException, MalformedException, b64urlEncode, wipe;
 import 'package:kemlock_core/crypto/bytes.dart' show randomBytes;
 import 'package:kemlock_core/features/sync/kemlock/km_api.dart';
-import 'package:kemlock_core/features/sync/kemlock/km_failover.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_cache.dart' show KmCache;
+import 'package:kemlock_core/features/sync/kemlock/km_failover.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_files.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_kinds.dart' show KmEntry, KmKind;
 import 'package:kemlock_core/features/sync/kemlock/km_session.dart' show keyKemlockCache;
@@ -493,12 +493,8 @@ class ItemFiles {
     if (ids.isEmpty) return;
     try {
       await _sync.withAccount(
-        (connection, account) => KmFiles(
-          store: pending,
-          connection: connection,
-          server: connection.server,
-          fetchMissing: false,
-        ).discard({itemId: ids}),
+        (connection, account) =>
+            KmFiles(store: pending, connection: connection, server: connection.server, fetchMissing: false).discard({itemId: ids}),
       );
     } catch (_) {
       // A file left behind is only bytes the server holds for nothing
@@ -532,7 +528,10 @@ class ItemFiles {
       await _vault.saveChanged((held) {
         final current = findEntry(held, kind, itemId);
         return switch (current) {
-          final SecureNote note => listsWithEntry(held, note.copyWith(attachments: [for (final file in note.files) named[file.id] ?? file])),
+          final SecureNote note => listsWithEntry(
+            held,
+            note.copyWith(attachments: [for (final file in note.files) named[file.id] ?? file]),
+          ),
           final VaultFile item when named.containsKey(item.file.id) => listsWithEntry(held, item.copyWith(file: named[item.file.id])),
           _ => held,
         };
@@ -758,11 +757,7 @@ class ItemFiles {
       await _saveFileSaved(fresh, sealed, fresh: true);
     } else if (sealed == null) {
       savedId = current.id;
-      await _vault.saveChanged(
-        (held) => listsWithFiles(held, [
-          for (final item in held.files) item.id == current.id ? edit(item) : item,
-        ]),
-      );
+      await _vault.saveChanged((held) => listsWithFiles(held, [for (final item in held.files) item.id == current.id ? edit(item) : item]));
     } else {
       savedId = current.id;
       if (await _onServer(current)) {
@@ -794,9 +789,7 @@ class ItemFiles {
       try {
         await _vault.saveChanged((held) {
           if (!held.files.any((item) => item.id == current.id)) throw const CoreFailure(CoreFailure.notFound, 'no such file');
-          return listsWithFiles(held, [
-            for (final item in held.files) item.id == current.id ? edit(item, file: up) : item,
-          ]);
+          return listsWithFiles(held, [for (final item in held.files) item.id == current.id ? edit(item, file: up) : item]);
         });
       } catch (_) {
         await _discardUploaded(itemId, [serverId]);

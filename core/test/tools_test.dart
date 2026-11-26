@@ -448,8 +448,15 @@ void main() {
 
     test('does not undo a merge that removed a file the server holds, which its next run deletes', () async {
       final hash = 'cd' * 32;
-      NoteAttachment attachment(String id, {bool onServer = false}) =>
-          NoteAttachment(id: id, name: '$id.pdf', size: 3, key: 'a2V5', addedAt: 1, sha256: hash, extra: onServer ? {'kemlockFile': 'server-$id'} : const {});
+      NoteAttachment attachment(String id, {bool onServer = false}) => NoteAttachment(
+        id: id,
+        name: '$id.pdf',
+        size: 3,
+        key: 'a2V5',
+        addedAt: 1,
+        sha256: hash,
+        extra: onServer ? {'kemlockFile': 'server-$id'} : const {},
+      );
       await core.vault.applySynced(
         Lists(
           files: [
