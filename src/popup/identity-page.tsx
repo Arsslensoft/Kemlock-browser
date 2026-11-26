@@ -98,8 +98,10 @@ export function IdentityPage(props: {
         onEdit={() => props.onRoute({ name: 'identityEdit', id: identity.id })}
         onDelete={() => setAsking(true)}
         deleteLabel={t('items_deleteIdentity')}
+        readOnly={identity.space?.canEdit === false}
       />
-      {asking && (
+      {/* A read-only item never asks, because the core would refuse the delete */}
+      {asking && identity.space?.canEdit !== false && (
         <DeleteQuestion
           title={t('items_deleteIdentityTitle')}
           body={t('items_deleteBody', identity.name)}

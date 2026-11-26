@@ -524,3 +524,67 @@ describe('a note’s page', () => {
     expect(background.of('deleteNote')[0]?.args).toEqual({ id: 'n1' })
   })
 })
+
+describe('the bar of a note, card or identity page', () => {
+  const edit = message('en', 'popup_edit')
+  const shared = (canEdit: boolean) => ({ id: 's1', name: 'Example Co', canEdit })
+
+  // Each kind opens from its own tab, and the core refuses an edit or a delete in a space that can only be read
+  const kinds = [
+    {
+      kind: 'note',
+      tab: 'Notes 1',
+      open: 'Open Wi-Fi',
+      remove: t('items_deleteNote'),
+      world: (space?: ReturnType<typeof shared>): World =>
+        world({ notes: [{ ...wifi, ...(space === undefined ? {} : { space }) }] }),
+    },
+    {
+      kind: 'card',
+      tab: 'Cards 1',
+      open: 'Open Everyday Visa',
+      remove: t('items_deleteCard'),
+      world: (space?: ReturnType<typeof shared>): World =>
+        world({ cards: [{ ...visa, ...(space === undefined ? {} : { space }) }] }),
+    },
+    {
+      kind: 'identity',
+      tab: 'Identities 1',
+      open: 'Open Me',
+      remove: t('items_deleteIdentity'),
+      world: (space?: ReturnType<typeof shared>): World =>
+        world({ identities: [{ ...me, ...(space === undefined ? {} : { space }) }] }),
+    },
+  ]
+
+  for (const item of kinds) {
+    const open = async (space?: ReturnType<typeof shared>) => {
+      background.reset({
+        ...unlockedHandlers(item.world(space)),
+        revealNote: (() => wifiFull) as never,
+      })
+      const root = await openPopup()
+      await click(button(root, item.tab))
+      await click(button(root, item.open))
+      return root
+    }
+
+    it(`offers no Edit or Delete on a ${item.kind} of a space the person may only read`, async () => {
+      const root = await open(shared(false))
+      expect(button(root, edit)).toBeNull()
+      expect(button(root, item.remove)).toBeNull()
+    })
+
+    it(`offers Edit and Delete on a ${item.kind} of a space the person may change`, async () => {
+      const root = await open(shared(true))
+      expect(button(root, edit)).not.toBeNull()
+      expect(button(root, item.remove)).not.toBeNull()
+    })
+
+    it(`offers Edit and Delete on a ${item.kind} that is in no space`, async () => {
+      const root = await open()
+      expect(button(root, edit)).not.toBeNull()
+      expect(button(root, item.remove)).not.toBeNull()
+    })
+  }
+})

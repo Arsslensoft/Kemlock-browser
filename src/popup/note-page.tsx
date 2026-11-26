@@ -125,8 +125,10 @@ export function NotePage(props: {
         onEdit={() => props.onRoute({ name: 'noteEdit', id: note.id })}
         onDelete={() => setAsking(true)}
         deleteLabel={t('items_deleteNote')}
+        readOnly={note.space?.canEdit === false}
       />
-      {asking && (
+      {/* A read-only item never asks, because the core would refuse the delete */}
+      {asking && note.space?.canEdit !== false && (
         <DeleteQuestion
           title={t('items_deleteNoteTitle')}
           body={t('items_deleteBody', note.title)}

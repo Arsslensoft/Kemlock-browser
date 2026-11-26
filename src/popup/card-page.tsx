@@ -92,8 +92,10 @@ export function CardPage(props: {
         onEdit={() => props.onRoute({ name: 'cardEdit', id: card.id })}
         onDelete={() => setAsking(true)}
         deleteLabel={t('items_deleteCard')}
+        readOnly={card.space?.canEdit === false}
       />
-      {asking && (
+      {/* A read-only item never asks, because the core would refuse the delete */}
+      {asking && card.space?.canEdit !== false && (
         <DeleteQuestion
           title={t('items_deleteCardTitle')}
           body={t('items_deleteBody', card.name)}
