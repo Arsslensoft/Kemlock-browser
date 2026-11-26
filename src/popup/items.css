@@ -138,3 +138,120 @@
 .char-count.over {
   color: var(--danger);
 }
+
+/* Custom fields, links and match rules (docs/plans/add-item-format.md): a field row in a form, the linked items and the picker */
+.extras-fields .detail-label,
+.extras-fields .password-line .lead-label {
+  width: 96px;
+  overflow-wrap: anywhere;
+}
+
+.extras-fields .item-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.extras-editor {
+  min-width: 0;
+}
+
+.extras-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.extras-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.extras-name {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extras-type {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.extras-menu-title {
+  margin: 0;
+  padding: 10px 14px 2px;
+}
+
+.extras-pick {
+  width: 100%;
+  border-radius: 0;
+}
+
+.extras-pick-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.extras-candidates {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.extras-linked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 4px 6px 4px 14px;
+}
+
+.extras-linked-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+button.extras-linked-main {
+  cursor: pointer;
+}
+
+.site-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-rule-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.site-rule-line .label {
+  flex: none;
+  font-size: 11.5px;
+}
+
+.contact-address {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
