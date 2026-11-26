@@ -1,0 +1,30 @@
+/* Files: a note's attachments and a File item's page (docs/plans/add-item-format.md). Uses the popup's tokens and rows. */
+
+.note-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.note-file .lines {
+  min-width: 0;
+}
+
+.note-file .label {
+  font-size: 12px;
+}
+
+.note-file-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.files-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
