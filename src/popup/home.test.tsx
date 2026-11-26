@@ -105,7 +105,9 @@ describe('the Codes list', () => {
     const row = [...root.querySelectorAll('li.item')].find((item) =>
       item.textContent?.includes('Proton'),
     )!
-    expect(row.querySelector('button')).toBeNull()
+    // Nothing to copy, and no way to compute it; its name and websites can still be edited
+    expect(row.querySelector('button.item-main')).toBeNull()
+    expect(row.querySelectorAll('button')).toHaveLength(1)
     const asked = background.of('liveCodes').flatMap((call) => call.args.ids as string[])
     expect(asked).toContain('c1')
     expect(asked).not.toContain('c2')
