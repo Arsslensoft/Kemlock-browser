@@ -46,7 +46,7 @@
   "setup_unlock_wrong": "Mot de passe incorrect. {count} essais ratés depuis la dernière ouverture du coffre.",
 
   "setup_place_title": "Où votre téléphone se synchronise-t-il ?",
-  "setup_place_lead": "Rejoignez le lieu que votre téléphone utilise déjà, pour que ce navigateur contienne les mêmes codes et identifiants.",
+  "setup_place_lead": "Rejoignez le lieu que votre téléphone utilise déjà, pour que ce navigateur contienne les mêmes codes MFA et identifiants.",
   "setup_place_current": "Synchronisation actuelle avec {place} : {server}. Le navigateur garde ses éléments, et rien n'y est supprimé.",
   "setup_place_kemlock": "Kemlock Server",
   "setup_place_kemlock_body": "Votre compte Kemlock sur un serveur Kemlock.",
@@ -194,7 +194,7 @@
   "setup_done_device": "Cet appareil",
   "setup_next_title": "Et maintenant",
   "setup_next_pin": "Épinglez Kemlock : cliquez sur l'icône en forme de pièce de puzzle dans la barre d'outils, puis sur l'épingle à côté de Kemlock.",
-  "setup_next_open": "Ouvrez Kemlock depuis la barre d'outils pour voir vos codes et identifiants.",
+  "setup_next_open": "Ouvrez Kemlock depuis la barre d'outils pour voir vos codes MFA et identifiants.",
   "setup_next_sync": "Kemlock se synchronise toutes les cinq minutes tant que le coffre est déverrouillé.",
   "setup_next_button": "Ouvrir Kemlock",
   "setup_next_close": "Fermer cet onglet",

@@ -4,7 +4,7 @@
   "menu_failed": "Kemlock n'a pas pu ouvrir son menu ici.",
   "menu_no_vault": "Configurez d'abord Kemlock depuis son bouton de la barre d'outils.",
   "menu_empty_logins": "Aucun identifiant pour ce site.",
-  "menu_empty_codes": "Aucun code pour ce site.",
+  "menu_empty_codes": "Aucun code MFA pour ce site.",
   "menu_pick_another": "Choisir un autre élément…",
   "menu_kept_on_key": "Conservé sur une clé de sécurité. Il ne peut pas être rempli.",
   "menu_unknown_site": "Kemlock ne connaît pas ce site pour ces identifiants",
