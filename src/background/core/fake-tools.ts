@@ -23,12 +23,16 @@ import type {
   UndoResult,
 } from '../../shared/tools-api'
 import type { FakeDisk, StoredBackup, StoredCode, StoredLogin } from './fake'
+import type { FakeExtras } from './fake-extras'
 
 /** What the fake core lends the tools: its disk and its small helpers (private members of the class, reached by name). */
 interface Internals {
   disk: FakeDisk
   need(): FakeDisk
   now: () => number
+  /** A service's backup codes as a view shows them, with the item format's name, websites, fields and links. */
+  backupView(backup: StoredBackup): BackupCodeView
+  extras: FakeExtras
 }
 
 const failure = (word: string): Error => Object.assign(new Error(word), { name: 'KemlockError' })
@@ -60,14 +64,6 @@ function flagsOf(backup: StoredBackup): boolean[] {
 const syncUsed = (backup: StoredBackup): void => {
   backup.used = flagsOf(backup).filter(Boolean).length
 }
-
-const backupView = (backup: StoredBackup): BackupCodeView => ({
-  serviceId: backup.serviceId,
-  issuer: backup.issuer,
-  total: backup.codes.length,
-  left: backup.codes.length - backup.used,
-  low: backup.codes.length > 0 && backup.codes.length - backup.used <= 2,
-})
 
 /** The codes in pasted text, as the app splits them: lines, commas, tabs and spaces; two short groups ("1234 5678") stay whole. */
 export function parseCodes(text: string): string[] {
@@ -265,7 +261,7 @@ export const fakeToolsMethods: ToolsCoreApi & ThisType<Internals> = {
       used: 0,
     }
     disk.backups.push(backup)
-    return backupView(backup)
+    return this.backupView(backup)
   },
 
   async editBackupService(
@@ -282,7 +278,7 @@ export const fakeToolsMethods: ToolsCoreApi & ThisType<Internals> = {
     }
     if (clearNote || (note !== null && note.trim() === '')) delete backup.note
     else if (note !== null) backup.note = note.trim()
-    return backupView(backup)
+    return this.backupView(backup)
   },
 
   async addBackupCodes(
@@ -310,7 +306,7 @@ export const fakeToolsMethods: ToolsCoreApi & ThisType<Internals> = {
     if (backup.codes[index] !== code) throw failure('stale')
     flagsOf(backup)[index] = used
     syncUsed(backup)
-    return backupView(backup)
+    return this.backupView(backup)
   },
 
   async removeBackupCode(serviceId: string, index: number, code: string): Promise<BackupCodeView> {
@@ -321,12 +317,13 @@ export const fakeToolsMethods: ToolsCoreApi & ThisType<Internals> = {
     backup.codes.splice(index, 1)
     flags.splice(index, 1)
     syncUsed(backup)
-    return backupView(backup)
+    return this.backupView(backup)
   },
 
   async deleteBackupService(serviceId: string): Promise<void> {
     const disk = this.need()
     if (!disk.backups.some((held) => held.serviceId === serviceId)) throw failure('notFound')
+    this.extras.forget({ kind: 'backup-codes', id: serviceId })
     disk.backups = disk.backups.filter((held) => held.serviceId !== serviceId)
   },
 

@@ -1,8 +1,11 @@
 // The keys, contacts and PGP tools of `FakeCore`: in memory, following `KeysCoreApi`'s contract and not the real formats. A key's
 // private half is a line of text, an encrypted message is a base64 of what it says, and a signature is a line that names its
 // signer, so the popup's tests and the background's can follow a key from one vault to another by copying text.
+import type { ItemExtras, ItemKind, ItemRef } from '../../shared/api'
+import type { FakeExtras } from './fake-extras'
 import type {
   ContactPreview,
+  ContactSave,
   ContactView,
   KeyExport,
   KeyPreview,
@@ -54,6 +57,11 @@ interface StoredContact {
   note?: string
   standing: Standing
   addedAt: number
+  /** The details of a person (item format); a contact made without a key has these and an empty fingerprint. */
+  company?: string
+  email?: string
+  phone?: string
+  postal?: string
 }
 
 interface State {
@@ -92,6 +100,8 @@ export class KeysFake implements KeysCoreApi {
     disk: object,
     private readonly open: () => boolean,
     private readonly now: () => number,
+    /** Fields and links of the item format, which a contact takes as every item does. */
+    private readonly extras?: FakeExtras,
   ) {
     if (!states.has(disk)) states.set(disk, { keys: [], contacts: [], next: 1 })
     this.state = states.get(disk)!
@@ -163,18 +173,30 @@ export class KeysFake implements KeysCoreApi {
     }
   }
 
-  private contactView(contact: StoredContact): ContactView {
+  private contactView(contact: StoredContact, failures: string[] = []): ContactView {
+    const hasKey = contact.fingerprint !== ''
+    const more: ItemExtras = this.extras?.view({ kind: 'contact', id: contact.id }) ?? {
+      fields: [],
+      links: 0,
+    }
     return {
       id: contact.id,
       name: contact.name,
+      ...(contact.company === undefined ? {} : { company: contact.company }),
+      ...(contact.email === undefined ? {} : { email: contact.email }),
+      ...(contact.phone === undefined ? {} : { phone: contact.phone }),
+      ...(contact.postal === undefined ? {} : { address: contact.postal }),
+      hasKey,
+      ...more,
+      ...(failures.length > 0 ? { linkFailures: failures } : {}),
       fingerprint: grouped(contact.fingerprint),
-      line: `${contact.address} · Ed25519`,
-      userIds: [`${contact.name} <${contact.address}>`],
+      line: hasKey ? `${contact.address} · Ed25519` : (contact.email ?? contact.company ?? ''),
+      userIds: hasKey ? [`${contact.name} <${contact.address}>`] : [],
       source: contact.source,
       checked: contact.checked,
-      uncheckedAddresses: contact.checked ? [] : [contact.address],
+      uncheckedAddresses: contact.checked || !hasKey ? [] : [contact.address],
       standing: contact.standing,
-      canEncrypt: contact.standing === 'ok' || contact.standing === 'expiringSoon',
+      canEncrypt: hasKey && (contact.standing === 'ok' || contact.standing === 'expiringSoon'),
       ...(contact.note === undefined ? {} : { note: contact.note }),
       addedAt: contact.addedAt,
     }
@@ -443,21 +465,71 @@ export class KeysFake implements KeysCoreApi {
     return added
   }
 
-  async saveContact(args: {
-    id: string
-    name?: string
-    note?: string
-    checked?: boolean
-  }): Promise<ContactView> {
-    const contact = this.contact(args.id)
-    if (args.name !== undefined && args.name.trim() !== '') contact.name = args.name.trim()
-    if (args.note !== undefined) contact.note = args.note.trim() === '' ? undefined : args.note.trim()
+  async saveContact(args: ContactSave): Promise<ContactView> {
+    const state = this.need()
+    const text = (value: string | undefined): string | undefined => {
+      const trimmed = (value ?? '').trim()
+      return trimmed === '' ? undefined : trimmed
+    }
+    let contact: StoredContact
+    if (args.id === null) {
+      // A person with no key: a name is all it must have
+      const name = text(args.name)
+      if (name === undefined) throw new KeysFakeError('invalid')
+      this.extras?.check('contact', args)
+      contact = {
+        id: this.id('contact'),
+        name,
+        fingerprint: '',
+        address: '',
+        source: 'manual',
+        checked: false,
+        standing: 'ok',
+        addedAt: this.now(),
+      }
+      state.contacts.push(contact)
+    } else {
+      contact = this.contact(args.id)
+      if (args.name !== undefined && args.name.trim() !== '') contact.name = args.name.trim()
+    }
+    if (args.note !== undefined) contact.note = text(args.note)
     if (args.checked !== undefined) contact.checked = args.checked
-    return this.contactView(contact)
+    if (args.company !== undefined) contact.company = text(args.company)
+    if (args.email !== undefined) contact.email = text(args.email)
+    if (args.phone !== undefined) contact.phone = text(args.phone)
+    if (args.address !== undefined) contact.postal = text(args.address)
+    for (const key of ['company', 'email', 'phone', 'postal', 'note'] as const)
+      if (contact[key] === undefined) delete contact[key]
+    const failures = this.extras?.apply({ kind: 'contact', id: contact.id }, args) ?? []
+    return this.contactView(contact, failures)
+  }
+
+  /** What a ref names, when it is a contact or a key of this vault: its name and the line under it. */
+  nameOf(ref: ItemRef): { name: string; detail?: string } | undefined {
+    return this.items().find((item) => item.ref.kind === ref.kind && item.ref.id === ref.id)
+  }
+
+  /** The contacts and keys, as items that may be linked. */
+  items(): { ref: ItemRef; name: string; detail?: string }[] {
+    const kindOf = (kind: StoredKey['kind']): ItemKind =>
+      kind === 'ssh' ? 'ssh-key' : kind === 'pgp' ? 'pgp-key' : 'certificate'
+    return [
+      ...this.state.contacts.map((contact) => ({
+        ref: { kind: 'contact' as const, id: contact.id },
+        name: contact.name,
+        ...(contact.email === undefined ? {} : { detail: contact.email }),
+      })),
+      ...this.state.keys.map((key) => ({
+        ref: { kind: kindOf(key.kind), id: key.id },
+        name: key.name,
+        detail: key.algorithm,
+      })),
+    ]
   }
 
   async contactPublic(id: string): Promise<{ pem: string; fileName: string }> {
     const contact = this.contact(id)
+    if (contact.fingerprint === '') throw new KeysFakeError('noKey')
     return {
       pem: block('PGP PUBLIC KEY BLOCK', `fake:${contact.fingerprint}:${contact.name}:${contact.address}`),
       fileName: `${contact.name.replace(/[^A-Za-z0-9._-]+/g, '-')}.pub.asc`,
@@ -467,6 +539,7 @@ export class KeysFake implements KeysCoreApi {
   async deleteContact(id: string): Promise<void> {
     this.contact(id)
     this.state.contacts = this.state.contacts.filter((contact) => contact.id !== id)
+    this.extras?.forget({ kind: 'contact', id })
   }
 
   /* ---------------------------------------------------------------------------------------- */
@@ -504,7 +577,12 @@ export class KeysFake implements KeysCoreApi {
   async pgpEncrypt(args: Parameters<KeysCoreApi['pgpEncrypt']>[0]): Promise<PgpEncrypted> {
     this.need()
     const to = [
-      ...(args.contactIds ?? []).map((id) => this.contact(id).fingerprint),
+      ...(args.contactIds ?? []).map((id) => {
+        const { fingerprint } = this.contact(id)
+        // A contact with no key has nothing to encrypt to
+        if (fingerprint === '') throw new KeysFakeError('noKey')
+        return fingerprint
+      }),
       ...(args.keyIds ?? []).map((id) => this.pgpKey(id).fingerprint.replace(/ /g, '')),
     ]
     if (to.length === 0 && (args.passphrase === undefined || args.passphrase === ''))
