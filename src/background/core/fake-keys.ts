@@ -490,6 +490,7 @@ export class KeysFake implements KeysCoreApi {
       state.contacts.push(contact)
     } else {
       contact = this.contact(args.id)
+      this.extras?.validate({ kind: 'contact', id: contact.id }, args)
       if (args.name !== undefined && args.name.trim() !== '') contact.name = args.name.trim()
     }
     if (args.note !== undefined) contact.note = text(args.note)
@@ -511,8 +512,9 @@ export class KeysFake implements KeysCoreApi {
 
   /** The contacts and keys, as items that may be linked. */
   items(): { ref: ItemRef; name: string; detail?: string }[] {
+    // What the real core's `itemKindOf` says: an SSH or PGP key by its kind, any other key (signing, exchange) is a `key`
     const kindOf = (kind: StoredKey['kind']): ItemKind =>
-      kind === 'ssh' ? 'ssh-key' : kind === 'pgp' ? 'pgp-key' : 'certificate'
+      kind === 'ssh' ? 'ssh-key' : kind === 'pgp' ? 'pgp-key' : 'key'
     return [
       ...this.state.contacts.map((contact) => ({
         ref: { kind: 'contact' as const, id: contact.id },

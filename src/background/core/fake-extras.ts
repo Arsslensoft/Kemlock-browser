@@ -40,8 +40,10 @@ const noFields: ReadonlySet<ItemKind> = new Set<ItemKind>(['file', 'passkey'])
 const maxFieldRows = 100
 const maxLinkRefs = 100
 
+/** A person can edit a field of a kind the browser knows that has a name; a nameless one and a linked one are kept as they are. */
 const editable = (field: StoredField): boolean =>
-  field.kind === 'text' || field.kind === 'hidden' || field.kind === 'boolean'
+  (field.kind === 'text' || field.kind === 'hidden' || field.kind === 'boolean') &&
+  field.name.trim() !== ''
 
 /** What `FakeExtras` asks of the fake core around it: what the items are called, and the links the vault keeps apart from `links`. */
 export interface ExtrasHost {
@@ -92,26 +94,38 @@ export class FakeExtras {
 
   /* Fields ---------------------------------------------------------------------------------- */
 
+  /** The fields as a view shows them: those with a name, each by its place in the item's whole list (a nameless one is kept, unseen). */
   fieldViews(ref: ItemRef): FieldView[] {
-    return (this.held(ref)?.fields ?? []).map((field, index) => ({
-      index,
-      name: field.name,
-      kind: field.kind,
-      ...(field.kind === 'hidden' || field.kind === 'other' ? {} : { value: field.value }),
-      hasValue: field.value !== '',
-      ...(field.adminField === undefined ? {} : { adminField: field.adminField }),
-      editable: editable(field),
-    }))
+    const views: FieldView[] = []
+    ;(this.held(ref)?.fields ?? []).forEach((field, index) => {
+      if (field.name.trim() === '') return
+      views.push({
+        index,
+        name: field.name,
+        kind: field.kind,
+        // Only a text field and a checkbox show their value; a linked or other one shows none
+        ...(field.kind === 'text' || field.kind === 'boolean' ? { value: field.value } : {}),
+        hasValue: field.kind === 'boolean' || field.value !== '',
+        ...(field.adminField === undefined ? {} : { adminField: field.adminField }),
+        editable: editable(field),
+      })
+    })
+    return views
   }
 
+  /** One field's value, hidden or not; a field a person can't edit (linked, nameless) has none to give. */
   revealField(ref: ItemRef, index: number): string {
     const field = this.held(ref)?.fields[index]
-    if (field === undefined) throw this.fail('notFound')
+    if (field === undefined || !editable(field)) throw this.fail('notFound')
     return field.value
   }
 
   revealFields(ref: ItemRef): { index: number; value: string }[] {
-    return (this.held(ref)?.fields ?? []).map((field, index) => ({ index, value: field.value }))
+    const out: { index: number; value: string }[] = []
+    ;(this.held(ref)?.fields ?? []).forEach((field, index) => {
+      if (editable(field)) out.push({ index, value: field.value })
+    })
+    return out
   }
 
   /** The fields these rows make of the ones there are, or the word of what is wrong with them. Saves nothing. */
@@ -125,24 +139,24 @@ export class FakeExtras {
     const added: FieldInput[] = []
     for (const row of rows) {
       const target = row.origin === undefined ? undefined : existing[row.origin]
-      if (target === undefined) added.push(row)
-      // An entry the browser can't edit stays as it was, whatever the row says
-      else if (editable(target)) byOrigin.set(row.origin!, row)
+      // An entry the browser can't edit (linked, nameless) stays as it was, whatever the row says; a place named twice is added
+      if (target === undefined || !editable(target) || byOrigin.has(row.origin!)) added.push(row)
+      else byOrigin.set(row.origin!, row)
     }
     const make = (row: FieldInput, was: StoredField | undefined): StoredField | undefined => {
       const name = row.name.trim()
       if (name === '') return undefined
       let value = row.value ?? ''
-      if (row.kind === 'boolean') {
-        if (value === '') value = 'false'
-        if (value !== 'true' && value !== 'false') throw this.fail('invalid')
-      }
-      if (row.kind === 'hidden' && row.keepValue === true && was !== undefined) value = was.value
+      // A checkbox holds `true` or `false`, and anything else is `false`
+      if (row.kind === 'boolean') value = value === 'true' ? 'true' : 'false'
+      // A hidden value the page never held is the field's own, unless the row is changed to another kind
+      if (row.kind === 'hidden' && row.keepValue === true && was?.kind === 'hidden') value = was.value
+      const adminField = row.adminField ?? was?.adminField
       return {
         name,
         kind: row.kind,
         value,
-        ...(row.adminField === undefined ? {} : { adminField: row.adminField }),
+        ...(adminField === undefined ? {} : { adminField }),
       }
     }
     const out: StoredField[] = []
@@ -165,6 +179,12 @@ export class FakeExtras {
   /** Refuses what saving a new item with this input would, before it is made. */
   check(kind: ItemKind, input: ItemExtrasInput): void {
     if (input.fields !== undefined) this.plan(kind, [], input.fields)
+    if (input.links !== undefined && input.links.length > maxLinkRefs) throw this.fail('invalid')
+  }
+
+  /** Refuses what applying this input to the item that is there would, before anything of it is changed. */
+  validate(ref: ItemRef, input: ItemExtrasInput): void {
+    if (input.fields !== undefined) this.plan(ref.kind, this.held(ref)?.fields ?? [], input.fields)
     if (input.links !== undefined && input.links.length > maxLinkRefs) throw this.fail('invalid')
   }
 
@@ -218,11 +238,14 @@ export class FakeExtras {
   candidates(ref: ItemRef | null, query: string): LinkedItemView[] {
     const needle = query.trim().toLowerCase()
     const unwritable = this.host.unwritable()
+    // Never the item itself, or one it is linked to already
+    const taken = new Set((ref === null ? [] : this.linked(ref)).map((item) => refKey(item.ref)))
     return this.host
       .all()
       .filter(
         (item) =>
           (ref === null || !sameRef(item.ref, ref)) &&
+          !taken.has(refKey(item.ref)) &&
           !unwritable.has(refKey(item.ref)) &&
           (needle === '' ||
             item.name.toLowerCase().includes(needle) ||
@@ -243,11 +266,15 @@ export class FakeExtras {
   setLinks(ref: ItemRef, refs: readonly ItemRef[]): string[] {
     if (refs.length > maxLinkRefs) throw this.fail('invalid')
     const wanted = new Map<string, ItemRef>()
-    for (const other of refs) if (!sameRef(other, ref)) wanted.set(refKey(other), other)
-    for (const other of wanted.values()) if (this.host.find(other) === undefined) throw this.fail('notFound')
+    const failures: string[] = []
+    for (const other of refs) {
+      if (sameRef(other, ref)) continue
+      // An item that isn't here is named in the answer, and the others are made
+      if (this.host.find(other) === undefined) failures.push(other.id)
+      else wanted.set(refKey(other), other)
+    }
     const unwritable = this.host.unwritable()
     const nameOf = (other: ItemRef): string => this.host.find(other)?.name ?? other.id
-    const failures: string[] = []
     const current = this.linked(ref)
     for (const [otherKey, other] of wanted) {
       const have = current.find((item) => refKey(item.ref) === otherKey)
