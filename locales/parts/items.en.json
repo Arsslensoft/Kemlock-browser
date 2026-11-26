@@ -92,7 +92,6 @@
   "items_fieldUsername": "Username",
   "items_fieldValidFrom": "Valid from",
   "items_files": "Files: {count}",
-  "items_filesOnPhone": "Open the files in the Kemlock app on your phone: the browser lists them and keeps them as they are.",
   "items_filesTitle": "Files · {count}",
   "items_fillCard": "Fill card",
   "items_fillCardOf": "Fill the card {name}",
