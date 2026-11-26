@@ -1,10 +1,13 @@
 // A note's page, and the page that adds or edits one (mobile/lib/features/notes): its title and text, copying the text through the
-// clipboard that clears itself, and the files it holds, listed and left to the phone, which keeps their contents.
+// clipboard that clears itself, and the files it holds: listed always, and, with Kemlock Server sync, downloaded, removed and added
+// (the files tab holds the file picker).
 import { useState } from 'preact/hooks'
-import type { NoteFull } from '../shared/api'
+import type { AttachmentView, NoteFull } from '../shared/api'
 import {
   Button,
+  Confirm,
   Group,
+  LinkButton,
   Notice,
   PageHeader,
   Section,
@@ -17,7 +20,17 @@ import { sendProblemText } from '../shared/sends-text'
 import { errorMessage, t } from '../shared/ui/i18n'
 import { useCopy } from './copy'
 import type { Vault } from './data'
+import {
+  fileDetail,
+  fileError,
+  fileSyncOf,
+  noteFileLimit,
+  openFilesTab,
+  useDownload,
+} from './file-actions'
+import './files.css'
 import { allTags } from './format'
+import { FieldsSection, LinksSection } from './item-extras'
 import { DeleteQuestion, ItemBar } from './items-ui'
 import type { Route } from './route'
 import { ask } from './send'
@@ -27,13 +40,6 @@ import { TagEditor } from './tools/tag-editor'
 
 /** The most characters a note holds (the app's limit). */
 export const noteTextLimit = 10_000
-
-/** A file's size as the app shows it. */
-export function fileSize(bytes: number): string {
-  if (bytes < 1024) return t('items_sizeBytes', bytes)
-  if (bytes < 1024 * 1024) return t('items_sizeKb', Math.max(1, Math.round(bytes / 1024)))
-  return t('items_sizeMb', (bytes / (1024 * 1024)).toFixed(1))
-}
 
 function Gone(props: { onBack: () => void }) {
   return (
@@ -60,6 +66,9 @@ export function NotePage(props: {
   const [sync] = useSyncStatus()
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
+  const { busy: downloading, failed, download } = useDownload({ kind: 'note', id: props.id })
+  const [removing, setRemoving] = useState<AttachmentView | undefined>()
+  const [removeBusy, setRemoveBusy] = useState(false)
   if (note === undefined) return <Gone onBack={props.onBack} />
 
   const remove = async () => {
@@ -75,6 +84,23 @@ export function NotePage(props: {
     }
   }
   const text: NoteFull | undefined = full.value
+  const ref = { kind: 'note' as const, id: note.id }
+  // Files change only where the vault syncs with Kemlock Server, and in a space the account may write to
+  const fileSync = sync === undefined ? undefined : fileSyncOf(sync)
+  const canChange = fileSync === 'kemlock' && note.space?.canEdit !== false
+  const removeFile = async (file: AttachmentView) => {
+    setRemoveBusy(true)
+    try {
+      await ask('removeAttachment', { noteId: note.id, attachmentId: file.id })
+      await full.reload()
+      await vault.reload()
+    } catch (error) {
+      say(fileError(error))
+    } finally {
+      setRemoveBusy(false)
+      setRemoving(undefined)
+    }
+  }
   // Sends are Kemlock Server's: the button is there only where the vault syncs with it
   const canSend = sync !== undefined && sync !== null && sync.place === 'kemlock'
   // The background reads the note and keeps its text for the Sends tab; the tab is opened with a token, never with the text
@@ -127,18 +153,67 @@ export function NotePage(props: {
                 )}
               </div>
             )}
-            {text.attachments.length > 0 && (
+            {(text.attachments.length > 0 || canChange) && (
               <Section title={t('items_filesTitle', text.attachments.length)}>
-                <Group>
-                  <div class="note-files">
-                    {text.attachments.map((file, index) => (
-                      <span key={`${file.name}-${index}`} class="ellipsis">
-                        {file.name} <span class="label">· {fileSize(file.size)}</span>
-                      </span>
-                    ))}
+                {removing !== undefined && (
+                  <div class="login-confirm">
+                    <Confirm
+                      title={t('files_removeTitle')}
+                      body={t('files_removeBody', removing.name)}
+                      confirmLabel={t('files_remove')}
+                      cancelLabel={t('popup_cancel')}
+                      danger
+                      busy={removeBusy}
+                      onCancel={() => setRemoving(undefined)}
+                      onConfirm={() => void removeFile(removing)}
+                    />
                   </div>
-                </Group>
-                <p class="strength-line">{t('items_filesOnPhone')}</p>
+                )}
+                {text.attachments.length > 0 && (
+                  <Group>
+                    {text.attachments.map((file) => (
+                      <div key={file.id} class="note-file">
+                        <span class="grow lines">
+                          <span class="ellipsis">{file.name}</span>
+                          <span class="label ellipsis">
+                            {[fileDetail(file), file.onServer ? '' : t('files_notUploaded')]
+                              .filter((part) => part !== '')
+                              .join(' · ')}
+                          </span>
+                        </span>
+                        {canChange && (
+                          <span class="note-file-actions">
+                            <LinkButton
+                              label={t('files_downloadNamed', file.name)}
+                              disabled={!file.onServer || downloading !== undefined}
+                              onClick={() => void download(file.id, file.name)}
+                            >
+                              {downloading === file.id ? t('files_preparing') : t('files_download')}
+                            </LinkButton>
+                            <LinkButton
+                              quiet
+                              label={t('files_removeNamed', file.name)}
+                              onClick={() => setRemoving(file)}
+                            >
+                              {t('files_remove')}
+                            </LinkButton>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </Group>
+                )}
+                {failed !== undefined && <Notice kind="error">{failed}</Notice>}
+                {fileSync === 'readOnly' && text.attachments.length > 0 && (
+                  <p class="strength-line">{t('files_needSync')}</p>
+                )}
+                {canChange && text.attachments.length < noteFileLimit && (
+                  <div class="files-add">
+                    <Button icon="plus" onClick={() => openFilesTab(`attach/${note.id}`)}>
+                      {t('files_addFiles')}
+                    </Button>
+                  </div>
+                )}
               </Section>
             )}
           </>
@@ -165,6 +240,8 @@ export function NotePage(props: {
             </Group>
           </Section>
         )}
+        <FieldsSection ref={ref} fields={note.fields} />
+        <LinksSection ref={ref} />
       </div>
     </div>
   )

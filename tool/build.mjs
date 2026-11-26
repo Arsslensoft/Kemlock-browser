@@ -389,6 +389,7 @@ async function buildBrowser(browser, coreOut) {
     // The offscreen document is Chrome's: Firefox's and Safari's background pages have a DOM and a clipboard of their own
     sends: 'src/sends/index.html',
     keys: 'src/keys/index.html',
+    files: 'src/files/index.html',
     transfer: 'src/transfer/index.html',
     ...(browser === 'chrome' ? { offscreen: 'src/offscreen/index.html' } : {}),
   }

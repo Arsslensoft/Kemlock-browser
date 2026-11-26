@@ -88,7 +88,7 @@ const meFull: IdentityFull = {
 const wifiFull: NoteFull = {
   ...wifi,
   text: 'the password is hunter2',
-  attachments: [{ name: 'scan.pdf', size: 2048 }],
+  attachments: [{ id: 'a1', name: 'scan.pdf', size: 2048, onServer: true }],
 }
 
 beforeEach(() => {
@@ -478,12 +478,11 @@ describe('a note’s page', () => {
     return root
   }
 
-  it('shows the text and the files by name, and says the phone keeps them', async () => {
+  it('shows the text and the files by name and size', async () => {
     const root = await open()
     expect(text(root)).toContain('the password is hunter2')
     expect(text(root)).toContain('scan.pdf')
     expect(text(root)).toContain(t('items_sizeKb', '2'))
-    expect(text(root)).toContain(t('items_filesOnPhone'))
   })
 
   it('copies the text through the background', async () => {

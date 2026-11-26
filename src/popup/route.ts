@@ -36,3 +36,9 @@ export type Route =
   | { name: 'cardEdit'; id: string | null }
   | { name: 'identity'; id: string }
   | { name: 'identityEdit'; id: string | null }
+  // Files (src/popup/file-page.tsx, file-edit.tsx)
+  | { name: 'file'; id: string }
+  | { name: 'fileEdit'; id: string | null }
+  // The MFA code's and a service's backup codes' own edit pages (src/popup/code-edit.tsx)
+  | { name: 'codeEdit'; id: string }
+  | { name: 'backupEdit'; id: string }

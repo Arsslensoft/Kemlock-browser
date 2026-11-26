@@ -1,0 +1,133 @@
+/* The files tab: one centred column over the shared look (tokens.css, ui.css), light and dark by the system. */
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--ground);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.files-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 28px 16px 56px;
+}
+
+.files-tab p {
+  margin: 0;
+}
+
+.files-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.files-head h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.2px;
+}
+
+.files-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.files-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+}
+
+.files-done {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The drop area: a dashed box with the picker's button, outlined while a file is over it */
+.files-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  background: var(--well);
+  text-align: center;
+}
+
+.files-drop.over {
+  border-color: var(--accent);
+}
+
+.files-drop-icon {
+  color: var(--text2);
+}
+
+.files-drop-title {
+  font-weight: 600;
+}
+
+/* The file input is reached through its button, which the keyboard and a screen reader can use */
+.files-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.files-chosen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.files-chosen {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.files-chosen-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.files-chosen-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.files-chosen .danger-text {
+  color: var(--danger);
+}
+
+.files-label {
+  color: var(--text2);
+  font-size: 12.5px;
+}

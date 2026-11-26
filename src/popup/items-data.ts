@@ -1,6 +1,6 @@
-// Notes, cards and identities as the popup's lists show them: searching, the order (pinned first, then the vault's own), and the
+// Notes, cards, identities and files as the popup's lists show them: searching, the order (pinned first, then the vault's own), and the
 // short lines under a name. Pure, so the lists' tests need no page.
-import type { CardView, IdentityView, NoteView } from '../shared/api'
+import type { CardView, FileView, IdentityView, NoteView } from '../shared/api'
 import { monthYearText } from '../shared/card'
 import { countryLabel } from '../shared/countries'
 
@@ -94,4 +94,10 @@ export function dateText(text: string, language: string): string {
   return new Intl.DateTimeFormat(language, { dateStyle: 'long', timeZone: 'UTC' }).format(
     new Date(Date.UTC(year, month - 1, day)),
   )
+}
+
+/** Search a File item by its name or the name of the file it holds. An empty query matches. */
+export function fileMatches(file: FileView, text: string): boolean {
+  const needle = query(text)
+  return needle === '' || contains([file.name, file.fileName], needle)
 }
