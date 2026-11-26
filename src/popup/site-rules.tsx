@@ -25,6 +25,16 @@ export function ruleName(match: MatchRule): string {
 /** A row for a website about to be typed: on the base-domain rule. */
 export const newSiteRow = (uri = '', match: MatchRule = 'domain'): SiteRow => ({ uri, match })
 
+/** The rules a login holds now: its own, else its websites on the default rule. */
+export function rulesOf(login: {
+  websites: string[]
+  websiteRules?: WebsiteRuleView[]
+}): WebsiteRuleView[] {
+  return login.websiteRules !== undefined && login.websiteRules.length > 0
+    ? login.websiteRules
+    : login.websites.map((uri) => ({ uri, match: 'default' as const }))
+}
+
 /**
  * The rows of a login: its rules, or its websites on the default rule when the view carries no rules. A login with none gets one
  * empty row to type in; `fallback` fills a new login (from a generated password).
@@ -33,10 +43,7 @@ export function siteRowsOf(
   login: { websites: string[]; websiteRules?: WebsiteRuleView[] } | undefined,
   fallback: string[] = [],
 ): SiteRow[] {
-  const rules =
-    login === undefined
-      ? fallback.map((uri) => newSiteRow(uri))
-      : (login.websiteRules ?? login.websites.map((uri) => ({ uri, match: 'default' as const })))
+  const rules = login === undefined ? fallback.map((uri) => newSiteRow(uri)) : rulesOf(login)
   return rules.length > 0
     ? rules.map((rule) => ({ uri: rule.uri, match: rule.match }))
     : [newSiteRow()]
@@ -49,14 +56,30 @@ export function siteRulesOf(rows: SiteRow[]): WebsiteRuleView[] {
     .filter((row) => row.uri !== '')
 }
 
+/** Whether the rows say what the login holds already (a blank row aside), so a save has no websites to write. */
+export function sameSites(
+  rows: SiteRow[],
+  login: { websites: string[]; websiteRules?: WebsiteRuleView[] },
+): boolean {
+  const typed = siteRulesOf(rows)
+  const held = rulesOf(login)
+  return (
+    typed.length === held.length &&
+    typed.every((rule, i) => rule.uri === held[i]!.uri.trim() && rule.match === held[i]!.match)
+  )
+}
+
 const scheme = /^([a-z][a-z0-9+.-]*):/i
+/** `localhost:8080`, `intranet.local:8443/app`: a host and a port, which the scheme test takes for a scheme. */
+const hostPort = /^([a-z0-9.-]+):\d{1,5}(?:[/?#].*)?$/i
 /** The schemes a website may use: the web, and the package names the phone apps write. */
 const schemes = ['http', 'https', 'androidapp', 'iosapp']
 
 /**
  * What is wrong with a row, if anything. A blank row is not wrong (it is dropped when saved). An address is a host
  * (`github.com`), a web address or an app's package name; a regular expression has to be one. Anything else, such as
- * `javascript:`, is refused.
+ * `javascript:`, is refused. The scheme is looked at first: `host:port` passes only for `localhost` or a dotted host, so
+ * `javascript:1/alert(1)` is no host with a port.
  */
 export function siteProblem(row: SiteRow): string | undefined {
   const text = row.uri.trim()
@@ -69,11 +92,15 @@ export function siteProblem(row: SiteRow): string | undefined {
       return t('extras_siteBadRegex')
     }
   }
-  // `localhost:8080` looks like a scheme to the test below, and is a host with a port
-  if (/^[a-z0-9.-]+:\d{1,5}(?:[/?#].*)?$/i.test(text)) return undefined
   const found = scheme.exec(text)?.[1]?.toLowerCase()
   if (found === undefined) return /\s/.test(text) ? t('extras_siteBad') : undefined
-  if (!schemes.includes(found)) return t('extras_siteBad')
+  if (!schemes.includes(found)) {
+    // `localhost:8080` looks like a scheme and is a host with a port; `javascript:1/alert(1)` has no such host
+    const host = hostPort.exec(text)?.[1]?.toLowerCase()
+    return host !== undefined && (host === 'localhost' || host.includes('.'))
+      ? undefined
+      : t('extras_siteBad')
+  }
   if (found === 'http' || found === 'https') {
     try {
       return new URL(text).host === '' ? t('extras_siteBad') : undefined

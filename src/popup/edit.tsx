@@ -17,7 +17,14 @@ import { hostOf } from './format'
 import { FieldsEditor, LinkPicker, useItemExtras } from './item-extras'
 import type { Prefill } from './route'
 import { ask } from './send'
-import { SitesEditor, siteRowsOf, siteRulesOf, sitesProblem, type SiteRow } from './site-rules'
+import {
+  SitesEditor,
+  sameSites,
+  siteRowsOf,
+  siteRulesOf,
+  sitesProblem,
+  type SiteRow,
+} from './site-rules'
 import { SpaceField } from './spaces'
 
 export function EditLogin(props: {
@@ -34,10 +41,9 @@ export function EditLogin(props: {
   const [name, setName] = useState(login?.name ?? props.prefill?.name ?? '')
   const [username, setUsername] = useState(login?.username ?? '')
   const [password, setPassword] = useState(props.prefill?.password ?? '')
+  // A login whose websites are all regular expressions or "never" has rules and no hosts: the rules are what the form starts from
   const [sites, setSites] = useState<SiteRow[]>(() =>
-    login !== undefined && login.websites.length > 0
-      ? siteRowsOf(login)
-      : siteRowsOf(undefined, props.prefill?.websites ?? []),
+    login !== undefined ? siteRowsOf(login) : siteRowsOf(undefined, props.prefill?.websites ?? []),
   )
   const extras = useItemExtras(
     'login',
@@ -116,9 +122,14 @@ export function EditLogin(props: {
       username: username.trim(),
       password: hidden ? '' : password,
       ...(hidden ? { keepPassword: true } : {}),
-      // A regular expression is no address to match a host with: only the rules carry it
-      websites: rules.filter((rule) => rule.match !== 'regex').map((rule) => rule.uri),
-      websiteRules: rules,
+      // Websites nobody changed are not sent again (the login keeps its rules as they are); changed ones go as rules, and a regular
+      // expression is no address to match a host with: only the rules carry it
+      ...(login !== undefined && sameSites(sites, login)
+        ? { websites: login.websites }
+        : {
+            websites: rules.filter((rule) => rule.match !== 'regex').map((rule) => rule.uri),
+            websiteRules: rules,
+          }),
       note: note.trim() === '' ? undefined : note,
       // The vault's tags are shown, never changed: they go back as they came.
       tags: login?.tags,

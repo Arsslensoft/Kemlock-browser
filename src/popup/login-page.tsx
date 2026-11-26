@@ -146,11 +146,11 @@ export function LoginPage(props: {
         <Group>
           <div class="detail-row">
             <span class="detail-label">{t('popup_websites')}</span>
-            {login.websites.length > 0 ? (
+            {login.websites.length > 0 || (login.websiteRules ?? []).length > 0 ? (
               <span class="mono grow websites">
                 {(login.websiteRules ?? []).length > 0
-                  ? (login.websiteRules ?? []).map((rule) => (
-                      <SiteRuleLine key={rule.uri} rule={rule} />
+                  ? (login.websiteRules ?? []).map((rule, index) => (
+                      <SiteRuleLine key={`${index}:${rule.uri}`} rule={rule} />
                     ))
                   : login.websites.map((site) => (
                       <span key={site} class="ellipsis">
