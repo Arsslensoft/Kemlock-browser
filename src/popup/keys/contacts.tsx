@@ -99,7 +99,7 @@ const detailsOf = (view: ContactView | undefined): Details => ({
 })
 
 const emailOk = (email: string): boolean =>
-  email.trim() === '' || /^[^s@]+@[^s@]+$/.test(email.trim())
+  email.trim() === '' || /^[^\s@]+@[^\s@]+$/.test(email.trim())
 
 /** The boxes for a contact's details; the name is the page's own. */
 function DetailFields(props: { value: Details; onChange: (next: Details) => void }) {
