@@ -120,6 +120,9 @@ const pgpKey = (over: Partial<KeyView> = {}): KeyView => ({
 const ada = (over: Partial<ContactView> = {}): ContactView => ({
   id: 'c1',
   name: 'Ada Lovelace',
+  hasKey: true,
+  fields: [],
+  links: 0,
   fingerprint: 'AAAA BBBB CCCC DDDD EEEE FFFF 0000 1111 2222 3333',
   line: 'ada@example.org · Ed25519',
   userIds: ['Ada Lovelace <ada@example.org>'],

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Custom fields, links, match rules, and the names and websites of MFA codes and backup codes, over a fake background: the
 // components on their own, then the pages that use them (docs/plans/add-item-format.md).
-import { h } from 'preact'
+import { h, type ComponentChild } from 'preact'
 import { useState } from 'preact/hooks'
 import { act } from 'preact/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -89,7 +89,7 @@ afterEach(() => {
   unmountAll()
 })
 
-const page = (node: ReturnType<typeof h>) => mount(h(ToastProvider, null, node))
+const page = (node: ComponentChild) => mount(h(ToastProvider, null, node))
 
 const field = (over: Partial<FieldView> = {}): FieldView => ({
   index: 0,

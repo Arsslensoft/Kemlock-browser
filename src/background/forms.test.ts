@@ -21,6 +21,8 @@ const card: CardFull = {
   number: '378282246310005',
   code: '1234',
   pin: '',
+  fields: [],
+  links: 0,
 }
 
 const person: IdentityFull = {
@@ -37,6 +39,8 @@ const person: IdentityFull = {
   order: 0,
   pinned: false,
   changedAt: 1,
+  fields: [],
+  links: 0,
 }
 
 const shape = (format: string) => parseShape(format)

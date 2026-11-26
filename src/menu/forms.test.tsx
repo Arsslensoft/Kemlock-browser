@@ -59,7 +59,7 @@ const gate = (over: Partial<FormGate> = {}): FormGate => ({
 })
 
 const view = (over: Partial<MenuView> = {}): MenuView => ({
-  state: { exists: true, unlocked: true, wrongPasswords: 0 },
+  state: { exists: true, unlocked: true, wrongPasswords: 0, fileSync: 'readOnly' },
   match: { site: 'shop.example.com', logins: [], codes: [] },
   logins: [],
   codes: [],

@@ -37,6 +37,9 @@ const key = (over: Partial<KeyView> = {}): KeyView => ({
 const contact = (over: Partial<ContactView> = {}): ContactView => ({
   id: 'c1',
   name: 'Ada Lovelace',
+  hasKey: true,
+  fields: [],
+  links: 0,
   fingerprint: '1FCD A135 0000 1111 2222 3333 4444 5555 6666 7777',
   line: 'ada@example.org · Ed25519',
   userIds: ['Ada Lovelace <ada@example.org>'],
