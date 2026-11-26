@@ -261,6 +261,77 @@ void main() {
       expect(core.vault.lists.logins.single.password, 'Second-pass-99');
     });
 
+    test('a login saved with the password it was shown keeps the password another write set', () async {
+      final id = await addLogin(core, 'Orbit');
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.logins.single.withPassword('Second-pass-99', 5))),
+        core.call('saveLogin', [
+          id,
+          {'name': 'Renamed', 'username': 'sam', 'password': 'Hunter2-hunter2', 'websites': ['orbit-cloud.com']},
+        ]),
+      ]);
+      expect(core.vault.lists.logins.single.name, 'Renamed');
+      expect(core.vault.lists.logins.single.password, 'Second-pass-99');
+    });
+
+    test('a login saved with a changed password writes it, and keeps the one it replaces', () async {
+      final id = await addLogin(core, 'Orbit');
+      await core.call('saveLogin', [
+        id,
+        {'name': 'Orbit', 'username': 'sam', 'password': 'Brand-new-pass-7', 'websites': ['orbit-cloud.com']},
+      ]);
+      expect(core.vault.lists.logins.single.password, 'Brand-new-pass-7');
+      expect(core.vault.lists.logins.single.previousPasswords, hasLength(1));
+    });
+
+    test('a login saved with the websites it was shown keeps a website another write added', () async {
+      final id = await addLogin(core, 'Orbit');
+      await Future.wait<Object?>([
+        core.vault.saveChanged(
+          (held) => listsWithEntry(held, held.logins.single.copyWith(websites: ['orbit-cloud.com', 'extra-site.net'])),
+        ),
+        core.call('saveLogin', [
+          id,
+          {'name': 'Renamed', 'username': 'sam', 'password': 'Hunter2-hunter2', 'websites': ['orbit-cloud.com']},
+        ]),
+      ]);
+      expect(core.vault.lists.logins.single.name, 'Renamed');
+      expect(core.vault.lists.logins.single.websites, ['orbit-cloud.com', 'extra-site.net']);
+    });
+
+    test('a login saved with a changed website writes the form\'s websites', () async {
+      final id = await addLogin(core, 'Orbit');
+      await core.call('saveLogin', [
+        id,
+        {'name': 'Orbit', 'username': 'sam', 'password': 'Hunter2-hunter2', 'websites': ['other-site.net']},
+      ]);
+      expect(core.vault.lists.logins.single.websites, ['other-site.net']);
+    });
+
+    test('a login, a card and an identity deleted while their save waited are not found, not a crash', () async {
+      final login = await addLogin(core, 'Orbit');
+      final card = (await object(core, 'saveCard', [null, {'name': 'Visa', 'number': '4111111111111111'}]))['id']! as String;
+      final identity = (await object(core, 'saveIdentity', [null, {'name': 'Me', 'email': 'me@orbit-cloud.com'}]))['id']! as String;
+      Matcher notFound() => throwsA(isA<CoreFailure>().having((e) => e.code, 'code', CoreFailure.notFound));
+      await Future.wait<Object?>([
+        core.call('deleteLogin', [login]),
+        core.call('deleteCard', [card]),
+        core.call('deleteIdentity', [identity]),
+        expectLater(
+          core.call('saveLogin', [
+            login,
+            {'name': 'Renamed', 'username': 'sam', 'password': 'Hunter2-hunter2', 'websites': ['orbit-cloud.com']},
+          ]),
+          notFound(),
+        ),
+        expectLater(core.call('saveCard', [card, {'name': 'Renamed', 'number': '4111111111111111'}]), notFound()),
+        expectLater(core.call('saveIdentity', [identity, {'name': 'Renamed', 'email': 'me@orbit-cloud.com'}]), notFound()),
+      ]);
+      expect(core.vault.lists.logins, isEmpty);
+      expect(core.vault.lists.cards, isEmpty);
+      expect(core.vault.lists.identities, isEmpty);
+    });
+
     test('a card saved with a new name keeps the pin another write gave it', () async {
       final saved = await object(core, 'saveCard', [null, {'name': 'Visa', 'number': '4111111111111111'}]);
       final id = saved['id']! as String;
