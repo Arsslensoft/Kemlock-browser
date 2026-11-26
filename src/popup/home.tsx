@@ -36,14 +36,7 @@ import { taggableKind } from './tools/tag-kinds'
 import { byPinnedThenOrder } from './tools/order'
 
 /** The lists Home has tabs for. */
-export type HomeList =
-  | 'codes'
-  | 'logins'
-  | 'passkeys'
-  | 'notes'
-  | 'cards'
-  | 'identities'
-  | 'files'
+export type HomeList = 'codes' | 'logins' | 'passkeys' | 'notes' | 'cards' | 'identities' | 'files'
 const homeLists: readonly string[] = [
   'codes',
   'logins',
@@ -415,7 +408,12 @@ export function Home(props: {
             {codes.length > 0 ? (
               <ul class="list">
                 {codes.map((code) => (
-                  <CodeRow key={code.id} code={code} live={live} />
+                  <CodeRow
+                    key={code.id}
+                    code={code}
+                    live={live}
+                    onEdit={(id) => props.onRoute({ name: 'codeEdit', id })}
+                  />
                 ))}
               </ul>
             ) : (
