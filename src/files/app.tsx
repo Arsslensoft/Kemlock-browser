@@ -19,7 +19,9 @@ const titleOf = (route: FilesRoute): string =>
       ? 'files_new'
       : route.name === 'replace'
         ? 'files_replace'
-        : 'files_addFiles',
+        : route.name === 'attach'
+          ? 'files_addFiles'
+          : 'files_tabTitle',
   )
 
 function Head(props: { title: string }) {
@@ -107,6 +109,8 @@ export function FilesTab() {
       <Head title={titleOf(route)} />
       {state.fileSync !== 'kemlock' ? (
         <Notice>{t('files_needSync')}</Notice>
+      ) : route.name === 'invalid' ? (
+        <Notice kind="error">{t('files_badAddress')}</Notice>
       ) : route.name === 'replace' ? (
         <ReplaceFile key={route.id} id={route.id} />
       ) : route.name === 'attach' ? (
