@@ -110,7 +110,7 @@ describe('Home', () => {
   it('has a tab for each kind, each with its count', async () => {
     background.reset(unlockedHandlers(world()))
     const root = await openPopup()
-    for (const label of ['Codes 0', 'Logins 0', 'Notes 2', 'Cards 2', 'Identities 1'])
+    for (const label of ['MFA codes 0', 'Logins 0', 'Notes 2', 'Cards 2', 'Identities 1'])
       expect(button(root, label), label).not.toBeNull()
   })
 

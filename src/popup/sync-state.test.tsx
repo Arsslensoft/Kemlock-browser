@@ -122,7 +122,7 @@ describe('an empty vault', () => {
   it('invites to add a code, a login, and to set up sync when it doesn’t sync', async () => {
     background.reset(unlockedHandlers({ codes: [], logins: [] }))
     const root = await openPopup()
-    expect(text(root)).toContain('No codes yet.')
+    expect(text(root)).toContain('No MFA codes yet.')
     expect(root.querySelector('footer')).toBeNull()
     await click(button(root, 'Set up sync'))
     expect(fake.tabsCreated).toEqual(['chrome-extension://kemlock/src/setup/index.html#again'])

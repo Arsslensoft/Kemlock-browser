@@ -85,7 +85,7 @@ describe('the settings', () => {
     setUp()
     const root = await openSettings()
     await toggle(switchOf(root, 'Lock when the computer sleeps'), false)
-    await toggle(switchOf(root, 'Offer the code after the password'), false)
+    await toggle(switchOf(root, 'Offer the MFA code after the password'), false)
     await toggle(switchOf(root, 'Offer to save logins'), false)
     await toggle(switchOf(root, 'Check for breached passwords'), true)
     expect(background.of('saveSettings').map((call) => call.args.settings)).toEqual([
@@ -99,11 +99,11 @@ describe('the settings', () => {
   it('asks for all sites from the switch’s own click, then turns the buttons on', async () => {
     setUp()
     const root = await openSettings()
-    expect(switchOf(root, 'Button in sign-in and code fields')!.checked).toBe(false)
-    await toggle(switchOf(root, 'Button in sign-in and code fields'), true)
+    expect(switchOf(root, 'Button in sign-in and MFA code fields')!.checked).toBe(false)
+    await toggle(switchOf(root, 'Button in sign-in and MFA code fields'), true)
     expect(fake.permissionRequests).toEqual([{ origins: ['<all_urls>'] }])
     expect(background.of('saveSettings')[0]?.args).toEqual({ settings: { buttonsOnPages: true } })
-    expect(switchOf(root, 'Button in sign-in and code fields')!.checked).toBe(true)
+    expect(switchOf(root, 'Button in sign-in and MFA code fields')!.checked).toBe(true)
     expect(text(root)).toContain(message('en', 'popup_accessAll'))
   })
 
@@ -111,7 +111,7 @@ describe('the settings', () => {
     setUp()
     fake.grant = false
     const root = await openSettings()
-    await toggle(switchOf(root, 'Button in sign-in and code fields'), true)
+    await toggle(switchOf(root, 'Button in sign-in and MFA code fields'), true)
     expect(background.of('saveSettings')).toHaveLength(0)
     expect(text(root)).toContain(message('en', 'popup_accessRefused'))
   })
@@ -120,7 +120,7 @@ describe('the settings', () => {
     setUp({ granted: true })
     current = settings({ buttonsOnPages: true })
     const root = await openSettings()
-    expect(switchOf(root, 'Button in sign-in and code fields')!.checked).toBe(true)
+    expect(switchOf(root, 'Button in sign-in and MFA code fields')!.checked).toBe(true)
     await click(button(root, 'Stop allowing all sites'))
     expect(fake.permissionRemovals).toEqual([{ origins: ['<all_urls>'] }])
     expect(background.of('saveSettings')[0]?.args).toEqual({ settings: { buttonsOnPages: false } })

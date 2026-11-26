@@ -162,7 +162,7 @@ describe('a login’s page', () => {
     })
     const root = await openPopup()
     await openLogin(root, 'Docs')
-    await choose(selectOf(root, 'Link a code'), 'c2')
+    await choose(selectOf(root, 'Link an MFA code'), 'c2')
     expect(background.of('linkCode')[0]?.args).toEqual({ codeId: 'c2', loginId: 'l3' })
   })
 
@@ -232,7 +232,7 @@ describe('editing a login', () => {
 
     await change(input(root, 'Username or email'), 'new@example.com')
     await change(input(root, 'Password'), 'n3w-secret')
-    await choose(selectOf(root, 'Two-step code'), 'c2')
+    await choose(selectOf(root, 'MFA code'), 'c2')
     await submit(root.querySelector('form'))
 
     expect(background.of('saveLogin')[0]?.args).toMatchObject({
@@ -296,7 +296,7 @@ describe('adding a code', () => {
       readCodeFromTab: (() => null) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     expect(background.of('readCodeFromTab')[0]?.args).toEqual({ tabId: 4 })
     expect(text(root)).toContain(message('en', 'popup_noCodeFound'))
     expect(background.of('addCodeFromLink')).toHaveLength(0)
@@ -311,7 +311,7 @@ describe('adding a code', () => {
       linkCode: (() => undefined) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     expect(input(root, 'Name')?.value).toBe('Docs')
     // Nothing is added until the person says so
     expect(background.of('addCodeFromLink')).toHaveLength(0)
@@ -332,7 +332,7 @@ describe('adding a code', () => {
       addCodeFromLink: (() => added) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     await change(input(root, 'Name'), 'Docs 2')
     const toggle = root.querySelector<HTMLInputElement>('input[role="switch"]')
     expect(text(root)).toContain('Link to the Docs login')
@@ -351,7 +351,7 @@ describe('adding a code', () => {
       readCodeFromTab: (() => ({ ...found, existing: spare })) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     expect(text(root)).toContain(message('en', 'popup_codeAlready', ['Spare', 'sam']))
     expect(root.querySelector('input[role="switch"]')).toBeNull()
     expect(background.of('addCodeFromLink')).toHaveLength(0)
@@ -364,7 +364,7 @@ describe('adding a code', () => {
       addCodeFromLink: (() => code({ id: 'o', issuer: 'Orbit', account: 'sam' })) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     await change(input(root, 'Paste an otpauth:// link'), link)
     await submit(root.querySelectorAll('form')[0] ?? null)
     expect(background.of('addCodeFromLink')[0]?.args).toEqual({ otpauth: link })
@@ -379,7 +379,7 @@ describe('adding a code', () => {
       }) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Add a code'))
+    await click(button(root, 'Add an MFA code'))
     await change(input(root, 'Paste an otpauth:// link'), 'otpauth://totp/x?secret=AAAA')
     await submit(root.querySelectorAll('form')[0] ?? null)
     expect(text(root)).toContain('That code is already the Orbit Cloud account.')
