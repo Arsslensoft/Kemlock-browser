@@ -216,6 +216,26 @@ export const methods = [
   'revealIdentity',
   'saveIdentity',
   'deleteIdentity',
+  // Added by item format: custom fields, links, files
+  'customFieldDefs',
+  'revealField',
+  'revealFields',
+  'linkedItems',
+  'linkCandidates',
+  'setLinks',
+  'saveCode',
+  'saveBackupCodes',
+  'files',
+  'revealFile',
+  'deleteFile',
+  'saveFile',
+  'stageItemFile',
+  'releaseStaged',
+  'addAttachments',
+  'removeAttachment',
+  'openItemFile',
+  'readOpened',
+  'closeOpened',
 ] as const satisfies readonly (keyof CoreApi)[]
 
 /** The methods that answer nothing: the Dart side's `null` is `undefined` here. */
@@ -260,6 +280,10 @@ const answersNothing = new Set<string>([
   'deleteNote',
   'deleteCard',
   'deleteIdentity',
+  // Added by item format
+  'deleteFile',
+  'releaseStaged',
+  'closeOpened',
 ])
 
 /** `CoreApi` over [bridge]. */
