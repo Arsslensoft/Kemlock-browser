@@ -169,6 +169,8 @@ export interface BackupCodeView extends ItemExtras {
   issuer: string
   /** Its websites (the linked items' when it is linked to some). */
   websites: string[]
+  /** Its note. */
+  note?: string
   total: number
   left: number
   /** Two codes or fewer are left (the app's low warning). */
