@@ -14,7 +14,7 @@ extension VaultLinks on VaultService {
 
   // ─── Fields ───────────────────────────────────────────────────────────
 
-  List<CustomField> _fieldsOf(VaultEntry<dynamic> entry) => switch (entry) {
+  List<CustomField> _fieldsOf(VaultEntry<Object?> entry) => switch (entry) {
     final Login item => item.fields,
     final OtpAccount item => item.fields,
     final BackupService item => item.fields,
@@ -26,7 +26,7 @@ extension VaultLinks on VaultService {
     _ => throw const CoreFailure(CoreFailure.invalid, 'this item has no custom fields'),
   };
 
-  VaultEntry<dynamic> _entryOf(ItemRef ref) =>
+  VaultEntry<Object?> _entryOf(ItemRef ref) =>
       findEntry(_lists, ref.kind, ref.id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
 
   /// The value of one custom field of the item [ref], hidden or not: the page asks for one at a time.
@@ -57,7 +57,7 @@ extension VaultLinks on VaultService {
     };
   }
 
-  int _byName(VaultEntry<dynamic> a, VaultEntry<dynamic> b) {
+  int _byName(VaultEntry<Object?> a, VaultEntry<Object?> b) {
     final order = entryNameOf(a).toLowerCase().compareTo(entryNameOf(b).toLowerCase());
     return order != 0 ? order : a.id.compareTo(b.id);
   }
@@ -138,7 +138,7 @@ extension VaultLinks on VaultService {
         desired[linkIdOf(other, account: owner).toLowerCase()] = other;
       }
     }
-    bool writable(VaultEntry<dynamic> other) {
+    bool writable(VaultEntry<Object?> other) {
       try {
         editGuard?.call(other.spaceId, other.id);
         return true;
@@ -160,7 +160,7 @@ extension VaultLinks on VaultService {
     if (adds.isEmpty && drops.isEmpty) return failed;
     await saveChanged((held) {
       var next = held;
-      void change(VaultEntry<dynamic> other, {required bool link}) {
+      void change(VaultEntry<Object?> other, {required bool link}) {
         final a = findEntry(next, kind, id) ?? (throw const CoreFailure(CoreFailure.notFound, 'no such item'));
         final b = findEntry(next, itemKindOf(other), other.id);
         if (b == null) return;

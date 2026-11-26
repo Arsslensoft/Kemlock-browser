@@ -295,10 +295,10 @@ ItemRef parseRef(Object? raw) {
 }
 
 /// [entry] as the `ItemRef` the pages hold it by.
-Map<String, Object?> refOf(VaultEntry<dynamic> entry) => {'kind': itemKindOf(entry), 'id': entry.id};
+Map<String, Object?> refOf(VaultEntry<Object?> entry) => {'kind': itemKindOf(entry), 'id': entry.id};
 
 /// The entry of [lists] with this [kind] and [id], or null.
-VaultEntry<dynamic>? findEntry(Lists lists, String kind, String id) {
+VaultEntry<Object?>? findEntry(Lists lists, String kind, String id) {
   for (final entry in entriesOf(lists)) {
     if (entry.id == id && itemKindOf(entry) == kind) return entry;
   }
@@ -306,7 +306,7 @@ VaultEntry<dynamic>? findEntry(Lists lists, String kind, String id) {
 }
 
 /// What [entry] is called, as a list of items shows it.
-String entryNameOf(VaultEntry<dynamic> entry) => switch (entry) {
+String entryNameOf(VaultEntry<Object?> entry) => switch (entry) {
   final Login login => login.name,
   final OtpAccount code => _firstText([code.name, code.issuer, code.label]),
   final BackupService service => _firstText([service.name, service.serviceName]),
@@ -329,7 +329,7 @@ String _firstText(List<String?> texts) {
 }
 
 /// The line under [entry]'s name, when it has one.
-String? entryDetailOf(VaultEntry<dynamic> entry) {
+String? entryDetailOf(VaultEntry<Object?> entry) {
   final String? text = switch (entry) {
     final Login login => login.username,
     final OtpAccount code => code.label,
@@ -343,7 +343,7 @@ String? entryDetailOf(VaultEntry<dynamic> entry) {
 }
 
 /// The text a search for an item to link looks in.
-String entrySearchText(VaultEntry<dynamic> entry) {
+String entrySearchText(VaultEntry<Object?> entry) {
   final parts = <String?>[entryNameOf(entry), entryDetailOf(entry)];
   switch (entry) {
     case final Login login:
@@ -367,7 +367,7 @@ String entrySearchText(VaultEntry<dynamic> entry) {
 }
 
 /// [lists] with [entry] put in place of the entry of its kind with its id.
-Lists listsWithEntry(Lists lists, VaultEntry<dynamic> entry) {
+Lists listsWithEntry(Lists lists, VaultEntry<Object?> entry) {
   List<T> put<T extends VaultEntry<T>>(List<T> list, T item) => [for (final held in list) held.id == item.id ? item : held];
   return Lists(
     accounts: entry is OtpAccount ? put(lists.accounts, entry) : lists.accounts,
@@ -420,7 +420,7 @@ Map<String, int> linkCountsOf(Lists lists, {Owner? account}) {
 }
 
 /// The websites an entry holds, with their rules; none for a kind with no websites.
-List<WebsiteRule> rulesOf(VaultEntry<dynamic> entry) => switch (entry) {
+List<WebsiteRule> rulesOf(VaultEntry<Object?> entry) => switch (entry) {
   final Login login => login.rules,
   final OtpAccount code => code.rules,
   final BackupService service => service.rules,
@@ -432,7 +432,7 @@ List<String> hostsOf(Iterable<WebsiteRule> rules) => <String>{for (final rule in
 
 /// What the items [entry] is linked to lend it as websites: the hosts of those that have some, each once, and who they are from, in
 /// the order of their ids; null when none has a website. A code shows these instead of its own.
-({List<String> hosts, List<Map<String, Object?>> from})? lentWebsites(Lists lists, VaultEntry<dynamic> entry, {Owner? account}) {
+({List<String> hosts, List<Map<String, Object?>> from})? lentWebsites(Lists lists, VaultEntry<Object?> entry, {Owner? account}) {
   final hosts = <String>{};
   final from = <Map<String, Object?>>[];
   for (final linked in linkedItemsOf(lists, entry, account: account)) {
