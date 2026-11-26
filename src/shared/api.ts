@@ -431,6 +431,11 @@ export interface NoteView extends ItemExtras {
 export interface NoteFull extends NoteView {
   text: string
   attachments: AttachmentView[]
+  /**
+   * `addAttachments` only, when some files went up and some did not: the staged handles of those that did not, which stay
+   * staged until released. When none went up the call fails (`failed`) instead.
+   */
+  failed?: string[]
 }
 
 /** What the browser edits of a note. A missing `pinned` or `tags` leaves them as they are. */

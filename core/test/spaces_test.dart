@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:kemlock_core/features/sync/sync.dart';
 import 'package:kemlock_core/features/sync/sync_crypto.dart';
 import 'package:kemlock_core/features/sync/sync_merge.dart';
+import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_extension_core/src/core_service.dart';
 import 'package:kemlock_extension_core/src/failure.dart';
 import 'package:kemlock_extension_core/src/platform.dart';
@@ -162,6 +163,26 @@ void main() {
       expect(await core.call('hiddenLoginIds'), isEmpty);
       await core.call('moveItem', ['login', id, null, null]);
       expect((await list(core, 'logins')).single.containsKey('space'), isFalse);
+    });
+
+    test('keeps a note whose files the server holds where it is, since the browser cannot send them again', () async {
+      await join();
+      final file = NoteAttachment(id: 'a1', name: 'a.pdf', size: 1, key: 'a2V5', addedAt: 1, extra: {'kemlockFile': 'server-a1'});
+      await core.vault.applySynced(
+        Lists(
+          notes: [
+            SecureNote(id: 'n1', title: 'Papers', text: '', attachments: [file], addedAt: 1),
+            SecureNote(id: 'n2', title: 'Plain', text: '', addedAt: 1),
+          ],
+        ),
+      );
+      await expectLater(core.call('moveItem', ['note', 'n1', 'team', null]), failure(CoreFailure.unavailable));
+      expect(core.vault.lists.notes.first.spaceId, isNull);
+      await core.call('moveItem', ['note', 'n2', 'team', null]);
+      expect(core.vault.lists.notes.last.spaceId, 'team');
+      // A WebDAV space has no server to hold a file; the vault's own items and a server space's have
+      expect(core.sync.spaces.carriesFiles('team'), isFalse);
+      expect(core.sync.spaces.carriesFiles(null), isTrue);
     });
 
     test('is synced as a scope of its own, and keeps what was put in it', () async {

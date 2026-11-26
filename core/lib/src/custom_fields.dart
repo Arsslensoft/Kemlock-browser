@@ -14,13 +14,19 @@ class CustomFieldDefs {
   KmCustomFields? _held;
   Future<KmCustomFields>? _reading;
 
+  /// Counts the times what was read was forgotten, so a read that was under way when it was is not kept: it asked for another
+  /// vault's server, or for definitions an admin has changed since.
+  var _generation = 0;
+
   /// Forgets what was read: the next ask reads again (a run may have found the admin changed them).
   void invalidate() {
+    _generation++;
     _held = null;
   }
 
   /// Forgets everything, when the vault locks.
   void unload() {
+    _generation++;
     _held = null;
     _reading = null;
   }
@@ -41,9 +47,11 @@ class CustomFieldDefs {
   }
 
   Future<KmCustomFields> _fetch() async {
+    final generation = _generation;
     try {
       final read = await _sync.withAccount((connection, account) => fetchKmCustomFields(connection));
-      return _held = read;
+      if (generation == _generation) _held = read;
+      return read;
     } catch (_) {
       // Not asked: the person edits with the fields they have, and the next ask tries again
       return _held ?? KmCustomFields.none;

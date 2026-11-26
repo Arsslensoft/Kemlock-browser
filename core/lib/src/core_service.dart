@@ -49,8 +49,8 @@ class CoreService {
     tools = ToolsService(vault, sync);
     itemFiles = ItemFiles(vault, sync);
     customFields = CustomFieldDefs(sync);
-    // A file that never went up is taken out before a run, and the admin's fields are read again after one
-    sync.beforeRun = itemFiles.settle;
+    // A file that never went up is taken out once a run has merged, and the admin's fields are read again after one
+    sync.afterMerge = itemFiles.settle;
     sync.afterRun = customFields.invalidate;
   }
 
@@ -248,12 +248,6 @@ class CoreService {
       await sync.load();
     } catch (_) {
       sync.unload();
-    }
-    // A file that was to go up when the worker stopped is taken out of its item: nothing holds its bytes any more
-    try {
-      await itemFiles.settle();
-    } catch (_) {
-      // Tried again before the next run
     }
   }
 

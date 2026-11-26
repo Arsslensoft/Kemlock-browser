@@ -29,6 +29,7 @@ import 'package:kemlock_core/features/sync/kemlock/km_account.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_api.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_cache.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_failover.dart' show KmHomeAway;
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show KmFileStore, KmFiles, kmServerFileId;
 import 'package:kemlock_core/features/sync/kemlock/km_models.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_sync.dart' show KmAnchors;
 import 'package:kemlock_core/features/sync/removal_guard.dart' show RemovalChoice;
@@ -101,6 +102,9 @@ abstract interface class SpacesHost {
   /// The anchors of the spaces' chains, on the device and carried by the vault's sync.
   SpaceAnchorStorage get anchors;
 
+  /// The files waiting to go up, which a space's run uploads as the vault's own run does, or null when there are none to carry.
+  KmFileStore? get fileStore;
+
   /// A client for the WebDAV spaces.
   http.Client clientFor();
 }
@@ -171,6 +175,10 @@ class SpacesService {
         await _vault.vault.saveEncryptedValue(key, cache.toJson(), session);
         await _vault.store.flush();
       },
+      // A file waiting to go up is sent once its item is in the space; the browser keeps no other, so none is fetched
+      files: _host.fileStore == null
+          ? null
+          : KmFiles(store: _host.fileStore!, connection: connection, server: connection.server, fetchMissing: false),
       loadAnchor: (id) async => (await anchors.load(session)).of(id),
       loadCompared: (id) async => (await anchors.load(session)).hasCompared(id),
       saveAnchor: (id, anchor, {afterFence = false, compared = false}) async {
@@ -370,6 +378,9 @@ class SpacesService {
   /// Whether [space] is a WebDAV space of the settings that has not moved: no roles, no grants, and every password open to whoever
   /// holds the key.
   bool _plainDav(String space) => _host.syncSettings.spaces.any((s) => s.id == space && !s.movedToServer);
+
+  /// Whether the items of [space] (null or empty for the vault's own) have a server to hold their files: every one but a WebDAV space.
+  bool carriesFiles(String? space) => space == null || space.isEmpty || !_plainDav(space);
 
   /// Refuses a change to an entry of [space] (null or empty for the vault's own) the chain doesn't let this account make:
   /// a view-only grant, a space not verified yet, a member no longer confirmed. The WebDAV spaces have no roles.
@@ -912,6 +923,11 @@ class SpacesService {
     }
     final String? from = (find(lists) ?? _missing<({String? space})>()).space;
     if ((from ?? '') == (target ?? '')) return;
+    // The server keeps a file under one item's id, and the browser holds no file's bytes to send again under the new owner's: a note
+    // with files on the server stays where it is (the app moves such a note, which sends them again)
+    if (kind == 'note' && lists.notes.any((note) => note.id == id && note.files.any((file) => kmServerFileId(file) != null))) {
+      throw const CoreFailure(CoreFailure.unavailable, 'a note with files on the server can not move to another owner here');
+    }
     // A login whose password a grant hides stays where it is: moving it to the vault, or to a space that doesn't hide it, would show it
     if (kind == 'login' && hides(from, id)) throw const CoreFailure('space_hidden', 'a login whose password is hidden');
     // Taking an entry out of a space is a write there, and so is putting one in
