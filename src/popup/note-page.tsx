@@ -240,8 +240,8 @@ export function NotePage(props: {
             </Group>
           </Section>
         )}
-        <FieldsSection ref={ref} fields={note.fields} />
-        <LinksSection ref={ref} />
+        <FieldsSection item={ref} fields={note.fields} />
+        <LinksSection item={ref} onRoute={props.onRoute} onChanged={() => void vault.reload()} />
       </div>
     </div>
   )

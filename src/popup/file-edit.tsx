@@ -2,7 +2,15 @@
 // file picker would close the popup, so the tab holds the picker and the upload (src/files).
 import { useState } from 'preact/hooks'
 import type { FileFull, ItemRef } from '../shared/api'
-import { Button, Group, Notice, PageHeader, Switch, TextField, useLoad } from '../shared/ui/components'
+import {
+  Button,
+  Group,
+  Notice,
+  PageHeader,
+  Switch,
+  TextField,
+  useLoad,
+} from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
 import { openFilesTab, useFileSync } from './file-actions'
 import { LinkPicker } from './item-extras'
@@ -138,7 +146,7 @@ export function EditFile(props: {
           <Group>
             <Switch checked={shownPin} label={t('items_pin')} onChange={setPinned} />
           </Group>
-          <LinkPicker ref={current} value={shownLinks} onChange={setLinks} />
+          <LinkPicker item={current ?? null} value={shownLinks} onChange={setLinks} />
           <div class="actions start">
             <Button icon="refresh" onClick={() => openFilesTab(`replace/${props.id}`)}>
               {t('files_replace')}

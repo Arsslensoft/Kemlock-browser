@@ -83,7 +83,7 @@ export function FieldsSection(props: { item: ItemRef; fields: FieldView[] | unde
   if (shown.length === 0) return null
   const copy = async (field: FieldView) => {
     try {
-      await ask('copy', { what: 'field', ref: props.item, index: field.index })
+      await ask('copy', { what: 'field', id: props.item.id, ref: props.item, index: field.index })
       say(t('extras_copiedField', field.name))
     } catch (error) {
       say(errorMessage(error))

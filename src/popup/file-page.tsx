@@ -14,13 +14,7 @@ import {
   useToast,
 } from '../shared/ui/components'
 import { errorMessage, t } from '../shared/ui/i18n'
-import {
-  fileKind,
-  fileSize,
-  openFilesTab,
-  useDownload,
-  useFileSync,
-} from './file-actions'
+import { fileKind, fileSize, openFilesTab, useDownload, useFileSync } from './file-actions'
 import { DeleteQuestion, DetailRow } from './items-ui'
 import { LinksSection } from './item-extras'
 import type { Route } from './route'
@@ -148,7 +142,7 @@ export function FilePage(props: {
         </div>
         {canChange && !file.onServer && <p class="strength-line">{t('files_notUploadedYet')}</p>}
         {failed !== undefined && <Notice kind="error">{failed}</Notice>}
-        <LinksSection ref={ref} />
+        <LinksSection item={ref} onRoute={props.onRoute} onChanged={() => void full.reload()} />
       </div>
     </div>
   )
