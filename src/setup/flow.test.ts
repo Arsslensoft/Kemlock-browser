@@ -9,6 +9,7 @@ const vault = (over: Partial<VaultState> = {}): VaultState => ({
   exists: true,
   unlocked: true,
   wrongPasswords: 0,
+  fileSync: 'readOnly',
   ...over,
 })
 

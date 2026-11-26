@@ -68,8 +68,9 @@ deleted; this plan lets the person use them.
    whole item, as a login's edit page loads its password. The page of a site never receives an
    item: the content script gets one value per field, for fields it named.
 3. **The browser doesn't edit what it can't show.** Tags and the app's order stay as they are
-   (as for logins). A note's attached files are listed read-only: their contents are kept
-   apart from the vault and fetched by the phone. A card's "valid from" date and an identity's
+   (as for logins). A note's attached files are listed, and with Kemlock Server sync they can be
+   added, downloaded and removed (`add-item-format`, which supersedes this for files). With WebDAV or Vaultwarden they stay
+   read-only: their contents are kept apart from the vault and fetched by the phone. A card's "valid from" date and an identity's
    documents are edited, since the app edits them.
 4. **Cards and identities are offered by what the form asks, not by a website.** The menu lists
    all cards (or identities), pinned first, with search. The popup's site card does not offer
@@ -85,7 +86,8 @@ deleted; this plan lets the person use them.
 
 ## Not in this plan
 
-- Attaching, opening or removing a note's files, which are fetched and decrypted on the phone.
+- Attaching, opening or removing a note's files with WebDAV or Vaultwarden, which are fetched and decrypted on the
+  phone. With Kemlock Server sync `add-item-format` does it.
 - Editing tags or pinning from the browser's lists beyond a "Pin to the top" switch on the
   edit pages (the app's own switch).
 - Offering a card or an identity from the popup's "On this site" card (decision 4).

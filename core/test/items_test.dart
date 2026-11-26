@@ -98,7 +98,7 @@ void main() {
       // The file's name leaves the core, never its key
       final full = await object(core, 'revealNote', ['n1']);
       expect(full['attachments'], [
-        {'name': 'scan.pdf', 'size': 1200, 'type': 'application/pdf'},
+        {'id': 'f1', 'name': 'scan.pdf', 'size': 1200, 'type': 'application/pdf', 'onServer': false},
       ]);
       expect(jsonEncode(full), isNot(contains('a2V5')));
     });

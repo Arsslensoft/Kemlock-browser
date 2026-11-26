@@ -616,8 +616,17 @@ class TransferService {
           for (final identity in merged.identities)
             if (identityIds.add(identity.id)) identity,
         ], held.identities),
+        // File items aren't imported, but the ones the vault holds stay
+        files: held.files,
       );
-      final editable = vault.keepingEditable(held, next);
+      // A code or a backup service the file leaves out is removed, and so are the links to it (a login's `accountId` naming the code, a
+      // note naming the service), in the same write: none is left naming an item that is gone
+      var linked = next;
+      final kept = {for (final account in next.accounts) account.id, for (final service in next.backupServices) service.id};
+      for (final removed in <VaultEntry<Object?>>[...held.accounts, ...held.backupServices]) {
+        if (!kept.contains(removed.id)) linked = VaultLinks(vault).withLinksDroppedTo(linked, removed);
+      }
+      final editable = vault.keepingEditable(held, linked);
       skipped = editable.skipped;
       return editable.lists;
     });
@@ -673,7 +682,8 @@ class TransferService {
         'keyAccounts': lists.keyAccounts.length,
       },
       'spaceItems': scope.spaceItems,
-      'attachedFiles': lists.notes.fold<int>(0, (sum, note) => sum + note.files.length),
+      // The files its notes name and its File items hold, which this browser keeps no bytes of, so no export holds them
+      'attachedFiles': lists.notes.fold<int>(lists.files.length, (sum, note) => sum + note.files.length),
       'cxf': {
         'sendable': {for (final kind in ExportKind.values) kind.name: plan.sendable(kind)},
         'leftOut': {for (final MapEntry(:key, :value) in plan.leftOut(kinds).entries) key.name: value},
@@ -703,7 +713,7 @@ class TransferService {
     final now = DateTime.fromMillisecondsSinceEpoch(vault.nowMs, isUtc: true);
     final scope = exportScope(vault.lists);
     final lists = scope.lists;
-    final attached = lists.notes.fold<int>(0, (sum, note) => sum + note.files.length);
+    final attached = lists.notes.fold<int>(lists.files.length, (sum, note) => sum + note.files.length);
     final counts = <String, int>{
       'codes': lists.accounts.length,
       'backupServices': lists.backupServices.length,
@@ -748,6 +758,7 @@ class TransferService {
           logins: lists.logins,
           cards: lists.cards,
           identities: lists.identities,
+          files: lists.files,
           now: now,
         );
         // The check the app offers after a backup: the file opens with its password, and holds what was exported
@@ -773,6 +784,7 @@ class TransferService {
             logins: lists.logins,
             cards: lists.cards,
             identities: lists.identities,
+            files: lists.files,
             now: now,
           ),
         );

@@ -26,6 +26,9 @@ const login = (id: string, name: string, username: string): LoginView => ({
   name,
   username,
   websites: [],
+  websiteRules: [],
+  fields: [],
+  links: 0,
   tags: [],
   order: 0,
   hasPassword: true,
@@ -45,10 +48,13 @@ const code = (id: string, issuer: string, account: string, onSecurityKey = false
   order: 0,
   onSecurityKey,
   websites: [],
+  ownWebsites: [],
+  fields: [],
+  links: 0,
 })
 
 const view = (over: Partial<MenuView> = {}): MenuView => ({
-  state: { exists: true, unlocked: true, wrongPasswords: 0 },
+  state: { exists: true, unlocked: true, wrongPasswords: 0, fileSync: 'readOnly' },
   match: { site: 'orbit-cloud.com', logins: [], codes: [] },
   logins: [],
   codes: [],
@@ -292,7 +298,9 @@ describe('a locked vault', () => {
             match: { site: 'orbit-cloud.com', logins: ['l1'], codes: [] },
             logins: [login('l1', 'Orbit Cloud', 'alice')],
           })
-        : view({ state: { exists: true, unlocked: false, wrongPasswords: 0 } })
+        : view({
+            state: { exists: true, unlocked: false, wrongPasswords: 0, fileSync: 'readOnly' },
+          })
     handlers.unlock = (args) => {
       unlocked = args.password === 'correct horse'
       return { ok: unlocked, wrongPasswords: unlocked ? 0 : 1 }
@@ -319,7 +327,8 @@ describe('a locked vault', () => {
   })
 
   it('points to setup when there is no vault', async () => {
-    handlers.menu = () => view({ state: { exists: false, unlocked: false, wrongPasswords: 0 } })
+    handlers.menu = () =>
+      view({ state: { exists: false, unlocked: false, wrongPasswords: 0, fileSync: 'readOnly' } })
     mount()
     await vi.waitFor(() => expect(shown()).toContain(en.menu_no_vault))
   })

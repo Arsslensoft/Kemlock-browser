@@ -150,9 +150,52 @@ const contentArgs: Record<string, Spec> = {
   }),
 }
 
+// Added by item format: an item is named by its kind and an entry id; a field row and a website rule
+const itemKinds = [
+  'login',
+  'note',
+  'file',
+  'otp',
+  'backup-codes',
+  'card',
+  'identity',
+  'contact',
+  'ssh-key',
+  'pgp-key',
+  'certificate',
+  'passkey',
+  'key',
+  'key-otp',
+] as const
+const itemRef = rec({ kind: fc.constantFrom(...itemKinds), id: short(1) })
+const fieldRow = rec(
+  { name: short(), kind: fc.constantFrom('text', 'hidden', 'boolean') },
+  {
+    origin: fc.integer({ min: 0, max: 99 }),
+    value: free,
+    keepValue: fc.constant(true),
+    adminField: short(1),
+  },
+)
+const siteRule = rec({
+  uri: short(1),
+  match: fc.constantFrom('default', 'domain', 'host', 'startsWith', 'exact', 'regex', 'never'),
+})
+const itemExtras = {
+  fields: fc.array(fieldRow, { maxLength: 4 }),
+  links: fc.array(itemRef, { maxLength: 4 }),
+}
+const stagedFile = rec({ handle: short(1), name: short(1) }, { type: short() })
+const base64 = fc.stringMatching(/^[A-Za-z0-9+/]{0,200}$/)
+
 const loginInput = rec(
   { name: free, username: free, password: free, websites: fc.array(short(1), { maxLength: 4 }) },
-  { note: free, tags: fc.array(short(1), { maxLength: 4 }) },
+  {
+    note: free,
+    tags: fc.array(short(1), { maxLength: 4 }),
+    websiteRules: fc.array(siteRule, { maxLength: 4 }),
+    ...itemExtras,
+  },
 )
 const generatorOptions = rec(
   { mode: fc.constantFrom('random', 'passphrase') },
@@ -212,7 +255,7 @@ const credentialId = fc.stringMatching(/^[A-Za-z0-9_-]{1,100}$/)
 const prfOutput = fc.stringMatching(/^[A-Za-z0-9_-]{43}$/)
 const noteInput = rec(
   { title: free, text: free },
-  { pinned: fc.boolean(), tags: fc.array(short(1), { maxLength: 4 }) },
+  { pinned: fc.boolean(), tags: fc.array(short(1), { maxLength: 4 }), ...itemExtras },
 )
 const cardInput = rec(
   { name: free },
@@ -230,6 +273,7 @@ const cardInput = rec(
     tags: fc.array(short(1), { maxLength: 4 }),
     pinned: fc.boolean(),
     fromAutofill: fc.boolean(),
+    ...itemExtras,
   },
 )
 const identityInput = rec(
@@ -253,6 +297,7 @@ const identityInput = rec(
     ),
     note: free,
     pinned: fc.boolean(),
+    ...itemExtras,
   },
 )
 
@@ -362,6 +407,57 @@ const pageArgs: Record<string, Spec> = {
     { what: fc.constantFrom('cardNumber', 'cardCode', 'cardPin', 'documentNumber'), id: short(1) },
     { documentId: short(1) },
   ),
+  // Added by item format (begin)
+  customFieldDefs: rec({}, { refresh: fc.boolean() }),
+  revealField: rec({ ref: itemRef, index: fc.integer({ min: 0, max: 9999 }) }),
+  revealFields: rec({ ref: itemRef }),
+  linkedItems: rec({ ref: itemRef }),
+  linkCandidates: rec({ ref: fc.option(itemRef, { nil: null }), query: short() }),
+  setLinks: rec({ ref: itemRef, refs: fc.array(itemRef, { maxLength: 4 }) }),
+  saveCode: rec({
+    id: short(1),
+    input: rec(
+      {},
+      {
+        name: short(),
+        websites: fc.array(short(1), { maxLength: 4 }),
+        note: free,
+        pinned: fc.boolean(),
+        ...itemExtras,
+      },
+    ),
+  }),
+  saveBackupCodes: rec({
+    serviceId: short(1),
+    input: rec(
+      {},
+      { name: short(), websites: fc.array(short(1), { maxLength: 4 }), note: free, ...itemExtras },
+    ),
+  }),
+  files: rec({}),
+  revealFile: rec({ id: short(1) }),
+  deleteFile: rec({ id: short(1) }),
+  saveFile: rec({
+    id: fc.option(short(1), { nil: null }),
+    input: rec(
+      { name: short() },
+      {
+        notes: free,
+        pinned: fc.boolean(),
+        tags: fc.array(short(1), { maxLength: 4 }),
+        links: fc.array(itemRef, { maxLength: 4 }),
+        staged: stagedFile,
+      },
+    ),
+  }),
+  stageItemFile: rec({ data: base64 }, { handle: short(1) }),
+  releaseStaged: rec({ handle: short(1) }),
+  addAttachments: rec({ noteId: short(1), files: fc.array(stagedFile, { maxLength: 4 }) }),
+  removeAttachment: rec({ noteId: short(1), attachmentId: short(1) }),
+  openItemFile: rec({ ref: itemRef }, { attachmentId: short(1) }),
+  readOpened: rec({ handle: short(1), index: fc.integer({ min: 0, max: 100 }) }),
+  closeOpened: rec({ handle: short(1) }),
+  // Added by item format (end)
 }
 
 const contextTarget = fc.oneof(

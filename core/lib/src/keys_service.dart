@@ -14,6 +14,7 @@ import 'package:kemlock_core/models/json.dart';
 import 'package:kemlock_core/models/vault_key.dart';
 
 import 'failure.dart';
+import 'item_extras.dart';
 import 'keys_args.dart';
 import 'keys_views.dart';
 import 'pgp_service.dart';
@@ -236,12 +237,11 @@ class KeysService {
   Future<void> deleteKey(String id) async {
     vault.requireSession();
     _key(id);
-    await _saveKeys(
-      (held) => [
-        for (final key in held)
-          if (key.id != id) key,
-      ],
-    );
+    // The links to the key go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((held) {
+      final removed = held.keys.where((key) => key.id == id).firstOrNull;
+      return removed == null ? held : vault.withoutEntry(held, removed);
+    });
     _facts.remove(id);
   }
 
@@ -375,8 +375,12 @@ class KeysService {
   List<Map<String, Object?>> contacts() {
     vault.requireSession();
     final now = _now;
-    return [for (final contact in vault.lists.contacts) contactView(contact, now)];
+    return [for (final contact in vault.lists.contacts) _view(contact, now)];
   }
+
+  /// [contact] as a `ContactView`, with its custom fields (no hidden value) and the count of its links.
+  Map<String, Object?> _view(Contact contact, DateTime now) =>
+      contactView(contact, now, fields: fieldViews(contact.fields), links: vault.linkCount(contact.id));
 
   Future<void> _saveContacts(List<Contact> Function(List<Contact> held) build) => vault.updateContacts(build);
 
@@ -543,7 +547,7 @@ class KeysService {
     final nowTime = _now;
     return [
       for (final contact in vault.lists.contacts)
-        if (changed.contains(contact.id)) contactView(contact, nowTime),
+        if (changed.contains(contact.id)) _view(contact, nowTime),
     ];
   }
 
@@ -557,30 +561,55 @@ class KeysService {
     return contact.copyWith(checkedAddresses: keyAddresses(info).toList()..sort());
   }
 
-  /// Renames a contact, changes its note, and marks its fingerprint compared (or takes the mark back): `checked` true is the
-  /// person saying they compared the fingerprint of the key the contact holds now with its owner.
+  /// Changes a contact: its name, company, email, phone, address, note and custom fields, its links, and the mark that its fingerprint
+  /// was compared (or takes the mark back): `checked` true is the person saying they compared the fingerprint of the key the contact
+  /// holds now with its owner. Without an `id` it makes a new contact with no key (`source: manual`), which needs a name. A member
+  /// the call leaves out is kept; the key never changes here.
   Future<Map<String, Object?>> saveContact(Map<String, Object?> args) async {
     vault.requireSession();
-    final contact = _contact(needString(args, 'id'));
-    var next = contact;
-    final name = fieldString(args, 'name')?.trim();
-    if (name != null && name.isNotEmpty) next = next.copyWith(name: name);
-    if (args.containsKey('note')) {
-      final note = fieldString(args, 'note')?.trim();
-      next = next.copyWith(note: note == null || note.isEmpty ? unset : note);
+    final id = fieldString(args, 'id');
+    final contact = id == null ? null : _contact(id);
+    final fresh = Contact(id: newUuid(), name: '', source: ContactSource.manual, addedAt: vault.nowMs);
+    Object? detail(String key) {
+      if (!args.containsKey(key)) return keep;
+      final text = fieldString(args, key)?.trim();
+      if (text != null && text.length > contactDetailLimit) throw CoreFailure(CoreFailure.invalid, '$key is too long');
+      return text == null || text.isEmpty ? unset : text;
     }
-    final checked = args['checked'];
-    if (checked is bool) {
-      final info = contactInfoOf(contact);
-      if (checked) {
-        if (info == null) throw const CoreFailure(CoreFailure.invalid, 'the key cannot be read');
-        next = withCheckedAddresses(next).checked(info.primary.fingerprintHex, vault.nowMs, addresses: keyAddresses(info));
-      } else {
-        next = next.unchecked();
+
+    // The edit is made on the contact the write holds, so what changed it meanwhile (a run, a comparison) is not put back
+    Contact edit(Contact base) {
+      var next = base;
+      final name = fieldString(args, 'name')?.trim();
+      if (name != null && name.isNotEmpty) next = next.copyWith(name: name);
+      if (contact == null && next.name.isEmpty) throw const CoreFailure(CoreFailure.invalid, 'a contact needs a name');
+      next = next.copyWith(company: detail('company'), email: detail('email'), phone: detail('phone'), address: detail('address'));
+      if (args.containsKey('note')) {
+        final note = fieldString(args, 'note')?.trim();
+        next = next.copyWith(note: note == null || note.isEmpty ? unset : note);
       }
+      final fields = applyFields(next.fields, args['fields']);
+      if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+      final checked = args['checked'];
+      if (checked is bool && contact != null) {
+        final info = contactInfoOf(next);
+        if (checked) {
+          if (info == null) throw const CoreFailure(CoreFailure.invalid, 'the key cannot be read');
+          next = withCheckedAddresses(next).checked(info.primary.fingerprintHex, vault.nowMs, addresses: keyAddresses(info));
+        } else {
+          next = next.unchecked();
+        }
+      }
+      return next;
     }
-    await _saveContacts((held) => [for (final other in held) other.id == contact.id ? next : other]);
-    return contactView(_contact(contact.id), _now);
+
+    final saved = edit(contact ?? fresh);
+    final refs = args.containsKey('links') ? parseRefs(args['links']) : null;
+    await _saveContacts(
+      (held) => contact == null ? [...held, saved] : [for (final other in held) other.id == saved.id ? edit(other) : other],
+    );
+    final failures = refs == null ? const <String>[] : await vault.setLinksOf('contact', saved.id, refs);
+    return {..._view(_contact(saved.id), _now), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   /// A contact's key, armored, to copy or save.
@@ -603,11 +632,10 @@ class KeysService {
   Future<void> deleteContact(String id) async {
     vault.requireSession();
     _contact(id);
-    await _saveContacts(
-      (held) => [
-        for (final contact in held)
-          if (contact.id != id) contact,
-      ],
-    );
+    // The links to the contact go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((held) {
+      final removed = held.contacts.where((contact) => contact.id == id).firstOrNull;
+      return removed == null ? held : vault.withoutEntry(held, removed);
+    });
   }
 }

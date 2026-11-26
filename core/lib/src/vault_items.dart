@@ -25,6 +25,7 @@ extension VaultItems on VaultService {
     logins: _lists.logins,
     cards: cards ?? _lists.cards,
     identities: identities ?? _lists.identities,
+    files: _lists.files,
   );
 
   /// [view] with the space its item is in, when spaces describe one (set by the core service, as for logins).
@@ -94,17 +95,24 @@ extension VaultItems on VaultService {
     await store.flush();
   });
 
+  Map<String, Object?> _noteView(SecureNote note, int order) =>
+      _noted(noteView(note, order: order, fields: fieldViews(note.fields), links: linkCount(note.id)), note.spaceId, note.id);
+
   /// The notes, by title only.
   List<Map<String, Object?>> notes() {
     requireSession();
-    return [for (final (i, note) in _lists.notes.indexed) _noted(noteView(note, order: i), note.spaceId, note.id)];
+    return [for (final (i, note) in _lists.notes.indexed) _noteView(note, i)];
   }
 
-  /// A note with its text and the names of its files.
+  /// A note with its text and its files (their names, sizes and whether the server holds them).
   Map<String, Object?> revealNote(String id) {
     requireSession();
     final note = _find(_lists.notes, id, 'note');
-    return _noted(noteFull(note, order: _lists.notes.indexOf(note)), note.spaceId, note.id);
+    return _noted(
+      noteFull(note, order: _lists.notes.indexOf(note), fields: fieldViews(note.fields), links: linkCount(note.id)),
+      note.spaceId,
+      note.id,
+    );
   }
 
   /// Saves a note: a new one when [id] is null, else the note's title, text, pin and tags, and nothing else of it.
@@ -114,37 +122,53 @@ extension VaultItems on VaultService {
     final text = asString(input['text']);
     if (title == null) throw const CoreFailure(CoreFailure.invalid, 'a note needs a title');
     if (text.length > noteTextLimit) throw const CoreFailure(CoreFailure.invalid, 'the note is too long');
+    final current = id == null ? null : _find(_lists.notes, id, 'note');
+    // Looked at once now, so a bad row is refused before anything is written; the edit itself is made on the note the write holds
+    applyFields(current?.fields ?? const [], input['fields']);
+    final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
     final SecureNote saved;
-    if (id == null) {
+    if (current == null) {
       final tags = asStrings(input['tags']);
       saved = SecureNote(
         id: newUuid(),
         title: title,
         text: text,
+        fields: applyFields(const [], input['fields']),
         tags: tags == null || tags.isEmpty ? null : tags,
         pinned: input['pinned'] == true ? true : null,
         addedAt: nowMs,
       );
       await _saveNotes((held) => [...held, saved]);
     } else {
-      final current = _find(_lists.notes, id, 'note');
-      editGuard?.call(current.spaceId, id);
-      saved = current.copyWith(title: title, text: text, tags: _tagChange(input['tags']), pinned: _pinChange(input['pinned']));
-      await _saveNotes((held) => [for (final note in held) note.id == id ? saved : note]);
+      editGuard?.call(current.spaceId, current.id);
+      // The members a run or an upload writes meanwhile (the files a note names, a link) are the held note's, never the copy read above
+      SecureNote edit(SecureNote held) {
+        final fields = applyFields(held.fields, input['fields']);
+        return held.copyWith(
+          title: title,
+          text: text,
+          tags: _tagChange(input['tags']),
+          pinned: _pinChange(input['pinned']),
+          fields: identical(fields, held.fields) ? null : fields,
+        );
+      }
+
+      saved = edit(current);
+      await _saveNotes((held) => [for (final note in held) note.id == id ? edit(note) : note]);
     }
+    final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('note', saved.id, refs);
     final stored = _find(_lists.notes, saved.id, 'note');
-    return _noted(noteView(stored, order: _lists.notes.indexOf(stored)), stored.spaceId, stored.id);
+    return {..._noteView(stored, _lists.notes.indexOf(stored)), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   Future<void> deleteNote(String id) async {
     requireSession();
     editGuard?.call(_find(_lists.notes, id, 'note').spaceId, id);
-    await _saveNotes(
-      (held) => [
-        for (final note in held)
-          if (note.id != id) note,
-      ],
-    );
+    // The links to the note go in the same write, worked out from the lists the write holds
+    await saveChanged((held) {
+      final removed = held.notes.where((note) => note.id == id).firstOrNull;
+      return removed == null ? held : VaultLinks(this).withoutEntry(held, removed);
+    });
   }
 
   // ─── Cards ────────────────────────────────────────────────────────────
@@ -161,14 +185,21 @@ extension VaultItems on VaultService {
   List<Map<String, Object?>> cards() {
     requireSession();
     final now = platform.clock();
-    return [for (final (i, card) in _lists.cards.indexed) _noted(cardView(card, order: i, now: now), card.spaceId, card.id)];
+    return [for (final (i, card) in _lists.cards.indexed) _cardView(card, i, now)];
   }
+
+  Map<String, Object?> _cardView(PaymentCard card, int order, DateTime now) =>
+      _noted(cardView(card, order: order, now: now, fields: fieldViews(card.fields), links: linkCount(card.id)), card.spaceId, card.id);
 
   /// A card whole: number, security code and PIN too.
   Map<String, Object?> revealCard(String id) {
     requireSession();
     final card = _find(_lists.cards, id, 'card');
-    return _noted(cardFull(card, order: _lists.cards.indexOf(card), now: platform.clock()), card.spaceId, card.id);
+    return _noted(
+      cardFull(card, order: _lists.cards.indexOf(card), now: platform.clock(), fields: fieldViews(card.fields), links: linkCount(card.id)),
+      card.spaceId,
+      card.id,
+    );
   }
 
   /// Saves a card: a new one when [id] is null, else the fields the browser edits. The number is kept as its digits, and a
@@ -196,11 +227,16 @@ extension VaultItems on VaultService {
     final fromMonth = _month(input['validFromMonth'], 'the valid-from month');
     final fromYear = _year(input['validFromYear'], 'the valid-from year');
     final note = _line(input['note'], 'the note');
+    final before = id == null ? null : _find(_lists.cards, id, 'card');
+    // Looked at once now, so a bad row is refused before anything is written; an edit is made on the card the write holds
+    final fields = applyFields(before?.fields ?? const [], input['fields']);
+    final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
     final PaymentCard saved;
     if (id == null) {
       final tags = asStrings(input['tags']);
       saved = PaymentCard(
         id: newUuid(),
+        fields: fields,
         name: name,
         cardholder: holder,
         number: digits.isEmpty ? null : digits,
@@ -221,37 +257,48 @@ extension VaultItems on VaultService {
     } else {
       final current = _find(_lists.cards, id, 'card');
       editGuard?.call(current.spaceId, id);
-      saved = current.copyWith(
-        name: name,
-        cardholder: holder ?? unset,
-        number: digits.isEmpty ? unset : digits,
-        brand: brand ?? unset,
-        expMonth: expMonth ?? unset,
-        expYear: expYear ?? unset,
-        code: code.isEmpty ? unset : code,
-        pin: pin.isEmpty ? unset : pin,
-        validFromMonth: fromMonth ?? unset,
-        validFromYear: fromYear ?? unset,
-        note: note ?? unset,
-        tags: _tagChange(input['tags']),
-        pinned: _pinChange(input['pinned']),
-      );
-      await _saveCards((held) => [for (final card in held) card.id == id ? saved : card]);
+      // The members another write changes meanwhile (links, custom fields, files, a source) are the held card's, never the copy read above
+      PaymentCard edit(PaymentCard held) {
+        final heldFields = applyFields(held.fields, input['fields']);
+        return held.copyWith(
+          name: name,
+          cardholder: holder ?? unset,
+          number: digits.isEmpty ? unset : digits,
+          brand: brand ?? unset,
+          expMonth: expMonth ?? unset,
+          expYear: expYear ?? unset,
+          code: code.isEmpty ? unset : code,
+          pin: pin.isEmpty ? unset : pin,
+          validFromMonth: fromMonth ?? unset,
+          validFromYear: fromYear ?? unset,
+          note: note ?? unset,
+          tags: _tagChange(input['tags']),
+          pinned: _pinChange(input['pinned']),
+          fields: identical(heldFields, held.fields) ? null : heldFields,
+        );
+      }
+
+      saved = edit(current);
+      await _saveCards((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((card) => card.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such card');
+        return [for (final card in held) card.id == id ? edit(card) : card];
+      });
     }
-    final index = _lists.cards.indexWhere((card) => card.id == saved.id);
-    final stored = _lists.cards[index];
-    return _noted(cardView(stored, order: index, now: platform.clock()), stored.spaceId, stored.id);
+    final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('card', saved.id, refs);
+    final stored = _find(_lists.cards, saved.id, 'card');
+    final index = _lists.cards.indexOf(stored);
+    return {..._cardView(stored, index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   Future<void> deleteCard(String id) async {
     requireSession();
     editGuard?.call(_find(_lists.cards, id, 'card').spaceId, id);
-    await _saveCards(
-      (held) => [
-        for (final card in held)
-          if (card.id != id) card,
-      ],
-    );
+    // The links to the card go in the same write, worked out from the lists the write holds
+    await saveChanged((held) {
+      final removed = held.cards.where((card) => card.id == id).firstOrNull;
+      return removed == null ? held : VaultLinks(this).withoutEntry(held, removed);
+    });
   }
 
   // ─── Identities ───────────────────────────────────────────────────────
@@ -268,17 +315,30 @@ extension VaultItems on VaultService {
   List<Map<String, Object?>> identities() {
     requireSession();
     final now = platform.clock();
-    return [
-      for (final (i, identity) in _lists.identities.indexed)
-        _noted(identityView(identity, order: i, now: now), identity.spaceId, identity.id),
-    ];
+    return [for (final (i, identity) in _lists.identities.indexed) _identityView(identity, i, now)];
   }
+
+  Map<String, Object?> _identityView(Identity identity, int order, DateTime now) => _noted(
+    identityView(identity, order: order, now: now, fields: fieldViews(identity.fields), links: linkCount(identity.id)),
+    identity.spaceId,
+    identity.id,
+  );
 
   /// An identity whole: the number of each document too.
   Map<String, Object?> revealIdentity(String id) {
     requireSession();
     final identity = _find(_lists.identities, id, 'identity');
-    return _noted(identityFull(identity, order: _lists.identities.indexOf(identity), now: platform.clock()), identity.spaceId, identity.id);
+    return _noted(
+      identityFull(
+        identity,
+        order: _lists.identities.indexOf(identity),
+        now: platform.clock(),
+        fields: fieldViews(identity.fields),
+        links: linkCount(identity.id),
+      ),
+      identity.spaceId,
+      identity.id,
+    );
   }
 
   /// The address [input] holds, with the keys of a later version that [current] had kept; null when nothing is left.
@@ -365,10 +425,12 @@ extension VaultItems on VaultService {
     final note = _line(input['note'], 'the note');
     final current = id == null ? null : _find(_lists.identities, id, 'identity');
     if (current != null) editGuard?.call(current.spaceId, current.id);
-    final address = _addressOf(input['address'], current?.address);
-    final documents = _documentsOf(input['documents'], current?.documents);
+    final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
     final Identity saved;
     if (current == null) {
+      final address = _addressOf(input['address'], null);
+      final documents = _documentsOf(input['documents'], null);
+      final fields = applyFields(const [], input['fields']);
       final tags = asStrings(input['tags']);
       saved = Identity(
         id: newUuid(),
@@ -384,47 +446,64 @@ extension VaultItems on VaultService {
         birthDate: birth,
         address: address,
         documents: documents == null || documents.isEmpty ? null : documents,
+        fields: fields,
         note: note,
         tags: tags == null || tags.isEmpty ? null : tags,
         pinned: input['pinned'] == true ? true : null,
         addedAt: nowMs,
       );
+      if (!saved.isComplete) throw const CoreFailure(CoreFailure.invalid, 'an identity needs a detail besides its name');
+      await _saveIdentities((held) => [...held, saved]);
     } else {
-      saved = current.copyWith(
-        name: name,
-        title: title ?? unset,
-        givenName: given ?? unset,
-        middleName: middle ?? unset,
-        familyName: family ?? unset,
-        company: company ?? unset,
-        email: email ?? unset,
-        phone: phone ?? unset,
-        username: username ?? unset,
-        birthDate: birth ?? unset,
-        address: address ?? unset,
-        documents: documents == null || documents.isEmpty ? unset : documents,
-        note: note ?? unset,
-        tags: _tagChange(input['tags']),
-        pinned: _pinChange(input['pinned']),
-      );
+      // The members a run, a link or an upload writes meanwhile (links, custom fields, the address keys of a later version) are the held
+      // identity's, never the copy read above
+      Identity edit(Identity held) {
+        final address = _addressOf(input['address'], held.address);
+        final documents = _documentsOf(input['documents'], held.documents);
+        final fields = applyFields(held.fields, input['fields']);
+        final next = held.copyWith(
+          name: name,
+          title: title ?? unset,
+          givenName: given ?? unset,
+          middleName: middle ?? unset,
+          familyName: family ?? unset,
+          company: company ?? unset,
+          email: email ?? unset,
+          phone: phone ?? unset,
+          username: username ?? unset,
+          birthDate: birth ?? unset,
+          address: address ?? unset,
+          documents: documents == null || documents.isEmpty ? unset : documents,
+          note: note ?? unset,
+          tags: _tagChange(input['tags']),
+          pinned: _pinChange(input['pinned']),
+          fields: identical(fields, held.fields) ? null : fields,
+        );
+        if (!next.isComplete) throw const CoreFailure(CoreFailure.invalid, 'an identity needs a detail besides its name');
+        return next;
+      }
+
+      // Looked at once now, so a bad input is refused before anything is written
+      saved = edit(current);
+      await _saveIdentities((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((identity) => identity.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such identity');
+        return [for (final identity in held) identity.id == id ? edit(identity) : identity];
+      });
     }
-    if (!saved.isComplete) throw const CoreFailure(CoreFailure.invalid, 'an identity needs a detail besides its name');
-    await _saveIdentities(
-      (held) => current == null ? [...held, saved] : [for (final identity in held) identity.id == id ? saved : identity],
-    );
-    final index = _lists.identities.indexWhere((identity) => identity.id == saved.id);
-    final stored = _lists.identities[index];
-    return _noted(identityView(stored, order: index, now: platform.clock()), stored.spaceId, stored.id);
+    final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('identity', saved.id, refs);
+    final stored = _find(_lists.identities, saved.id, 'identity');
+    final index = _lists.identities.indexOf(stored);
+    return {..._identityView(stored, index, platform.clock()), if (failures.isNotEmpty) 'linkFailures': failures};
   }
 
   Future<void> deleteIdentity(String id) async {
     requireSession();
     editGuard?.call(_find(_lists.identities, id, 'identity').spaceId, id);
-    await _saveIdentities(
-      (held) => [
-        for (final identity in held)
-          if (identity.id != id) identity,
-      ],
-    );
+    // The links to the identity go in the same write, worked out from the lists the write holds
+    await saveChanged((held) {
+      final removed = held.identities.where((identity) => identity.id == id).firstOrNull;
+      return removed == null ? held : VaultLinks(this).withoutEntry(held, removed);
+    });
   }
 }

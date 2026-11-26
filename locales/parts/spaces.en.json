@@ -92,7 +92,7 @@
   "spaces_keysNeed": "Keys need replacing after a removal. Writes to this space wait until an Owner or Admin does it on their phone.",
   "spaces_kindBackupCodes": "Backup codes",
   "spaces_kindCard": "Cards",
-  "spaces_kindCode": "Codes",
+  "spaces_kindCode": "MFA codes",
   "spaces_kindIdentity": "Identities",
   "spaces_kindKey": "Keys",
   "spaces_kindLogin": "Logins",

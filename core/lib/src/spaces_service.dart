@@ -29,6 +29,7 @@ import 'package:kemlock_core/features/sync/kemlock/km_account.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_api.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_cache.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_failover.dart' show KmHomeAway;
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show KmFileStore, KmFiles, kmServerFileId;
 import 'package:kemlock_core/features/sync/kemlock/km_models.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_sync.dart' show KmAnchors;
 import 'package:kemlock_core/features/sync/removal_guard.dart' show RemovalChoice;
@@ -45,9 +46,11 @@ import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_core/models/vault_entry.dart';
 import 'package:kemlock_core/models/vault_key.dart';
+import 'package:kemlock_core/vault/item_links.dart' show entriesOf, linkIdOf, relinkedAfterMove;
 import 'package:kemlock_core/vault/vault_store.dart' show VaultSession;
 
 import 'failure.dart';
+import 'item_extras.dart' show listsWithEntry;
 import 'spaces/space_contact.dart';
 import 'spaces/space_invites.dart';
 import 'spaces/space_listing.dart';
@@ -100,6 +103,9 @@ abstract interface class SpacesHost {
 
   /// The anchors of the spaces' chains, on the device and carried by the vault's sync.
   SpaceAnchorStorage get anchors;
+
+  /// The files waiting to go up, which a space's run uploads as the vault's own run does, or null when there are none to carry.
+  KmFileStore? get fileStore;
 
   /// A client for the WebDAV spaces.
   http.Client clientFor();
@@ -171,6 +177,10 @@ class SpacesService {
         await _vault.vault.saveEncryptedValue(key, cache.toJson(), session);
         await _vault.store.flush();
       },
+      // A file waiting to go up is sent once its item is in the space; the browser keeps no other, so none is fetched
+      files: _host.fileStore == null
+          ? null
+          : KmFiles(store: _host.fileStore!, connection: connection, server: connection.server, fetchMissing: false),
       loadAnchor: (id) async => (await anchors.load(session)).of(id),
       loadCompared: (id) async => (await anchors.load(session)).hasCompared(id),
       saveAnchor: (id, anchor, {afterFence = false, compared = false}) async {
@@ -270,7 +280,8 @@ class SpacesService {
         count(lists.notes) +
         count(lists.logins) +
         count(lists.cards) +
-        count(lists.identities);
+        count(lists.identities) +
+        count(lists.files);
   }
 
   /// The WebDAV spaces of the settings, as rows. One that moved to Kemlock Server is the phone's to run: it is listed, not synced.
@@ -370,6 +381,9 @@ class SpacesService {
   /// holds the key.
   bool _plainDav(String space) => _host.syncSettings.spaces.any((s) => s.id == space && !s.movedToServer);
 
+  /// Whether the items of [space] (null or empty for the vault's own) have a server to hold their files: every one but a WebDAV space.
+  bool carriesFiles(String? space) => space == null || space.isEmpty || !_plainDav(space);
+
   /// Refuses a change to an entry of [space] (null or empty for the vault's own) the chain doesn't let this account make:
   /// a view-only grant, a space not verified yet, a member no longer confirmed. The WebDAV spaces have no roles.
   void requireEdit(String? space, String entryId) {
@@ -436,6 +450,8 @@ class SpacesService {
         if (identity.spaceId == space) (id: identity.id, kind: 'identity', name: identity.name),
       for (final key in lists.keys)
         if (key.spaceId == space) (id: key.id, kind: 'key', name: key.name),
+      for (final file in lists.files)
+        if (file.spaceId == space) (id: file.id, kind: 'file', name: file.name),
     ];
   }
 
@@ -862,10 +878,39 @@ class SpacesService {
     await _sync(id, connection, account).keepHeld(item, now: _millis);
   });
 
-  Future<void> deleteHeld(String id, String item) => _run((connection, account) async {
-    _requireServerSpace(id);
-    await _sync(id, connection, account).deleteHeld(item, now: _millis);
-  });
+  Future<void> deleteHeld(String id, String item) async {
+    // Looked for before the server deletes it: a space sync that follows takes the entry away, and then nothing says what names it
+    final entry = _heldEntry(id, item);
+    await _run((connection, account) async {
+      _requireServerSpace(id);
+      await _sync(id, connection, account).deleteHeld(item, now: _millis);
+    });
+    await _dropLinksToHeld(id, item, entry);
+  }
+
+  /// The entry of [space] this device holds for the held item [item], by its id or its item id; null when it holds none.
+  VaultEntry<Object?>? _heldEntry(String space, String item) {
+    final owner = _vault.accountOwner?.call();
+    final wanted = item.toLowerCase();
+    bool named(VaultEntry<Object?> entry) =>
+        entry.spaceId == space && (entry.id.toLowerCase() == wanted || linkIdOf(entry, account: owner).toLowerCase() == wanted);
+    return entriesOf(_vault.lists).where(named).firstOrNull;
+  }
+
+  /// Takes the links to the held item [item] of [space], which the server has just deleted, off the entries that named it. [entry] is the
+  /// copy this device held, which says every id that names it; without one the item's own id is all there is, and a stand-in with that id
+  /// finds the `links` that name it (not a login's `accountId`, which needs the kind). The entries are saved apart from the delete, which
+  /// is the server's: a link that can't be taken off (an end this account may not edit, or a write that fails, even one that leaves
+  /// storage in part written) stays one-way, since the item is gone and nothing mends a link to it, and the delete must not fail for it:
+  /// it is done on the server, and a retry would be refused as no longer held.
+  Future<void> _dropLinksToHeld(String space, String item, VaultEntry<Object?>? entry) async {
+    final gone = entry ?? SecureNote(id: item.toLowerCase(), title: '', addedAt: _millis).inSpace(space);
+    try {
+      await _vault.saveChanged((lists) => _vault.withLinksDroppedTo(lists, gone));
+    } catch (_) {
+      // Left as it is: see above
+    }
+  }
 
   /// This account's own fingerprint, 12 groups of 5 digits, for the other side's comparison; null without an opened account.
   Future<String?> ownFingerprint() async => (await _host.ownBundle())?.fingerprintDigits;
@@ -909,6 +954,11 @@ class SpacesService {
     }
     final String? from = (find(lists) ?? _missing<({String? space})>()).space;
     if ((from ?? '') == (target ?? '')) return;
+    // The server keeps a file under one item's id, and the browser holds no file's bytes to send again under the new owner's: a note
+    // with files on the server stays where it is (the app moves such a note, which sends them again)
+    if (kind == 'note' && lists.notes.any((note) => note.id == id && note.files.any((file) => kmServerFileId(file) != null))) {
+      throw const CoreFailure(CoreFailure.unavailable, 'a note with files on the server can not move to another owner here');
+    }
     // A login whose password a grant hides stays where it is: moving it to the vault, or to a space that doesn't hide it, would show it
     if (kind == 'login' && hides(from, id)) throw const CoreFailure('space_hidden', 'a login whose password is hidden');
     // Taking an entry out of a space is a write there, and so is putting one in
@@ -947,8 +997,37 @@ class SpacesService {
       final now = find(held);
       if (now == null) throw const CoreFailure(CoreFailure.notFound, 'no such item');
       if ((now.space ?? '') != (from ?? '')) throw const CoreFailure(CoreFailure.stale, 'the item is not where it was');
-      return move(held);
+      return _relinkedAfterMove(held, move(held), id, from, target);
     });
+  }
+
+  /// [moved], the lists with the entry [id] moved from [from] to [to], with the other entries that linked to it by its old item id now
+  /// linking by the new one: an entry whose id isn't a UUID is given another item id by its new owner (`relinkedAfterMove`), and an
+  /// entry with a UUID id keeps its own, so nothing changes for it. An entry that links to it from a space this account may not edit
+  /// is left as it is, since the move must not fail for it: that link then names an item id nothing holds, shown as not available.
+  Lists _relinkedAfterMove(Lists before, Lists moved, String id, String? from, String? to) {
+    final owner = _vault.accountOwner?.call();
+    VaultEntry<Object?>? entryIn(Lists lists, String? space) =>
+        entriesOf(lists).where((entry) => entry.id == id && (entry.spaceId ?? '') == (space ?? '')).firstOrNull;
+    final was = entryIn(before, from);
+    final now = entryIn(moved, to);
+    if (was == null || now == null) return moved;
+    final changed = relinkedAfterMove(
+      moved,
+      oldLinkId: linkIdOf(was, account: owner),
+      newLinkId: linkIdOf(now, account: owner),
+      now: _millis,
+    );
+    var next = moved;
+    for (final other in changed) {
+      try {
+        requireEdit(other.spaceId, other.id);
+      } on CoreFailure {
+        continue;
+      }
+      next = listsWithEntry(next, other);
+    }
+    return next;
   }
 
   ({String? space})? _spaceOf<T extends VaultEntry<T>>(List<T> list, String id) {
@@ -980,6 +1059,7 @@ class SpacesService {
     logins: logins ?? l.logins,
     cards: cards ?? l.cards,
     identities: identities ?? l.identities,
+    files: l.files,
   );
 
   // ─── WebDAV spaces ──────────────────────────────────────────────────

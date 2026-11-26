@@ -17,6 +17,10 @@ import passkeysEn from '../../locales/parts/passkeys.en.json'
 import passkeysFr from '../../locales/parts/passkeys.fr.json'
 import itemsEn from '../../locales/parts/items.en.json'
 import itemsFr from '../../locales/parts/items.fr.json'
+import extrasEn from '../../locales/parts/extras.en.json'
+import extrasFr from '../../locales/parts/extras.fr.json'
+import filesEn from '../../locales/parts/files.en.json'
+import filesFr from '../../locales/parts/files.fr.json'
 import transferEn from '../../locales/parts/transfer.en.json'
 import transferFr from '../../locales/parts/transfer.fr.json'
 import accountEn from '../../locales/parts/account.en.json'
@@ -118,40 +122,56 @@ export const vaultState = (over: Partial<VaultState> = {}): VaultState => ({
   exists: true,
   unlocked: true,
   wrongPasswords: 0,
+  fileSync: 'readOnly',
   ...over,
 })
 
-export const code = (over: Partial<CodeView> = {}): CodeView => ({
-  id: 'c1',
-  issuer: 'Orbit Cloud',
-  account: 'sam@example.com',
-  type: 'totp',
-  digits: 6,
-  period: 30,
-  tags: [],
-  order: 0,
-  onSecurityKey: false,
-  websites: ['orbit-cloud.com'],
-  ...over,
-})
+export const code = (over: Partial<CodeView> = {}): CodeView => {
+  const websites = over.websites ?? ['orbit-cloud.com']
+  return {
+    id: 'c1',
+    issuer: 'Orbit Cloud',
+    account: 'sam@example.com',
+    type: 'totp',
+    digits: 6,
+    period: 30,
+    tags: [],
+    order: 0,
+    onSecurityKey: false,
+    websites,
+    ownWebsites: websites,
+    fields: [],
+    links: 0,
+    ...over,
+  }
+}
 
-export const login = (over: Partial<LoginView> = {}): LoginView => ({
-  id: 'l1',
-  name: 'Orbit Cloud',
-  username: 'sam@example.com',
-  websites: ['https://orbit-cloud.com'],
-  tags: [],
-  order: 0,
-  hasPassword: true,
-  strength: 3,
-  previousPasswords: 0,
-  health: { reused: false, weak: false, withoutItsCode: false, ignored: false },
-  ...over,
-})
+export const login = (over: Partial<LoginView> = {}): LoginView => {
+  const websites = over.websites ?? ['https://orbit-cloud.com']
+  return {
+    id: 'l1',
+    name: 'Orbit Cloud',
+    username: 'sam@example.com',
+    websites,
+    websiteRules: websites.map((uri) => ({ uri, match: 'default' as const })),
+    fields: [],
+    links: 0,
+    tags: [],
+    order: 0,
+    hasPassword: true,
+    strength: 3,
+    previousPasswords: 0,
+    health: { reused: false, weak: false, withoutItsCode: false, ignored: false },
+    ...over,
+  }
+}
 
 export const backup = (over: Partial<BackupCodeView> = {}): BackupCodeView => ({
   serviceId: 'c1',
   issuer: 'Orbit Cloud',
+  websites: [],
+  fields: [],
+  links: 0,
   total: 10,
   left: 8,
   ...over,
@@ -165,6 +185,8 @@ export const note = (over: Partial<NoteView> = {}): NoteView => ({
   pinned: false,
   files: 0,
   changedAt: 1,
+  fields: [],
+  links: 0,
   ...over,
 })
 
@@ -184,6 +206,8 @@ export const card = (over: Partial<CardView> = {}): CardView => ({
   order: 0,
   pinned: false,
   changedAt: 1,
+  fields: [],
+  links: 0,
   ...over,
 })
 
@@ -199,6 +223,8 @@ export const identity = (over: Partial<IdentityView> = {}): IdentityView => ({
   order: 0,
   pinned: false,
   changedAt: 1,
+  fields: [],
+  links: 0,
   ...over,
 })
 
@@ -263,6 +289,8 @@ const messageSets = {
     ...toolsEn,
     ...passkeysEn,
     ...itemsEn,
+    ...extrasEn,
+    ...filesEn,
     ...transferEn,
     ...accountEn,
     ...unlockEn,
@@ -278,6 +306,8 @@ const messageSets = {
     ...toolsFr,
     ...passkeysFr,
     ...itemsFr,
+    ...extrasFr,
+    ...filesFr,
     ...transferFr,
     ...accountFr,
     ...unlockFr,

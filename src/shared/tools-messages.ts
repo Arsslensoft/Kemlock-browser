@@ -35,6 +35,7 @@ export const itemKinds = [
   'note',
   'card',
   'identity',
+  'file',
   'key',
   'keyAccount',
 ] as const

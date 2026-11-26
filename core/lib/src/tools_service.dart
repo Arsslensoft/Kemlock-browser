@@ -62,6 +62,7 @@ Lists listsWith(
   logins: logins ?? lists.logins,
   cards: cards ?? lists.cards,
   identities: identities ?? lists.identities,
+  files: lists.files,
 );
 
 /// The kinds of item that hold tags, as `ItemKind` in src/shared/tools-api.ts names them.

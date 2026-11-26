@@ -80,10 +80,17 @@ class PgpService {
 
   /// The binary transferable public keys that check a signature: the contacts' and the vault's own PGP keys'.
   List<Uint8List> _verifiers() => [
-    for (final contact in vault.lists.contacts) unb64(contact.publicKey),
+    for (final contact in vault.lists.contacts)
+      if (contact.hasKey) unb64(contact.publicKey),
     for (final key in vault.lists.keys)
       if (key.kind == KeyKind.pgp && key.publicKey != null) unb64(key.publicKey!),
   ];
+
+  /// [contact] when it has a key; a person kept without one can't be written to.
+  Contact _keyOf(Contact contact) {
+    if (!contact.hasKey) throw const CoreFailure(CoreFailure.invalid, 'the contact has no key');
+    return contact;
+  }
 
   /// Who each primary fingerprint (upper-case hexadecimal) is: a contact, or one of the vault's own keys.
   Map<String, Map<String, Object?>> _people() {
@@ -146,7 +153,7 @@ class PgpService {
   Future<Map<String, Object?>> encrypt(Map<String, Object?> args) => _guard(() async {
     vault.requireSession();
     final recipients = [
-      for (final id in fieldStrings(args, 'contactIds')) unb64(_contact(id).publicKey),
+      for (final id in fieldStrings(args, 'contactIds')) unb64(_keyOf(_contact(id)).publicKey),
       for (final id in fieldStrings(args, 'keyIds')) _publicOf(_pgpKey(id)),
     ];
     final passphrase = _passphrase(args);

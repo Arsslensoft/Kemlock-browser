@@ -17,6 +17,7 @@ import 'package:kemlock_core/features/duplicates/duplicate_rules.dart' show Dupl
 import 'package:kemlock_core/features/duplicates/duplicate_server.dart';
 import 'package:kemlock_core/features/duplicates/duplicate_view.dart';
 import 'package:kemlock_core/features/sync/kemlock/km_dedup_api.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_files.dart' show kmServerFileId;
 import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
 import 'package:kemlock_core/models/backup_service.dart';
 import 'package:kemlock_core/models/contact.dart';
@@ -26,9 +27,13 @@ import 'package:kemlock_core/models/otp_account.dart';
 import 'package:kemlock_core/models/passkey.dart';
 import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
+import 'package:kemlock_core/models/vault_entry.dart';
+import 'package:kemlock_core/models/vault_file.dart';
 import 'package:kemlock_core/models/vault_key.dart';
+import 'package:kemlock_core/vault/item_links.dart' show undoRelink;
 
 import 'failure.dart';
+import 'item_extras.dart' show listsWithEntry;
 import 'matching.dart' show isSharedHost;
 import 'sync_service.dart';
 import 'tools_service.dart' show listsWith;
@@ -56,6 +61,7 @@ class DuplicateTools {
     cards: lists.cards,
     identities: lists.identities,
     contacts: lists.contacts,
+    files: lists.files,
   );
 
   /// The items the matching works on: the vault's, with every hidden password taken out first (as health does), so that the match, its
@@ -255,6 +261,10 @@ class DuplicateTools {
     final gone = choices.removed;
     final goneIds = {for (final entry in gone) entry.id};
     final relink = _relinked(result, goneIds, vault.lists);
+    // What the merge does to the links and custom fields: the kept item takes the removed items' and every entry that named one of them
+    // now names it, from both ends. Worked out here for the record, and again on the lists the write holds
+    final owner = vault.accountOwner?.call();
+    final relinking = choices.relink(vault.lists, now: now, account: owner);
     final record = MergeRecord(
       id: newUuid(),
       at: now,
@@ -262,6 +272,7 @@ class DuplicateTools {
       kept: mergeJsonOf(choices.kept.item),
       removed: [for (final entry in gone) mergeJsonOf(entry.item)],
       relinked: [for (final login in relink) mergeJsonOf(login)],
+      relinkUndo: relinking.undo,
     );
     final store = DedupStore(vault.vault);
     final answers = await store.loadAnswers(session);
@@ -284,18 +295,20 @@ class DuplicateTools {
             again.length == relink.length &&
             [for (var i = 0; i < again.length; i++) jsonEncode(mergeJsonOf(again[i])) == jsonEncode(mergeJsonOf(relink[i]))]
                 .every((same) => same);
-        if (_stale(group, lists) || !sameLinks) {
+        // The links and fields the merge joins, and the entries it rewrites, are those the record keeps for Undo: a link made or dropped
+        // since (a save that went first) makes it stale, as an item changed does
+        final relinkedNow = choices.relink(lists, now: now, account: owner);
+        final sameRelink =
+            jsonEncode(relinkedNow.kept.toJson()) == jsonEncode(relinking.kept.toJson()) &&
+            jsonEncode([for (final step in relinkedNow.undo) step.toJson()]) ==
+                jsonEncode([for (final step in relinking.undo) step.toJson()]);
+        if (_stale(group, lists) || !sameLinks || !sameRelink) {
           throw const CoreFailure(CoreFailure.stale, 'an item changed since the check: check again');
         }
-        var next = _replacing(_without(lists, goneIds), [result]);
-        if (relink.isNotEmpty) {
-          final ids = {for (final login in relink) login.id};
-          next = listsWith(
-            next,
-            logins: [for (final login in next.logins) ids.contains(login.id) ? login.copyWith(accountId: keptId) : login],
-          );
-        }
-        return next;
+        final next = _replacing(_without(lists, goneIds), [relinkedNow.kept]);
+        // The other entries are written in the same change; one in a space this account may not edit keeps what it holds, which Undo
+        // (it puts a member back only where the entry still holds what the merge wrote) then leaves alone
+        return _putting(next, relinkedNow.others);
       }, at: now);
     } on PartialSave {
       rethrow;
@@ -317,6 +330,7 @@ class DuplicateTools {
     for (final item in lists.logins) item.id: item,
     for (final item in lists.cards) item.id: item,
     for (final item in lists.identities) item.id: item,
+    for (final item in lists.files) item.id: item,
   };
 
   /// Puts back what the merge with [recordId] took, as `planUndo` plans it, and drops the record: the items that went, the item that
@@ -342,24 +356,35 @@ class DuplicateTools {
         outcome = 'unavailable';
         return lists;
       }
+      // An item that named a file the server holds can't come back: the next run deletes that file, no body naming it any more
+      if (plan.removed.any(_namesServerFile)) {
+        outcome = 'unavailable';
+        return lists;
+      }
       if (plan.keptEdited && !overwrite) {
         outcome = 'edited';
         return lists;
       }
       var next = _replacing(lists, [plan.kept, ...plan.removed]);
-      if (plan.relinks.isNotEmpty) {
-        next = listsWith(
-          next,
-          logins: [
-            for (final login in next.logins) plan.relinks.containsKey(login.id) ? login.copyWith(accountId: plan.relinks[login.id]) : login,
-          ],
-        );
-      }
-      return next;
+      // A login the merge pointed at the code that stays goes back to the code that went (only a record from before `relinkUndo` needs
+      // this; a newer one is put back below), unless it is in a space this account may not edit
+      next = _putting(next, [
+        for (final login in next.logins)
+          if (plan.relinks.containsKey(login.id)) login.copyWith(accountId: plan.relinks[login.id]),
+      ]);
+      // What the merge wrote on the other entries goes back where they still hold it: one linked or edited since keeps what it holds
+      return _putting(next, undoRelink(next, plan.relinkUndo, now: vault.nowMs));
     });
     if (outcome == 'undone') await store.saveAnswers(answers.withoutMerge(recordId), session);
     return outcome;
   }
+
+  /// Whether [item] is a note or File item that names a file on the server.
+  bool _namesServerFile(Object item) => switch (item) {
+    final SecureNote note => note.files.any((file) => kmServerFileId(file) != null),
+    final VaultFile file => kmServerFileId(file.file) != null,
+    _ => false,
+  };
 
   /// [lists] without the items with these ids, whatever their kind.
   Lists _without(Lists lists, Set<String> ids) => Lists(
@@ -400,7 +425,26 @@ class DuplicateTools {
       for (final item in lists.identities)
         if (!ids.contains(item.id)) item,
     ],
+    files: [
+      for (final item in lists.files)
+        if (!ids.contains(item.id)) item,
+    ],
   );
+
+  /// [lists] with each of [entries] put in place of the entry of its kind with its id, leaving out one in a space this account may not
+  /// edit (the merge, and its Undo, do what they can and never fail for the other end of a link).
+  Lists _putting(Lists lists, Iterable<VaultEntry<Object?>> entries) {
+    var next = lists;
+    for (final entry in entries) {
+      try {
+        vault.editGuard?.call(entry.spaceId, entry.id);
+      } on CoreFailure {
+        continue;
+      }
+      next = listsWithEntry(next, entry);
+    }
+    return next;
+  }
 
   /// [lists] with each of [items] put in place of the item of its kind with its id, or added at the end.
   Lists _replacing(Lists lists, List<Object> items) {
@@ -425,6 +469,7 @@ class DuplicateTools {
       logins: put(lists.logins, items.whereType<Login>(), (a) => a.id),
       cards: put(lists.cards, items.whereType<PaymentCard>(), (a) => a.id),
       identities: put(lists.identities, items.whereType<Identity>(), (a) => a.id),
+      files: put(lists.files, items.whereType<VaultFile>(), (a) => a.id),
     );
   }
 

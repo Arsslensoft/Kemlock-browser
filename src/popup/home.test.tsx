@@ -105,7 +105,9 @@ describe('the Codes list', () => {
     const row = [...root.querySelectorAll('li.item')].find((item) =>
       item.textContent?.includes('Proton'),
     )!
-    expect(row.querySelector('button')).toBeNull()
+    // Nothing to copy, and no way to compute it; its name and websites can still be edited
+    expect(row.querySelector('button.item-main')).toBeNull()
+    expect(row.querySelectorAll('button')).toHaveLength(1)
     const asked = background.of('liveCodes').flatMap((call) => call.args.ids as string[])
     expect(asked).toContain('c1')
     expect(asked).not.toContain('c2')
@@ -155,7 +157,7 @@ describe('the Codes list', () => {
       nextHotp: ((args: { id: string }) => ({ id: args.id, code: '999999' })) as never,
     })
     const root = await openPopup()
-    await click(button(root, 'Next code for Ledger'))
+    await click(button(root, 'Next MFA code for Ledger'))
     expect(background.of('nextHotp')[0]?.args).toEqual({ id: 'c3' })
     expect(text(root)).toContain('999 999')
   })
@@ -163,7 +165,7 @@ describe('the Codes list', () => {
   it('copies a code through the background', async () => {
     background.reset(unlockedHandlers(world()))
     const root = await openPopup()
-    await click(button(root, 'Copy the code of Orbit Cloud'))
+    await click(button(root, 'Copy the MFA code of Orbit Cloud'))
     expect(background.of('copy')[0]?.args).toEqual({ what: 'code', id: 'c1' })
     expect(text(root)).toContain(message('en', 'popup_copiedCode'))
   })
@@ -187,9 +189,9 @@ describe('the Logins list', () => {
     await click(button(root, 'Logins 3'))
     expect(names(root)).toEqual(['Orbit Cloud', 'Linear', 'Docs'])
     expect(text(root)).toContain('Password health')
-    expect(text(root)).toContain('2 reused · 1 without its code')
+    expect(text(root)).toContain('2 reused · 1 without its MFA code')
     expect(root.querySelectorAll('.item .sub.warn-text')).toHaveLength(3)
-    expect(text(root)).toContain('Without its code')
+    expect(text(root)).toContain('Without its MFA code')
 
     await click(button(root, 'Copy the password of Linear'))
     expect(background.of('copy')[0]?.args).toEqual({ what: 'password', id: 'l2' })
@@ -234,7 +236,7 @@ describe('search', () => {
   it('matches names, usernames, accounts and websites in both lists, whatever the case', async () => {
     background.reset(unlockedHandlers(world()))
     const root = await openPopup()
-    const search = input(root, 'Search codes and logins')
+    const search = input(root, 'Search MFA codes and logins')
 
     await change(search, 'ORBIT')
     expect(names(root)).toEqual(['Orbit Cloud', 'Orbit Cloud'])
@@ -274,7 +276,7 @@ describe('the site in front', () => {
 
     await click(button(card, 'Fill login'))
     expect(background.of('fill')[0]?.args).toEqual({ tabId: 7, loginId: 'l1' })
-    await click(button(card, 'Fill code'))
+    await click(button(card, 'Fill MFA code'))
     expect(background.of('fill')[1]?.args).toEqual({ tabId: 7, codeId: 'c1' })
 
     await click(button(card, 'Show the password of Orbit Cloud'))

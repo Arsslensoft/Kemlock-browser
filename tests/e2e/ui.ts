@@ -53,7 +53,7 @@ export async function lockNow(page: Page): Promise<void> {
 }
 
 /** The popup's three lists and tools. */
-export type Section = 'Codes' | 'Logins' | 'Generator' | 'Settings'
+export type Section = 'MFA codes' | 'Logins' | 'Generator' | 'Settings'
 export async function openSection(page: Page, section: Section): Promise<void> {
   await control(page, new RegExp(`^${section}$`, 'i')).click()
 }

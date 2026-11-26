@@ -1,7 +1,7 @@
 // Contacts: other people's OpenPGP public keys. Adding one by pasted text or a file shows its fingerprint first, and says whether
 // the person compared it with its owner; a contact's page shows the same, with the key to copy.
 import { useState } from 'preact/hooks'
-import type { ContactPreview, Source } from '../../shared/keys-api'
+import type { ContactPreview, ContactView, Source } from '../../shared/keys-api'
 import { KemlockIcon } from '../../shared/brand/brand'
 import {
   Button,
@@ -18,6 +18,13 @@ import {
   useToast,
 } from '../../shared/ui/components'
 import { formatDate, formatDateTime, t } from '../../shared/ui/i18n'
+import {
+  FieldsEditor,
+  FieldsSection,
+  LinkPicker,
+  LinksSection,
+  useItemExtras,
+} from '../item-extras'
 import { ask } from '../send'
 import type { KeysData } from './data'
 import { keysError } from './data'
@@ -72,6 +79,139 @@ function Found(props: {
   )
 }
 
+/** The details a contact holds besides a key, as the forms hold them: text, as it is typed. */
+interface Details {
+  name: string
+  company: string
+  email: string
+  phone: string
+  address: string
+  note: string
+}
+
+const detailsOf = (view: ContactView | undefined): Details => ({
+  name: view?.name ?? '',
+  company: view?.company ?? '',
+  email: view?.email ?? '',
+  phone: view?.phone ?? '',
+  address: view?.address ?? '',
+  note: view?.note ?? '',
+})
+
+const emailOk = (email: string): boolean =>
+  email.trim() === '' || /^[^\s@]+@[^\s@]+$/.test(email.trim())
+
+/** The boxes for a contact's details; the name is the page's own. */
+function DetailFields(props: { value: Details; onChange: (next: Details) => void }) {
+  const set = (key: keyof Details) => (text: string) =>
+    props.onChange({ ...props.value, [key]: text })
+  return (
+    <>
+      <TextField label={t('keys_fieldName')} value={props.value.name} onInput={set('name')} />
+      <TextField
+        label={t('items_fieldCompany')}
+        value={props.value.company}
+        onInput={set('company')}
+      />
+      <TextField
+        label={t('items_fieldEmail')}
+        value={props.value.email}
+        invalid={!emailOk(props.value.email)}
+        {...(emailOk(props.value.email) ? {} : { hint: t('extras_emailBad') })}
+        onInput={set('email')}
+      />
+      <TextField label={t('items_fieldPhone')} value={props.value.phone} onInput={set('phone')} />
+      <TextField
+        label={t('items_address')}
+        value={props.value.address}
+        multiline
+        onInput={set('address')}
+      />
+      <TextField
+        label={t('keys_fieldNote')}
+        value={props.value.note}
+        multiline
+        onInput={set('note')}
+      />
+    </>
+  )
+}
+
+/** A contact with no key: a name and details only. It can be given a key later by adding one with the same name. */
+function PlainContact(props: {
+  data: KeysData
+  onBack: () => void
+  onAdded: (id: string | null) => void
+}) {
+  const [value, setValue] = useState<Details>(() => detailsOf(undefined))
+  const [error, setError] = useState<string | undefined>()
+  const [busy, setBusy] = useState(false)
+  const extras = useItemExtras('contact', null, undefined)
+  const save = async () => {
+    const problem =
+      value.name.trim() === ''
+        ? t('extras_contactNeedsName')
+        : !emailOk(value.email)
+          ? t('extras_emailBad')
+          : extras.problem
+    if (problem !== undefined) {
+      setError(problem)
+      return
+    }
+    setBusy(true)
+    setError(undefined)
+    try {
+      const saved = await ask('saveContact', {
+        id: null,
+        name: value.name.trim(),
+        ...(value.company.trim() === '' ? {} : { company: value.company.trim() }),
+        ...(value.email.trim() === '' ? {} : { email: value.email.trim() }),
+        ...(value.phone.trim() === '' ? {} : { phone: value.phone.trim() }),
+        ...(value.address.trim() === '' ? {} : { address: value.address.trim() }),
+        ...(value.note.trim() === '' ? {} : { note: value.note.trim() }),
+        ...extras.members(),
+      })
+      await props.data.reload()
+      props.onAdded(saved.id)
+    } catch (failure) {
+      setError(keysError(failure))
+      setBusy(false)
+    }
+  }
+  return (
+    <div class="screen">
+      <PageHeader
+        title={t('extras_newContact')}
+        onBack={props.onBack}
+        backLabel={t('popup_back')}
+      />
+      <form
+        class="form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <div class="body form-body">
+          <p class="muted">{t('extras_contactNoKeyBody')}</p>
+          {error !== undefined && <Notice kind="error">{error}</Notice>}
+          <DetailFields value={value} onChange={setValue} />
+          <FieldsEditor {...extras.fieldsProps} />
+          <LinkPicker {...extras.linkProps} />
+        </div>
+        <div class="foot-bar">
+          <Button tall onClick={props.onBack}>
+            {t('popup_cancel')}
+          </Button>
+          <Button kind="primary" tall type="submit" busy={busy} disabled={extras.loading}>
+            {t('popup_save')}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export function AddContact(props: {
   data: KeysData
   initialText?: string
@@ -86,6 +226,8 @@ export function AddContact(props: {
   const [replace, setReplace] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
+  // A contact needs no key: its name and details alone make one (the person's, kept with the rest of the vault)
+  const [plain, setPlain] = useState(false)
 
   const given = (chosen: PickedFile | null = file): Source | null => sourceOf(text, chosen)
 
@@ -131,6 +273,8 @@ export function AddContact(props: {
   }
 
   const addable = found?.some((item) => item.status !== 'own') ?? false
+  if (plain)
+    return <PlainContact data={props.data} onBack={() => setPlain(false)} onAdded={props.onAdded} />
   return (
     <div class="screen">
       <PageHeader title={t('keys_addContact')} onBack={props.onBack} backLabel={t('popup_back')} />
@@ -161,6 +305,13 @@ export function AddContact(props: {
             onTooLarge={() => setError(t('keys_error_tooLarge'))}
           />
           {error !== undefined && <Notice kind="error">{error}</Notice>}
+          {found === undefined && (
+            <div class="actions start">
+              <Button kind="ghost" icon="user" onClick={() => setPlain(true)}>
+                {t('extras_contactNoKey')}
+              </Button>
+            </div>
+          )}
           {found?.map((item) => (
             <Found
               key={item.fingerprintHex}
@@ -210,8 +361,12 @@ export function ContactPage(props: {
   const key = useLoad(() => ask('contactPublic', { id: props.id }), [props.id])
   const [asking, setAsking] = useState<'delete' | 'compare' | null>(null)
   const [busy, setBusy] = useState(false)
-  const [name, setName] = useState(item?.name ?? '')
-  const [note, setNote] = useState(item?.note ?? '')
+  const [details, setDetails] = useState<Details>(() => detailsOf(item))
+  const extras = useItemExtras(
+    'contact',
+    item === undefined ? null : { kind: 'contact', id: item.id },
+    item?.fields,
+  )
 
   if (item === undefined) {
     return (
@@ -243,7 +398,18 @@ export function ContactPage(props: {
     }
   }
 
-  const changed = name.trim() !== item.name || note.trim() !== (item.note ?? '')
+  const before = detailsOf(item)
+  const same = (key: keyof Details) => details[key].trim() === before[key].trim()
+  const changed =
+    !(['name', 'company', 'email', 'phone', 'address', 'note'] as const).every(same) ||
+    Object.keys(extras.members()).length > 0
+  // A contact with no key has details only: nothing to compare or copy
+  const hasKey = item.hasKey !== false
+  const copyText = (text: string) =>
+    void navigator.clipboard.writeText(text).then(
+      () => say(t('keys_copied')),
+      () => say(t('keys_copyFailed')),
+    )
   return (
     <div class="screen">
       <header class="bar login-bar">
@@ -297,7 +463,7 @@ export function ContactPage(props: {
       )}
 
       <div class="body tight">
-        {item.standing !== 'ok' && (
+        {hasKey && item.standing !== 'ok' && (
           <Notice kind="warn">
             {item.standing === 'revoked'
               ? t('keys_contactRevoked')
@@ -307,89 +473,145 @@ export function ContactPage(props: {
           </Notice>
         )}
         {item.unreadable === true && <Notice kind="error">{t('keys_contactUnreadable')}</Notice>}
-        <Group>
-          <div class="detail-row">
-            <span class="detail-label">{t('keys_fingerprint')}</span>
-            <span class="grow keys-detail">
-              <span class="mono keys-fingerprint">{item.fingerprint}</span>
-            </span>
-            <IconButton
-              icon="copy"
-              size={16}
-              label={t('keys_copyFingerprint')}
-              onClick={() =>
-                void navigator.clipboard.writeText(item.fingerprint).then(
-                  () => say(t('keys_copied')),
-                  () => say(t('keys_copyFailed')),
-                )
-              }
-            />
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">{t('keys_userIds')}</span>
-            <span class="grow keys-detail">
-              {item.userIds.map((userId) => (
-                <span key={userId} class="ellipsis">
-                  {userId}
+        {(item.company ?? item.email ?? item.phone ?? item.address) !== undefined && (
+          <Group>
+            {item.company !== undefined && (
+              <div class="detail-row">
+                <span class="detail-label">{t('items_company')}</span>
+                <span class="grow ellipsis">{item.company}</span>
+              </div>
+            )}
+            {item.email !== undefined && (
+              <div class="detail-row">
+                <span class="detail-label">{t('items_email')}</span>
+                <span class="grow keys-detail">
+                  <span class="ellipsis">{item.email}</span>
                 </span>
-              ))}
-            </span>
-          </div>
-          {item.expires !== undefined && (
+                <IconButton
+                  icon="copy"
+                  size={16}
+                  label={t('items_copyEmail')}
+                  onClick={() => copyText(item.email ?? '')}
+                />
+              </div>
+            )}
+            {item.phone !== undefined && (
+              <div class="detail-row">
+                <span class="detail-label">{t('items_phone')}</span>
+                <span class="grow ellipsis">{item.phone}</span>
+                <IconButton
+                  icon="copy"
+                  size={16}
+                  label={t('items_copyPhone')}
+                  onClick={() => copyText(item.phone ?? '')}
+                />
+              </div>
+            )}
+            {item.address !== undefined && (
+              <div class="detail-row">
+                <span class="detail-label">{t('items_address')}</span>
+                <span class="grow contact-address">{item.address}</span>
+              </div>
+            )}
+          </Group>
+        )}
+        {!hasKey && <Notice>{t('extras_contactNoKeyNote')}</Notice>}
+        {hasKey && (
+          <Group>
             <div class="detail-row">
-              <span class="detail-label">{t('keys_expires')}</span>
-              <span class="grow">{formatDate(item.expires)}</span>
-            </div>
-          )}
-          <div class="detail-row">
-            <span class="detail-label">{t('keys_added')}</span>
-            <span class="grow">{formatDate(item.addedAt)}</span>
-          </div>
-        </Group>
-
-        <Section title={t('keys_comparedTitle')}>
-          {item.checked ? (
-            <Notice kind="ok">
-              {item.checkedAt === undefined
-                ? t('keys_checkedLine')
-                : t('keys_checkedOn', formatDateTime(item.checkedAt))}
-            </Notice>
-          ) : (
-            <Notice kind="warn">{t('keys_notCheckedLine')}</Notice>
-          )}
-          {item.checked && item.uncheckedAddresses.length > 0 && (
-            <Aside>{t('keys_uncheckedAddresses', item.uncheckedAddresses.join(', '))}</Aside>
-          )}
-          <div class="keys-actions">
-            {item.checked ? (
-              <Button
-                busy={busy}
+              <span class="detail-label">{t('keys_fingerprint')}</span>
+              <span class="grow keys-detail">
+                <span class="mono keys-fingerprint">{item.fingerprint}</span>
+              </span>
+              <IconButton
+                icon="copy"
+                size={16}
+                label={t('keys_copyFingerprint')}
                 onClick={() =>
-                  void run(
-                    () => ask('saveContact', { id: item.id, checked: false }),
-                    t('keys_uncompareDone'),
+                  void navigator.clipboard.writeText(item.fingerprint).then(
+                    () => say(t('keys_copied')),
+                    () => say(t('keys_copyFailed')),
                   )
                 }
-              >
-                {t('keys_uncompare')}
-              </Button>
-            ) : (
-              <Button kind="primary" busy={busy} onClick={() => setAsking('compare')}>
-                {t('keys_compare')}
-              </Button>
+              />
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">{t('keys_userIds')}</span>
+              <span class="grow keys-detail">
+                {item.userIds.map((userId) => (
+                  <span key={userId} class="ellipsis">
+                    {userId}
+                  </span>
+                ))}
+              </span>
+            </div>
+            {item.expires !== undefined && (
+              <div class="detail-row">
+                <span class="detail-label">{t('keys_expires')}</span>
+                <span class="grow">{formatDate(item.expires)}</span>
+              </div>
             )}
-            {item.canEncrypt && (
-              <Button icon="lock" onClick={() => props.onRoute({ name: 'tools', tool: 'encrypt' })}>
-                {t('keys_encryptTo')}
-              </Button>
-            )}
-          </div>
-        </Section>
+            <div class="detail-row">
+              <span class="detail-label">{t('keys_added')}</span>
+              <span class="grow">{formatDate(item.addedAt)}</span>
+            </div>
+          </Group>
+        )}
 
-        {key.value !== undefined && (
+        {hasKey && (
+          <Section title={t('keys_comparedTitle')}>
+            {item.checked ? (
+              <Notice kind="ok">
+                {item.checkedAt === undefined
+                  ? t('keys_checkedLine')
+                  : t('keys_checkedOn', formatDateTime(item.checkedAt))}
+              </Notice>
+            ) : (
+              <Notice kind="warn">{t('keys_notCheckedLine')}</Notice>
+            )}
+            {item.checked && item.uncheckedAddresses.length > 0 && (
+              <Aside>{t('keys_uncheckedAddresses', item.uncheckedAddresses.join(', '))}</Aside>
+            )}
+            <div class="keys-actions">
+              {item.checked ? (
+                <Button
+                  busy={busy}
+                  onClick={() =>
+                    void run(
+                      () => ask('saveContact', { id: item.id, checked: false }),
+                      t('keys_uncompareDone'),
+                    )
+                  }
+                >
+                  {t('keys_uncompare')}
+                </Button>
+              ) : (
+                <Button kind="primary" busy={busy} onClick={() => setAsking('compare')}>
+                  {t('keys_compare')}
+                </Button>
+              )}
+              {item.canEncrypt && (
+                <Button
+                  icon="lock"
+                  onClick={() => props.onRoute({ name: 'tools', tool: 'encrypt' })}
+                >
+                  {t('keys_encryptTo')}
+                </Button>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {hasKey && key.value !== undefined && (
           <CopyBox label={t('keys_publicPgp')} text={key.value.pem} fileName={key.value.fileName} />
         )}
-        {key.error !== undefined && <Notice kind="error">{key.error}</Notice>}
+        {hasKey && key.error !== undefined && <Notice kind="error">{key.error}</Notice>}
+
+        <FieldsSection item={{ kind: 'contact', id: item.id }} fields={item.fields} />
+        <LinksSection
+          item={{ kind: 'contact', id: item.id }}
+          onChanged={() => void data.reload()}
+        />
 
         <Section title={t('keys_detailsTitle')}>
           <form
@@ -397,21 +619,40 @@ export function ContactPage(props: {
             onSubmit={(event) => {
               event.preventDefault()
               if (!changed) return
-              void run(
-                () =>
-                  ask('saveContact', {
-                    id: item.id,
-                    name: name.trim() === '' ? item.name : name.trim(),
-                    note: note.trim(),
-                  }),
-                t('keys_saveDone'),
-              )
+              const problem = !emailOk(details.email) ? t('extras_emailBad') : extras.problem
+              if (problem !== undefined) {
+                say(problem)
+                return
+              }
+              // Only what changed goes, so a member left alone is never rewritten
+              void run(async () => {
+                const saved = await ask('saveContact', {
+                  id: item.id,
+                  ...(same('name') || details.name.trim() === ''
+                    ? {}
+                    : { name: details.name.trim() }),
+                  ...(same('company') ? {} : { company: details.company.trim() }),
+                  ...(same('email') ? {} : { email: details.email.trim() }),
+                  ...(same('phone') ? {} : { phone: details.phone.trim() }),
+                  ...(same('address') ? {} : { address: details.address.trim() }),
+                  ...(same('note') ? {} : { note: details.note.trim() }),
+                  ...extras.members(),
+                })
+                // The rows just written are the page's start again: a second save must not send them twice
+                extras.reset(saved.fields)
+              }, t('keys_saveDone'))
             }}
           >
-            <TextField label={t('keys_fieldName')} value={name} onInput={setName} />
-            <TextField label={t('keys_fieldNote')} value={note} multiline onInput={setNote} />
+            <DetailFields value={details} onChange={setDetails} />
+            <FieldsEditor {...extras.fieldsProps} />
+            <LinkPicker {...extras.linkProps} />
             <div class="actions">
-              <Button kind="primary" type="submit" busy={busy} disabled={!changed}>
+              <Button
+                kind="primary"
+                type="submit"
+                busy={busy}
+                disabled={!changed || extras.loading}
+              >
                 {t('popup_save')}
               </Button>
             </div>

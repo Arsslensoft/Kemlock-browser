@@ -120,6 +120,9 @@ const pgpKey = (over: Partial<KeyView> = {}): KeyView => ({
 const ada = (over: Partial<ContactView> = {}): ContactView => ({
   id: 'c1',
   name: 'Ada Lovelace',
+  hasKey: true,
+  fields: [],
+  links: 0,
   fingerprint: 'AAAA BBBB CCCC DDDD EEEE FFFF 0000 1111 2222 3333',
   line: 'ada@example.org · Ed25519',
   userIds: ['Ada Lovelace <ada@example.org>'],
@@ -189,6 +192,25 @@ describe('the list', () => {
     expect(text(root)).toContain('Ada Lovelace')
     expect(text(root)).toContain('Not compared')
     expect(text(root)).not.toContain('laptop')
+  })
+
+  it('shows a contact with no key by its email and company, with no fingerprint and no comparison', async () => {
+    vault({
+      contacts: [
+        ada({
+          hasKey: false,
+          fingerprint: '',
+          email: 'pat@example.org',
+          company: 'Orbit',
+          line: '',
+        }),
+      ],
+    })
+    const root = await open()
+    await click(button(root, 'Contacts 1'))
+    expect(text(root)).toContain('pat@example.org · Orbit')
+    expect(text(root)).not.toContain('Not compared')
+    expect(root.querySelector('.label.mono')).toBeNull()
   })
 
   it('searches, filters by tag, and says when nothing matches or nothing is there', async () => {

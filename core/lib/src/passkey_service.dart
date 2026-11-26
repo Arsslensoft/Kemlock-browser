@@ -69,12 +69,11 @@ class PasskeyService {
     final held = _passkey(id);
     // A passkey of a space is changed only where the verified chain lets this account edit it (docs/plans/add-spaces.md)
     vault.editGuard?.call(held.spaceId, held.id);
-    await vault.updatePasskeys(
-      (held) => [
-        for (final passkey in held)
-          if (passkey.id != id) passkey,
-      ],
-    );
+    // The links to the passkey go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((lists) {
+      final removed = lists.passkeys.where((passkey) => passkey.id == id).firstOrNull;
+      return removed == null ? lists : vault.withoutEntry(lists, removed);
+    });
   }
 
   /// The relying party id a request from [origin] may use (see `checkPasskeyRp`); needs no open vault, only the Public Suffix List.

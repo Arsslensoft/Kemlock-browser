@@ -43,4 +43,13 @@ describe('identifySender', () => {
       ),
     ).toEqual({ from: 'page', page: 'popup', tabId: undefined, frameId: undefined })
   })
+
+  it('recognises the files tab, and no other path of the extension as it', () => {
+    const self = { id: 'kemlockid', origins: ['chrome-extension://kemlockid'] }
+    const from = (path: string) =>
+      identifySender({ id: 'kemlockid', url: `chrome-extension://kemlockid${path}` }, self)
+    expect(from('/src/files/index.html')).toMatchObject({ from: 'page', page: 'files' })
+    expect(from('/src/files/other.html')).toBeNull()
+    expect(from('/src/files/')).toBeNull()
+  })
 })

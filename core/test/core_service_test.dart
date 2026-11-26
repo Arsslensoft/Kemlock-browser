@@ -40,12 +40,12 @@ void main() {
     });
 
     test('is made, opened, locked and opened again with its password', () async {
-      expect(await object(core, 'state'), {'exists': false, 'unlocked': false, 'wrongPasswords': 0});
+      expect(await object(core, 'state'), {'exists': false, 'unlocked': false, 'wrongPasswords': 0, 'fileSync': 'readOnly'});
       await core.call('createVault', [password]);
       expect(await object(core, 'state'), containsPair('unlocked', true));
       expect(area.values.keys, contains('backmycodes_vault_config'));
       await core.call('lock');
-      expect(await object(core, 'state'), {'exists': true, 'unlocked': false, 'wrongPasswords': 0});
+      expect(await object(core, 'state'), {'exists': true, 'unlocked': false, 'wrongPasswords': 0, 'fileSync': 'readOnly'});
       expect(await object(core, 'unlock', [password]), {'ok': true, 'wrongPasswords': 0});
       expect(await object(core, 'state'), containsPair('unlocked', true));
     });

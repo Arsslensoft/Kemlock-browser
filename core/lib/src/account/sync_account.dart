@@ -32,7 +32,8 @@ class AccountState {
 /// the target is made again when the core was stopped meanwhile.
 const kmMoveHeldKey = 'moveHeld';
 
-/// The files of a vault, of which a browser keeps none: a move refuses a vault whose notes name some, so nothing asks for one.
+/// The files of a vault, of which a browser keeps none: a move refuses a vault whose notes or File items name some, so nothing asks for
+/// one.
 class _NoFiles implements KmFileStore {
   const _NoFiles();
 
@@ -310,8 +311,10 @@ extension SyncAccount on SyncService {
         final source = kmMoveSourceOf(_settings, target);
         if (source == null) throw const CoreFailure(CoreFailure.invalid, 'there is nothing to move');
         final plan = planKmMove(scopeLists(_vault.lists, null), Owner.user(target.accountId));
-        // A browser keeps no attached file, and the move can't finish while a note names one it doesn't hold
-        if (plan.files.isNotEmpty) throw const CoreFailure('filesNeedPhone', 'the vault has attached files');
+        // A browser keeps no attached file, and the move can't finish while a note or a File item names one it doesn't hold
+        if (plan.files.isNotEmpty || _vault.lists.files.isNotEmpty) {
+          throw const CoreFailure('filesNeedPhone', 'the vault has attached files');
+        }
         record = KmMoveRecord(
           source: source.name,
           server: source.server,
@@ -506,7 +509,8 @@ extension SyncAccount on SyncService {
               await _saveStates();
               // The old store's run may have brought notes with attached files, which a browser can't move: said now, before anything is
               // written to the server, and not as a file that is missing for ever
-              if (planKmMove(scopeLists(_vault.lists, null), Owner.user(target.accountId)).files.isNotEmpty) {
+              if (_vault.lists.files.isNotEmpty ||
+                  planKmMove(scopeLists(_vault.lists, null), Owner.user(target.accountId)).files.isNotEmpty) {
                 throw const CoreFailure('filesNeedPhone', 'the vault has attached files');
               }
             },

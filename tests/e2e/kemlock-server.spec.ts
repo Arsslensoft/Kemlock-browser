@@ -11,7 +11,20 @@
 // by a test. SSO is tested only with KEMLOCK_SERVER_SSO=1, and only against a server that has this
 // extension's id (tests/e2e/extension-key.ts, EXTENSION_ID) in KEMLOCK_BROWSER_EXTENSION_IDS: the
 // server refuses SSO from any extension id that is not on that list.
+import { createHash, randomBytes } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import type { Page } from '@playwright/test'
 import { EXTENSION_ID } from './extension-key'
+import {
+  addOwnField,
+  chooseFile,
+  editButton,
+  openFileItem,
+  openFilesTab,
+  openLogin,
+  openNote,
+  saveButton,
+} from './item-ui'
 import { expect, PASSWORD, test, type Kemlock } from './kemlock'
 import { totp } from './otp'
 import { allowAccess, control, enterAddress, pickPlace, setBrowserPassword } from './ui'
@@ -127,6 +140,226 @@ test.describe('Kemlock Server', () => {
     await kemlock.call('signOut')
     expect(await kemlock.call('syncStatus')).toBeNull()
     expect(await kemlock.call('codes')).toHaveLength(before)
+  })
+
+  // Files and custom fields (docs/plans/add-item-format.md): they work only here, with Kemlock Server's file routes and its
+  // admin-defined fields. Each test makes its own items and takes them out again, since the account is a real one.
+  test.describe('files and fields', () => {
+    const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+    const pattern = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    /** Over 1 MiB, so staging and downloading take more than one piece. */
+    const bigFile = () => randomBytes(1_572_864 + 17)
+
+    /** Signs in, syncs, and says files are carried (the sync is with Kemlock Server). */
+    async function ready(kemlock: Kemlock): Promise<void> {
+      await kemlock.createVault()
+      await signIn(kemlock)
+      expect((await kemlock.call('syncNow')).problem).toBeUndefined()
+      expect(await kemlock.call('syncStatus')).toMatchObject({
+        place: 'kemlock',
+        fileSync: 'kemlock',
+      })
+    }
+
+    /** The Files tab takes the file; some builds want one more click to start. */
+    async function giveFile(
+      kemlock: Kemlock,
+      hash: string,
+      file: { name: string; mimeType: string; buffer: Buffer },
+    ): Promise<Page> {
+      const tab = await openFilesTab(kemlock.context, (path) => kemlock.url(path), hash)
+      await chooseFile(tab, file)
+      await tab
+        .getByRole('button', { name: /^(save file|add to the note|replace file)$/i })
+        .click({ timeout: 2000 })
+        .catch(() => undefined)
+      return tab
+    }
+
+    /** Presses a Download button and reads what the browser saved. */
+    async function downloaded(popup: Page): Promise<{ name: string; bytes: Buffer }> {
+      const [download] = await Promise.all([
+        popup.waitForEvent('download', { timeout: 60_000 }),
+        control(popup, /^download\b/i).click(),
+      ])
+      return { name: download.suggestedFilename(), bytes: await readFile((await download.path())!) }
+    }
+
+    /** A destructive button, then its confirmation when the page asks for one. */
+    async function confirmed(popup: Page, name: RegExp): Promise<void> {
+      await control(popup, name).click()
+      const confirm = popup.getByRole('button', { name: /^(remove|delete|yes)$/i }).last()
+      if (await confirm.isVisible().catch(() => false)) await confirm.click()
+    }
+
+    test('a file attached to a note is downloaded as it was, and removed', async ({ kemlock }) => {
+      await ready(kemlock)
+      const note = await kemlock.call('saveNote', {
+        id: null,
+        input: { title: `Kemlock e2e attachment ${Date.now()}`, text: 'a note with a file' },
+      })
+      try {
+        const data = bigFile()
+        const name = 'e2e-attachment.bin'
+        await giveFile(kemlock, `attach/${note.id}`, {
+          name,
+          mimeType: 'application/octet-stream',
+          buffer: data,
+        })
+        await expect
+          .poll(
+            async () => (await kemlock.call('revealNote', { id: note.id })).attachments.length,
+            {
+              timeout: 120_000,
+            },
+          )
+          .toBe(1)
+        const [attached] = (await kemlock.call('revealNote', { id: note.id })).attachments
+        expect(attached).toMatchObject({ name, size: data.length, onServer: true })
+        expect(attached!.sha256).toBe(sha256(data))
+
+        // The popup downloads it back, piece by piece: the same bytes, under the same name
+        const popup = await kemlock.popup()
+        await openNote(popup, note.title)
+        const got = await downloaded(popup)
+        expect(got.name).toBe(name)
+        expect(got.bytes.length).toBe(data.length)
+        expect(sha256(got.bytes)).toBe(sha256(data))
+        expect(got.bytes.equals(data)).toBe(true)
+
+        // Removing it takes it off the note, and the next sync takes it off the server
+        await confirmed(popup, /^remove\b/i)
+        await expect
+          .poll(async () => (await kemlock.call('revealNote', { id: note.id })).attachments.length)
+          .toBe(0)
+        expect((await kemlock.call('syncNow')).problem).toBeUndefined()
+        expect((await kemlock.call('revealNote', { id: note.id })).attachments).toEqual([])
+      } finally {
+        await kemlock.call('deleteNote', { id: note.id }).catch(() => undefined)
+        await kemlock.call('syncNow').catch(() => undefined)
+      }
+    })
+
+    test('a File item is added, downloaded as it was, and deleted', async ({ kemlock }) => {
+      await ready(kemlock)
+      const data = bigFile()
+      const fileName = `kemlock-e2e-${Date.now()}.bin`
+      let id: string | undefined
+      try {
+        await giveFile(kemlock, 'newFile', {
+          name: fileName,
+          mimeType: 'application/octet-stream',
+          buffer: data,
+        })
+        await expect
+          .poll(
+            async () => (await kemlock.call('files')).find((f) => f.fileName === fileName)?.id,
+            {
+              timeout: 120_000,
+            },
+          )
+          .toBeTruthy()
+        const item = (await kemlock.call('files')).find((f) => f.fileName === fileName)!
+        id = item.id
+        expect(item).toMatchObject({ size: data.length, onServer: true })
+
+        const popup = await kemlock.popup()
+        await openFileItem(popup, item.name)
+        const got = await downloaded(popup)
+        expect(got.name).toBe(fileName)
+        expect(got.bytes.equals(data)).toBe(true)
+
+        await confirmed(popup, /^delete\b/i)
+        await expect
+          .poll(async () => (await kemlock.call('files')).some((f) => f.id === item.id))
+          .toBe(false)
+        id = undefined
+      } finally {
+        if (id) await kemlock.call('deleteFile', { id }).catch(() => undefined)
+        await kemlock.call('syncNow').catch(() => undefined)
+      }
+    })
+
+    test('the fields an admin defined are offered in the editor, and one is added', async ({
+      kemlock,
+    }) => {
+      await ready(kemlock)
+      const defs = await kemlock.call('customFieldDefs', { refresh: true })
+      const def = defs.fields.find((f) => f.kinds === 'all' || f.kinds.includes('login'))
+      test.skip(!def, 'the account has no admin-defined field for logins')
+      const login = await kemlock.call('saveLogin', {
+        id: null,
+        input: {
+          name: `Kemlock e2e fields ${Date.now()}`,
+          username: 'e2e',
+          password: 'e2e-password-1',
+          websites: ['e2e.example.com'],
+        },
+      })
+      try {
+        const popup = await kemlock.popup()
+        await openLogin(popup, login.name)
+        await editButton(popup).click()
+        await control(popup, /add a field/i).click()
+        // Each admin field the login may have is a choice, and "Your own field" is one only when the account allows it
+        await expect(control(popup, pattern(def!.name))).toBeVisible()
+        if (defs.allowOwn) await expect(control(popup, /your own field/i)).toBeVisible()
+        else await expect(popup.getByText(/your own field/i)).toHaveCount(0)
+
+        if (def!.type === 'text') {
+          await control(popup, pattern(def!.name)).click()
+          await popup
+            .getByLabel(/^value\b|field value/i)
+            .last()
+            .fill('e2e value')
+          await saveButton(popup).click()
+          await expect
+            .poll(async () =>
+              (await kemlock.call('logins'))
+                .find((l) => l.id === login.id)
+                ?.fields.find((f) => f.adminField === def!.id),
+            )
+            .toMatchObject({ name: def!.name, kind: 'text', value: 'e2e value' })
+        }
+      } finally {
+        await kemlock.call('deleteLogin', { id: login.id }).catch(() => undefined)
+        await kemlock.call('syncNow').catch(() => undefined)
+      }
+    })
+
+    test('when the account allows it, a field of the person’s own is added', async ({
+      kemlock,
+    }) => {
+      await ready(kemlock)
+      const defs = await kemlock.call('customFieldDefs', {})
+      test.skip(!defs.allowOwn, 'this server lets only its admin-defined fields be used')
+      const login = await kemlock.call('saveLogin', {
+        id: null,
+        input: {
+          name: `Kemlock e2e own field ${Date.now()}`,
+          username: 'e2e',
+          password: 'e2e-password-1',
+          websites: ['e2e.example.com'],
+        },
+      })
+      try {
+        const popup = await kemlock.popup()
+        await openLogin(popup, login.name)
+        await editButton(popup).click()
+        await addOwnField(popup, 'E2E note', 'hello')
+        await saveButton(popup).click()
+        await expect
+          .poll(async () =>
+            (await kemlock.call('logins'))
+              .find((l) => l.id === login.id)
+              ?.fields.map((f) => f.name),
+          )
+          .toContain('E2E note')
+      } finally {
+        await kemlock.call('deleteLogin', { id: login.id }).catch(() => undefined)
+        await kemlock.call('syncNow').catch(() => undefined)
+      }
+    })
   })
 
   test.describe('SSO', () => {

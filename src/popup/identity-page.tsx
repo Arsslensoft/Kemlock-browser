@@ -30,6 +30,7 @@ import { useCopy } from './copy'
 import type { Vault } from './data'
 import { allTags } from './format'
 import { addressLines, dateOk, dateText } from './items-data'
+import { FieldsEditor, FieldsSection, LinkPicker, LinksSection, useItemExtras } from './item-extras'
 import { DeleteQuestion, DetailRow, ItemBar, SecretRow, uiLanguage, useFillForm } from './items-ui'
 import type { Route } from './route'
 import { ask } from './send'
@@ -222,6 +223,13 @@ export function IdentityPage(props: {
             </Group>
           </Section>
         )}
+        <FieldsSection item={{ kind: 'identity', id: identity.id }} fields={identity.fields} />
+        <LinksSection
+          item={{ kind: 'identity', id: identity.id }}
+          onRoute={props.onRoute}
+          onChanged={() => void vault.reload()}
+          readOnly={identity.space?.canEdit === false}
+        />
       </div>
       {tab !== undefined && (
         <div class="foot-bar">
@@ -466,6 +474,11 @@ function IdentityForm(props: {
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof IdentityDraft>(key: K, value: IdentityDraft[K]) =>
     setDraft((before) => ({ ...before, [key]: value }))
+  const extras = useItemExtras(
+    'identity',
+    props.id === null ? null : { kind: 'identity', id: props.id },
+    props.initial?.fields,
+  )
   const change = (key: number, patch: Partial<DocumentDraft>) =>
     setDraft((before) => ({
       ...before,
@@ -478,10 +491,17 @@ function IdentityForm(props: {
       setError(made.problem)
       return
     }
+    if (extras.problem !== undefined) {
+      setError(extras.problem)
+      return
+    }
     setBusy(true)
     setError(undefined)
     try {
-      const saved = await ask('saveIdentity', { id: props.id, input: made.input })
+      const saved = await ask('saveIdentity', {
+        id: props.id,
+        input: { ...made.input, ...extras.members() },
+      })
       await props.vault.reload()
       props.onSaved(saved.id)
     } catch (failure) {
@@ -663,6 +683,7 @@ function IdentityForm(props: {
             multiline
             onInput={(value) => set('note', value)}
           />
+          <FieldsEditor {...extras.fieldsProps} />
           <Group>
             <Switch
               checked={draft.pinned}
@@ -670,12 +691,13 @@ function IdentityForm(props: {
               onChange={(on) => set('pinned', on)}
             />
           </Group>
+          <LinkPicker {...extras.linkProps} />
         </div>
         <div class="foot-bar">
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy}>
+          <Button kind="primary" tall type="submit" busy={busy} disabled={extras.loading}>
             {t('popup_save')}
           </Button>
         </div>

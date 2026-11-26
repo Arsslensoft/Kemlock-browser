@@ -92,7 +92,7 @@
   "spaces_keysNeed": "Les clés doivent être remplacées après un retrait. Les écritures dans cet espace attendent qu’un propriétaire ou un administrateur le fasse sur son téléphone.",
   "spaces_kindBackupCodes": "Codes de secours",
   "spaces_kindCard": "Cartes",
-  "spaces_kindCode": "Codes",
+  "spaces_kindCode": "Codes MFA",
   "spaces_kindIdentity": "Identités",
   "spaces_kindKey": "Clés",
   "spaces_kindLogin": "Comptes",

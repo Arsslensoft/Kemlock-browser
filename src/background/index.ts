@@ -16,6 +16,8 @@ import {
 } from './clipboard'
 import { loadBackgroundCore } from './core/load'
 import { isForOtherPages, route } from './router'
+import { itemFilesKeepAlivePort } from '../shared/item-files'
+import { acceptItemFilesPort } from './item-files'
 import { acceptSendsPort } from './sends'
 import { originOf, type Identity } from './senders'
 
@@ -74,8 +76,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true
 })
 
-// Added by sends: the Sends tab holds a port while it holds a Send, so the worker is not stopped under it
-chrome.runtime.onConnect.addListener((port) => acceptSendsPort(port, self))
+// Added by sends: the Sends tab holds a port while it holds a Send, so the worker is not stopped under it. Added by item format: the
+// files tab holds one while a file is staged, uploading or being read, and the popup while it downloads one; the files a page made are
+// let go when its last port closes. Each accepts its own name and closes any other, so one listener
+// hands a port to the one it is for.
+chrome.runtime.onConnect.addListener((port) =>
+  port.name === itemFilesKeepAlivePort
+    ? acceptItemFilesPort(
+        port,
+        self,
+        ready.then((background) => background.fileHandles),
+      )
+    : acceptSendsPort(port, self),
+)
 
 chrome.runtime.onInstalled.addListener(() => whenReady((background) => background.setup()))
 chrome.runtime.onStartup.addListener(() => whenReady((background) => background.setup()))

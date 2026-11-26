@@ -1,11 +1,12 @@
 // What the extension's pages ask of notes, cards and identities (docs/plans/add-items.md): the lists, the reveal for an edit page,
 // saving and deleting, one hidden field at a time for a page that shows it, and the text a copy puts on the clipboard. The core
-// does the work; this checks the sender and the vault, and tells sync that something changed.
-import type { CoreApi, ItemSecret, PageApi, PageRequest } from '../shared/api'
+// does the work; this checks the sender and the vault, and tells sync that something changed. It also answers the item format's
+// custom fields, links, and a code's or backup codes' own details (docs/plans/add-item-format.md); the files are item-files.ts's.
+import type { CoreApi, ItemRef, ItemSecret, PageApi, PageRequest } from '../shared/api'
 import { BackgroundError } from './errors'
 import type { ExtensionPage, PageSender } from './senders'
 
-export type ItemKind =
+export type ItemRequestKind =
   | 'notes'
   | 'revealNote'
   | 'saveNote'
@@ -19,9 +20,18 @@ export type ItemKind =
   | 'saveIdentity'
   | 'deleteIdentity'
   | 'showSecret'
+  // Added by item format
+  | 'customFieldDefs'
+  | 'revealField'
+  | 'revealFields'
+  | 'linkedItems'
+  | 'linkCandidates'
+  | 'setLinks'
+  | 'saveCode'
+  | 'saveBackupCodes'
 
 export type ItemHandlers = {
-  [K in ItemKind]: (
+  [K in ItemRequestKind]: (
     message: Extract<PageRequest, { kind: K }>,
     sender: PageSender,
   ) => ReturnType<PageApi[K]>
@@ -41,6 +51,13 @@ export interface ItemAccess {
 }
 
 const pages: readonly ExtensionPage[] = ['popup', 'setup']
+/**
+ * The item format's requests also come from the files tab, which edits nothing of its own but a file's details, and from the keys
+ * tab, which shows contacts with their fields and links.
+ */
+const extraPages: readonly ExtensionPage[] = ['popup', 'setup', 'files', 'keys']
+/** A note is read by the files tab too (the attach screen lists what it holds). */
+const notePages: readonly ExtensionPage[] = ['popup', 'setup', 'files']
 
 /** The item requests of the popup and the setup tab. */
 export function itemHandlers(a: ItemAccess): ItemHandlers {
@@ -54,13 +71,24 @@ export function itemHandlers(a: ItemAccess): ItemHandlers {
     a.check(sender, pages)
     await a.needOpen()
   }
+  const readExtra = async (sender: PageSender): Promise<void> => {
+    a.check(sender, extraPages)
+    await a.needOpen()
+    await a.touch()
+  }
+  const writeExtra = async (sender: PageSender): Promise<void> => {
+    a.check(sender, extraPages)
+    await a.needOpen()
+  }
   return {
     notes: async (_message, sender) => {
       await read(sender)
       return core.notes()
     },
     revealNote: async ({ id }, sender) => {
-      await read(sender)
+      a.check(sender, notePages)
+      await a.needOpen()
+      await a.touch()
       return core.revealNote(id)
     },
     saveNote: async ({ id, input }, sender) => {
@@ -118,6 +146,44 @@ export function itemHandlers(a: ItemAccess): ItemHandlers {
       if (text === undefined) throw new BackgroundError('failed')
       return text
     },
+    customFieldDefs: async ({ refresh }, sender) => {
+      await readExtra(sender)
+      return core.customFieldDefs(refresh === true ? true : undefined)
+    },
+    revealField: async ({ ref, index }, sender) => {
+      await readExtra(sender)
+      return core.revealField(ref, index)
+    },
+    revealFields: async ({ ref }, sender) => {
+      await readExtra(sender)
+      return core.revealFields(ref)
+    },
+    linkedItems: async ({ ref }, sender) => {
+      await readExtra(sender)
+      return core.linkedItems(ref)
+    },
+    linkCandidates: async ({ ref, query }, sender) => {
+      await readExtra(sender)
+      return core.linkCandidates(ref, query)
+    },
+    setLinks: async ({ ref, refs }, sender) => {
+      await writeExtra(sender)
+      const saved = await core.setLinks(ref, refs)
+      await a.changed()
+      return saved
+    },
+    saveCode: async ({ id, input }, sender) => {
+      await writeExtra(sender)
+      const saved = await core.saveCode(id, input)
+      await a.changed()
+      return saved
+    },
+    saveBackupCodes: async ({ serviceId, input }, sender) => {
+      await writeExtra(sender)
+      const saved = await core.saveBackupCodes(serviceId, input)
+      await a.changed()
+      return saved
+    },
   }
 }
 
@@ -142,8 +208,14 @@ export async function copyText(
   what: string,
   id: string,
   documentId?: string,
+  field?: { ref?: ItemRef; index?: number },
 ): Promise<string | undefined> {
   switch (what) {
+    case 'field':
+      // A field is named by its item and its place in the item's list: one value, copied and not shown
+      if (field?.ref === undefined || field.index === undefined)
+        throw new BackgroundError('badRequest')
+      return core.revealField(field.ref, field.index)
     case 'cardNumber':
     case 'cardCode':
     case 'cardPin':
@@ -172,4 +244,5 @@ export const itemCopies: ReadonlySet<string> = new Set([
   'phone',
   'documentNumber',
   'noteText',
+  'field',
 ])

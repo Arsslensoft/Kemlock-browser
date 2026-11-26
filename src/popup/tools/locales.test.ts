@@ -33,6 +33,7 @@ const dynamic = [
   'samePasskey',
   'sameCard',
   'sameNote',
+  'sameFile',
   'sameKey',
   'sameCodes',
   'sameIdentity',

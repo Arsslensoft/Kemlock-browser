@@ -23,6 +23,7 @@ import { CodeLine, codeName } from './codes'
 import { useCopy } from './copy'
 import { backupsFor, type Vault } from './data'
 import { allTags, healthTags, hostOf } from './format'
+import { FieldsSection, LinksSection } from './item-extras'
 import { useLiveCodes } from './live'
 import { passkeysOfWebsites } from './passkey-format'
 import { LoginPasskeys, usePasskeys } from './passkeys'
@@ -30,6 +31,7 @@ import { PasswordLine } from './logins'
 import type { Route } from './route'
 import { ask } from './send'
 import { useFill } from './site'
+import { SiteRuleLine } from './site-rules'
 import { SpaceDetail } from './spaces'
 import { TagEditor } from './tools/tag-editor'
 
@@ -144,13 +146,17 @@ export function LoginPage(props: {
         <Group>
           <div class="detail-row">
             <span class="detail-label">{t('popup_websites')}</span>
-            {login.websites.length > 0 ? (
+            {login.websites.length > 0 || (login.websiteRules ?? []).length > 0 ? (
               <span class="mono grow websites">
-                {login.websites.map((site) => (
-                  <span key={site} class="ellipsis">
-                    {hostOf(site)}
-                  </span>
-                ))}
+                {(login.websiteRules ?? []).length > 0
+                  ? (login.websiteRules ?? []).map((rule, index) => (
+                      <SiteRuleLine key={`${index}:${rule.uri}`} rule={rule} />
+                    ))
+                  : login.websites.map((site) => (
+                      <span key={site} class="ellipsis">
+                        {hostOf(site)}
+                      </span>
+                    ))}
               </span>
             ) : (
               <span class="grow muted">{t('popup_noWebsite')}</span>
@@ -254,30 +260,52 @@ export function LoginPage(props: {
 
         <Section title={t('popup_twoStepCode')}>
           {code !== undefined ? (
-            <Group>
-              <CodeLine
-                code={code}
-                live={live}
-                variant="detail"
-                sub={`${codeName(code)} · ${code.account}`}
-              />
-              {backup !== undefined && (
-                <button
-                  type="button"
-                  class="link-row hov"
-                  onClick={() => props.onRoute({ name: 'backupCodes' })}
-                >
-                  <span class="chip-bc" aria-hidden="true">
-                    BC
-                  </span>
-                  <span class="grow lines">
-                    <span class="name">{t('popup_backupCodes')}</span>
-                    <span class="label">{t('popup_backupCount', backup.left, backup.total)}</span>
-                  </span>
-                  <Icon name="chevron" size={16} weight={2} />
-                </button>
+            <>
+              <Group>
+                <CodeLine
+                  code={code}
+                  live={live}
+                  variant="detail"
+                  sub={`${codeName(code)} · ${code.account}`}
+                />
+                {backup !== undefined && (
+                  <button
+                    type="button"
+                    class="link-row hov"
+                    onClick={() => props.onRoute({ name: 'backupCodes' })}
+                  >
+                    <span class="chip-bc" aria-hidden="true">
+                      BC
+                    </span>
+                    <span class="grow lines">
+                      <span class="name">{t('popup_backupCodes')}</span>
+                      <span class="label">{t('popup_backupCount', backup.left, backup.total)}</span>
+                    </span>
+                    <Icon name="chevron" size={16} weight={2} />
+                  </button>
+                )}
+              </Group>
+              <FieldsSection item={{ kind: 'otp', id: code.id }} fields={code.fields} />
+              {(code.links ?? 0) > 0 && (
+                <LinksSection
+                  item={{ kind: 'otp', id: code.id }}
+                  onRoute={props.onRoute}
+                  onChanged={() => void vault.reload()}
+                  readOnly={code.space?.canEdit === false}
+                />
               )}
-            </Group>
+              {code.space?.canEdit !== false && (
+                <div class="actions start">
+                  <Button
+                    kind="ghost"
+                    icon="edit"
+                    onClick={() => props.onRoute({ name: 'codeEdit', id: code.id })}
+                  >
+                    {t('extras_editCode')}
+                  </Button>
+                </div>
+              )}
+            </>
           ) : unlinked.length > 0 ? (
             <Group pad>
               <SelectField
@@ -356,6 +384,14 @@ export function LoginPage(props: {
             />
           </Group>
         </Section>
+
+        <FieldsSection item={{ kind: 'login', id: login.id }} fields={login.fields} />
+        <LinksSection
+          item={{ kind: 'login', id: login.id }}
+          onRoute={props.onRoute}
+          onChanged={() => void vault.reload()}
+          readOnly={login.space?.canEdit === false}
+        />
       </div>
 
       {tab !== undefined && (

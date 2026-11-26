@@ -7,9 +7,12 @@ import { useVaultLock } from '../shared/vault-lock'
 import { AddCode } from './add-code'
 import { BackupCodesPage } from './backup-codes'
 import { CardPage, EditCard } from './card-page'
+import { BackupEditPage, CodeEditPage } from './code-edit'
 import { rememberClipboardSeconds } from './copy'
 import { loadVault, type Vault } from './data'
 import { EditLogin } from './edit'
+import { EditFile } from './file-edit'
+import { FilePage } from './file-page'
 import { Generator } from './generator'
 import { HealthPage } from './health'
 import { Home, homeStart, type HomeUi } from './home'
@@ -149,6 +152,22 @@ function Unlocked(props: {
           onSaved={(id) => setStack([{ name: 'home' }, { name: 'identity', id }])}
         />
       )
+    // Files: after a save the file's page replaces the edit page over Home
+    case 'file':
+      return <FilePage id={route.id} onBack={back} onRoute={go} />
+    case 'fileEdit':
+      return (
+        <EditFile
+          id={route.id}
+          onBack={back}
+          onSaved={(id) => setStack([{ name: 'home' }, { name: 'file', id }])}
+        />
+      )
+    // The edit pages of an MFA code and of a service's backup codes
+    case 'codeEdit':
+      return <CodeEditPage id={route.id} vault={vault} onBack={back} onSaved={back} />
+    case 'backupEdit':
+      return <BackupEditPage id={route.id} vault={vault} onBack={back} onSaved={back} />
     default:
       return (
         <Home

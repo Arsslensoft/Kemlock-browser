@@ -92,15 +92,22 @@ afterEach(() => {
 describe('which lists have a tag button', () => {
   it('names the kind the core tags for each of Home’s lists, and nothing for another', () => {
     expect(
-      ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities'].map(taggableKind),
-    ).toEqual(['code', 'login', 'passkey', 'note', 'card', 'identity'])
+      ['codes', 'logins', 'passkeys', 'notes', 'cards', 'identities', 'files'].map(taggableKind),
+    ).toEqual(['code', 'login', 'passkey', 'note', 'card', 'identity', 'file'])
     expect(taggableKind('sends')).toBeUndefined()
   })
 
   it('shows the tag button on each of Home’s tabs', async () => {
     background.reset(handlers())
     const root = await openPopup()
-    for (const tab of ['Codes 0', 'Logins 0', 'Passkeys 2', 'Notes 1', 'Cards 1', 'Identities 1']) {
+    for (const tab of [
+      'MFA codes 0',
+      'Logins 0',
+      'Passkeys 2',
+      'Notes 1',
+      'Cards 1',
+      'Identities 1',
+    ]) {
       await click(button(root, tab))
       expect(button(root, t('tools_tagsTitle')), tab).not.toBeNull()
     }

@@ -6,6 +6,8 @@ import { cxfKinds } from './transfer'
 import type {
   CardPart,
   ContentApi,
+  ItemKind,
+  MatchRule,
   ContentRequest,
   FormPart,
   IdentityPart,
@@ -225,6 +227,62 @@ const secondMethods: readonly SecondMethod[] = [
   'recoveryCode',
 ]
 
+// Added by item format (begin): custom fields and links (docs/plans/add-item-format.md). An item is named by its kind and an entry id.
+export const itemKinds: readonly ItemKind[] = [
+  'login',
+  'note',
+  'file',
+  'otp',
+  'backup-codes',
+  'card',
+  'identity',
+  'contact',
+  'ssh-key',
+  'pgp-key',
+  'certificate',
+  'passkey',
+  'key',
+  'key-otp',
+]
+/**
+ * The kind of an item a link names: any word of 1 to 40 lower-case letters, digits and dashes, so a link the core holds to a kind this
+ * build does not list round-trips instead of failing the whole save (the core checks what the vault holds).
+ */
+const itemKind: Parser<ItemKind> = (value) =>
+  typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? (value as ItemKind) : bad
+export const matchRules: readonly MatchRule[] = [
+  'default',
+  'domain',
+  'host',
+  'startsWith',
+  'exact',
+  'regex',
+  'never',
+]
+/** An entry id (a UUID, or what the vault names an entry). */
+const entryId = text(100, 1)
+const itemRef = obj({ kind: req(itemKind), id: req(entryId) })
+const exactlyTrue: Parser<true> = (value) => (value === true ? true : bad)
+export const maxFieldRows = 100
+export const maxLinks = 100
+const fieldInput = obj({
+  origin: opt(int(0, 9999)),
+  // A row with no name is dropped by the core, so an empty one is allowed through
+  name: req(text(200)),
+  kind: req(oneOf('text', 'hidden', 'boolean')),
+  value: opt(text(10_000)),
+  keepValue: opt(exactlyTrue),
+  adminField: opt(text(100, 1)),
+})
+// A blank row (an editor row nobody typed in) is let through, and the core drops it
+const websiteRule = obj({ uri: req(text(2000)), match: req(oneOf(...matchRules)) })
+/** `fields` and `links` of an input: a missing one leaves them as they are. */
+const itemExtras = {
+  fields: opt(list(fieldInput, maxFieldRows)),
+  links: opt(list(itemRef, maxLinks)),
+}
+// Added by item format (end)
+
 const loginInput = obj({
   name: req(text(512)),
   username: req(text(1024)),
@@ -232,8 +290,10 @@ const loginInput = obj({
   /** Spaces: a password a grant hides is kept as it is (docs/plans/add-spaces.md). */
   keepPassword: opt(bool),
   websites: req(list(text(2048, 1), 50)),
+  websiteRules: opt(list(websiteRule, 50)),
   note: opt(text(20_000)),
   tags: opt(list(text(100, 1), 50)),
+  ...itemExtras,
 })
 
 const optText = (max: number) => opt(text(max))
@@ -244,7 +304,37 @@ const noteInput = obj({
   text: req(text(10_000)),
   pinned: opt(bool),
   tags: tagList,
+  ...itemExtras,
 })
+
+// Added by item format (begin): a code's account and a service's backup codes, a File item, a staged or attached file
+const codeInput = obj({
+  name: optText(512),
+  websites: opt(list(text(2048, 1), 50)),
+  note: optText(20_000),
+  pinned: opt(bool),
+  ...itemExtras,
+})
+const backupCodesInput = obj({
+  name: optText(512),
+  websites: opt(list(text(2048, 1), 50)),
+  note: optText(20_000),
+  ...itemExtras,
+})
+/** What the core names a staged or opened file by. */
+const itemFileHandle = text(64, 1)
+const stagedFile = obj({ handle: req(itemFileHandle), name: req(text(255, 1)), type: optText(255) })
+const fileInput = obj({
+  name: req(text(512)),
+  notes: optText(20_000),
+  pinned: opt(bool),
+  tags: tagList,
+  links: opt(list(itemRef, maxLinks)),
+  staged: opt(stagedFile),
+})
+/** A piece of a file crosses as base64: 1 MiB is 1,398,104 characters. */
+const itemFileChunk = text(1_398_104)
+// Added by item format (end)
 
 const cardInput = obj({
   name: req(text(512)),
@@ -261,6 +351,7 @@ const cardInput = obj({
   tags: tagList,
   pinned: opt(bool),
   fromAutofill: opt(bool),
+  ...itemExtras,
 })
 
 const identityAddressInput = obj({
@@ -297,6 +388,7 @@ const identityInput = obj({
   note: optText(20_000),
   tags: tagList,
   pinned: opt(bool),
+  ...itemExtras,
 })
 
 const generatorOptions = obj({
@@ -471,11 +563,14 @@ const pageSpecs: PageSpecs = {
         'phone',
         'documentNumber',
         'noteText',
+        'field',
       ),
     ),
     id: req(text(128)),
     value: opt(text(4096)),
     documentId: opt(id),
+    ref: opt(itemRef),
+    index: opt(int(0, 9999)),
   },
   fill: {
     tabId: req(browserId),
@@ -514,6 +609,28 @@ const pageSpecs: PageSpecs = {
     id: req(id),
     documentId: opt(id),
   },
+  // Added by item format (begin): custom fields, links and files
+  customFieldDefs: { refresh: opt(bool) },
+  revealField: { ref: req(itemRef), index: req(int(0, 9999)) },
+  revealFields: { ref: req(itemRef) },
+  linkedItems: { ref: req(itemRef) },
+  linkCandidates: { ref: req(nullable(itemRef)), query: req(text(200)) },
+  setLinks: { ref: req(itemRef), refs: req(list(itemRef, maxLinks)) },
+  saveCode: { id: req(id), input: req(codeInput) },
+  saveBackupCodes: { serviceId: req(id), input: req(backupCodesInput) },
+  files: {},
+  revealFile: { id: req(id) },
+  deleteFile: { id: req(id) },
+  saveFile: { id: req(nullable(id)), input: req(fileInput) },
+  stageItemFile: { data: req(itemFileChunk), handle: opt(itemFileHandle) },
+  releaseStaged: { handle: req(itemFileHandle) },
+  addAttachments: { noteId: req(id), files: req(list(stagedFile, 100)) },
+  removeAttachment: { noteId: req(id), attachmentId: req(id) },
+  openItemFile: { ref: req(itemRef), attachmentId: opt(id) },
+  // A file is at most 50 MiB: 50 pieces
+  readOpened: { handle: req(itemFileHandle), index: req(int(0, 100)) },
+  closeOpened: { handle: req(itemFileHandle) },
+  // Added by item format (end)
   syncStatus: {},
   signInKemlock: { server: req(address), email: req(text(320, 1)), password: req(password) },
   signInKemlockSso: { server: req(address), email: opt(text(320)) },
@@ -583,7 +700,7 @@ const pageSpecs: PageSpecs = {
   sendSaveAsNote: { handle: req(sendHandle) },
   // Added by sends (end)
   // Keys, contacts and the PGP tools (docs/plans/add-keys.md)
-  ...keysPageSpecs({ text, id, bool, int, oneOf, list, nullable, obj, req, opt }),
+  ...keysPageSpecs({ text, id, bool, int, oneOf, list, nullable, obj, req, opt }, itemExtras),
   // Added by tools: the vault tools' requests (src/shared/tools-messages.ts)
   ...toolsPageSpecs({ bad, text, id, bool, int, oneOf, list, obj, req, opt }),
   // Added by passkeys (docs/plans/add-passkeys.md)

@@ -11,7 +11,6 @@ import 'package:kemlock_core/models/json.dart';
 import 'failure.dart';
 import 'tools_service.dart' show listsWith;
 import 'vault_service.dart';
-import 'views.dart';
 
 /// The most codes one service holds, and the longest a code is: past those the text isn't backup codes.
 const maxBackupCodes = 500;
@@ -41,7 +40,7 @@ class BackupTools {
         ],
       ),
     );
-    return backupView(_service(id));
+    return vault.backupViewOf(_service(id));
   }
 
   /// The codes [text] holds, as the app splits them: one to a line, or split by commas, tabs and spaces, with a code of two short
@@ -95,7 +94,7 @@ class BackupTools {
       addedAt: vault.nowMs,
     );
     await vault.saveChanged((lists) => listsWith(lists, backupServices: [...lists.backupServices, service]));
-    return backupView(_service(service.id));
+    return vault.backupViewOf(_service(service.id));
   }
 
   /// Changes a service's name or note; [clearNote] removes the note.
@@ -176,15 +175,11 @@ class BackupTools {
 
   Future<void> delete(String serviceId) async {
     _service(serviceId);
-    await vault.saveChanged(
-      (lists) => listsWith(
-        lists,
-        backupServices: [
-          for (final service in lists.backupServices)
-            if (service.id != serviceId) service,
-        ],
-      ),
-    );
+    // The links to the service go in the same write, worked out from the lists the write holds
+    await vault.saveChanged((lists) {
+      final removed = lists.backupServices.where((service) => service.id == serviceId).firstOrNull;
+      return removed == null ? lists : vault.withoutEntry(lists, removed);
+    });
   }
 
   /// Which codes have their backup codes saved: how many accounts the check looks at, how many are covered, and the others A to Z.

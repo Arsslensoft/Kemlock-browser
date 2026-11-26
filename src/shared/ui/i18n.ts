@@ -48,6 +48,11 @@ const knownErrors: Record<string, string> = {
   confirm: 'items_errorConfirm',
   insecure: 'items_errorInsecure',
   unverified: 'items_errorUnverified',
+  // Files (the item format): only Kemlock Server holds them, and a file is staged in pieces
+  unavailable: 'files_needSync',
+  lost: 'files_error_lost',
+  tooLarge: 'files_error_tooLarge',
+  tooMany: 'files_error_tooMany',
 }
 
 /** What went wrong, in words: the background's codes by name, anything else as it said it. */

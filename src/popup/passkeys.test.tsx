@@ -111,7 +111,7 @@ describe('the Passkeys list on Home', () => {
     setUp()
     held = []
     const root = await openPopup()
-    expect(button(root, 'Codes 0')).not.toBeNull()
+    expect(button(root, 'MFA codes 0')).not.toBeNull()
     expect(text(root)).not.toContain(message('en', 'passkeys_tab'))
   })
 
@@ -124,13 +124,13 @@ describe('the Passkeys list on Home', () => {
     await click(button(root, message('en', 'passkeys_deleteLabel')))
     await click(button(root, 'Delete'))
     expect(button(root, 'Passkeys 0')).toBeNull()
-    expect(button(root, 'Codes 0')?.getAttribute('aria-selected')).toBe('true')
+    expect(button(root, 'MFA codes 0')?.getAttribute('aria-selected')).toBe('true')
   })
 
   it('is searched with the codes and the logins, by site, name or account', async () => {
     setUp()
     const root = await openPopup()
-    const search = input(root, 'Search codes and logins')
+    const search = input(root, 'Search MFA codes and logins')
     await change(search, 'harbor')
     expect(root.querySelectorAll('.list-title')).toHaveLength(1)
     expect(text(root)).toContain(message('en', 'passkeys_tab'))

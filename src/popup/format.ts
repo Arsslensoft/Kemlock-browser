@@ -22,10 +22,10 @@ export function hostOf(website: string): string {
 const contains = (haystack: (string | undefined)[], needle: string): boolean =>
   haystack.some((text) => text !== undefined && text.toLowerCase().includes(needle))
 
-/** Search by name, account or website, whatever the case. An empty query matches. */
+/** Search by name, issuer, account or website, whatever the case. An empty query matches. */
 export function codeMatches(code: CodeView, query: string): boolean {
   const needle = query.trim().toLowerCase()
-  return needle === '' || contains([code.issuer, code.account, ...code.websites], needle)
+  return needle === '' || contains([code.name, code.issuer, code.account, ...code.websites], needle)
 }
 
 /** Search by name, username or website, whatever the case. An empty query matches. */

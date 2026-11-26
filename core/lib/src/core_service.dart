@@ -2,13 +2,18 @@
 // carries them over the wire). Each method is a `CoreApi` method of src/shared/api.ts, with its arguments in order.
 import 'dart:typed_data';
 
+import 'package:kemlock_core/crypto/account/encoding.dart' show MalformedException, Owner;
 import 'package:kemlock_core/crypto/bytes.dart';
+import 'package:kemlock_core/models/json.dart' show asInt;
 
 import 'account/account_service.dart';
 import 'browser.dart';
+import 'custom_fields.dart';
 import 'failure.dart';
 import 'generate.dart';
 import 'health.dart';
+import 'item_extras.dart';
+import 'item_files.dart';
 import 'keys_service.dart';
 import 'matching.dart';
 import 'passkey_service.dart';
@@ -30,8 +35,23 @@ class CoreService {
     vault.editGuard = sync.spaces.requireEdit;
     vault.spaceNote = (space, id, {login = false}) => sync.spaces.note(space, id, login: login);
     vault.passwordHides = sync.spaces.hides;
+    // A link names an entry whose id isn't a UUID by the Kemlock Server account's own
+    vault.accountOwner = () {
+      final target = sync.kemlockTarget;
+      if (target == null) return null;
+      try {
+        return Owner.user(target.accountId);
+      } on MalformedException {
+        return null;
+      }
+    };
     sends = SendsApi(vault, sync);
     tools = ToolsService(vault, sync);
+    itemFiles = ItemFiles(vault, sync);
+    customFields = CustomFieldDefs(sync);
+    // A file that never went up is taken out once a run has merged, and the admin's fields are read again after one
+    sync.afterMerge = itemFiles.settle;
+    sync.afterRun = customFields.invalidate;
   }
 
   static Future<CoreService> start(CorePlatform platform, CoreData data) async => CoreService._(await VaultService.start(platform, data));
@@ -42,6 +62,12 @@ class CoreService {
 
   /// Sends (sends.dart), which need the sync's Kemlock Server.
   late final SendsApi sends;
+
+  /// Files of File items and notes (item_files.dart), which need the sync's Kemlock Server.
+  late final ItemFiles itemFiles;
+
+  /// The custom fields an admin offers (custom_fields.dart).
+  late final CustomFieldDefs customFields;
 
   /// The vault's keys, contacts and the PGP tools (docs/plans/add-keys.md).
   final KeysService keys;
@@ -145,6 +171,17 @@ class CoreService {
     'signPasskey',
     ...TransferService.methods,
     'account',
+    // Custom fields, links, MFA code and backup codes members (item_extras.dart, vault_links.dart)
+    'customFieldDefs',
+    'revealField',
+    'revealFields',
+    'linkedItems',
+    'linkCandidates',
+    'setLinks',
+    'saveCode',
+    'saveBackupCodes',
+    // Files of items (item_files.dart)
+    ...itemFilesMethods,
     // Notes, cards and identities
     'notes',
     'revealNote',
@@ -170,6 +207,12 @@ class CoreService {
     final value = at < args.length ? args[at] : null;
     if (value == null) return null;
     if (value is! String) throw CoreFailure(CoreFailure.invalid, 'argument ${at + 1} is not text');
+    return value;
+  }
+
+  int _index(List<Object?> args, int at) {
+    final value = at < args.length ? asInt(args[at]) : null;
+    if (value == null) throw CoreFailure(CoreFailure.invalid, 'argument ${at + 1} is not a whole number');
     return value;
   }
 
@@ -207,6 +250,18 @@ class CoreService {
       sync.unload();
     }
   }
+
+  /// Everything that holds a file's bytes or a definition lets go: the vault locks, or is removed.
+  void _forgetFiles() {
+    itemFiles.unload();
+    customFields.unload();
+  }
+
+  /// The links [args] holds as `ItemRef`s, at [at].
+  List<ItemRef> _refs(List<Object?> args, int at) => parseRefs(at < args.length ? args[at] : null);
+
+  /// The item [args] names at [at], as an `ItemRef`.
+  ItemRef _ref(List<Object?> args, int at) => parseRef(at < args.length ? args[at] : null);
 
   static const _noSpacesMethod = Object();
 
@@ -284,11 +339,13 @@ class CoreService {
     if (keys.handles(method)) return keys.call(method, args);
     if (ToolsService.methods.contains(method)) return tools.call(method, args);
     if (TransferService.methods.contains(method)) return transfer.call(method, args);
+    if (itemFilesMethods.contains(method)) return itemFiles.call(method, args);
     switch (method) {
       case 'state':
         final state = vault.state();
         final status = vault.session == null ? null : sync.status();
-        return {...state, 'sync': ?status};
+        // Files are listed with any place and go up and come down with Kemlock Server only
+        return {...state, 'fileSync': sync.syncPlace == 'kemlock' ? 'kemlock' : 'readOnly', 'sync': ?status};
       case 'createVault':
         await vault.createVault(_string(args, 0));
         await _opened();
@@ -298,6 +355,7 @@ class CoreService {
         if (result.ok) await _opened();
         return {'ok': result.ok, 'wrongPasswords': result.wrongPasswords};
       case 'lock':
+        _forgetFiles();
         sends.unload();
         transfer.forget();
         sync.unload();
@@ -306,6 +364,7 @@ class CoreService {
         await vault.lock();
         return null;
       case 'removeVault':
+        _forgetFiles();
         sends.unload();
         transfer.forget();
         sync.unload();
@@ -475,6 +534,26 @@ class CoreService {
         return passkeys.sign(_string(args, 0), _string(args, 1), _string(args, 2), _optionalString(args, 3));
       case 'account':
         return account.call(_object(args, 0));
+      // Custom fields, links, MFA code and backup codes (item_extras.dart, vault_links.dart)
+      case 'customFieldDefs':
+        vault.requireSession();
+        return customFields.read(refresh: args.isNotEmpty && args[0] == true);
+      case 'revealField':
+        return vault.revealField(_ref(args, 0), _index(args, 1));
+      case 'revealFields':
+        return vault.revealFields(_ref(args, 0));
+      case 'linkedItems':
+        return vault.linkedItemViews(_ref(args, 0));
+      case 'linkCandidates':
+        return vault.linkCandidateViews(args.isEmpty || args[0] == null ? null : _ref(args, 0), _string(args, 1));
+      case 'setLinks':
+        vault.requireSession();
+        final ref = _ref(args, 0);
+        return {'linkFailures': await vault.setLinksOf(ref.kind, ref.id, _refs(args, 1))};
+      case 'saveCode':
+        return vault.saveCode(_string(args, 0), _object(args, 1));
+      case 'saveBackupCodes':
+        return vault.saveBackupCodes(_string(args, 0), _object(args, 1));
       // Notes, cards and identities (vault_items.dart)
       case 'notes':
         return vault.notes();

@@ -8,17 +8,21 @@ import 'package:kemlock_core/core/ids.dart';
 import 'package:kemlock_core/core/public_suffix_list.dart';
 import 'package:kemlock_core/core/storage/key_value_store.dart';
 import 'package:kemlock_core/core/websites.dart';
+import 'package:kemlock_core/crypto/account/encoding.dart' show Owner;
 import 'package:kemlock_core/crypto/aes_gcm.dart';
 import 'package:kemlock_core/crypto/bytes.dart' show b64;
 import 'package:kemlock_core/features/accounts/otp.dart';
 import 'package:kemlock_core/features/accounts/otpauth.dart';
 import 'package:kemlock_core/features/accounts/service_names.dart';
+import 'package:kemlock_core/features/sync/kemlock/km_kinds.dart' show itemKindOf;
 import 'package:kemlock_core/features/sync/sync_merge.dart';
 import 'package:kemlock_core/models/backup_service.dart';
 import 'package:kemlock_core/models/contact.dart';
+import 'package:kemlock_core/models/custom_field.dart';
 import 'package:kemlock_core/models/generated_password.dart';
 import 'package:kemlock_core/models/identity.dart';
 import 'package:kemlock_core/models/json.dart';
+import 'package:kemlock_core/models/key_account.dart';
 import 'package:kemlock_core/models/login.dart';
 import 'package:kemlock_core/models/otp_account.dart';
 import 'package:kemlock_core/models/passkey.dart';
@@ -26,6 +30,8 @@ import 'package:kemlock_core/models/payment_card.dart';
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_core/models/vault_entry.dart';
 import 'package:kemlock_core/models/vault_key.dart';
+import 'package:kemlock_core/models/website_rule.dart';
+import 'package:kemlock_core/vault/item_links.dart';
 import 'package:kemlock_core/vault/sealed_value.dart' show isAuthenticatedWrapNonce;
 import 'package:kemlock_core/vault/vault_registry.dart';
 import 'package:kemlock_core/vault/vault_store.dart';
@@ -33,6 +39,7 @@ import 'package:kemlock_core/vault/vault_store.dart';
 import 'directory.dart';
 import 'failure.dart';
 import 'health.dart';
+import 'item_extras.dart';
 import 'item_views.dart';
 import 'matching.dart';
 import 'passkey_unlock.dart';
@@ -43,6 +50,7 @@ import 'session_seal.dart';
 import 'views.dart';
 
 part 'vault_items.dart';
+part 'vault_links.dart';
 
 /// The count of wrong passwords, in the app's own key and format: `{"count": n, "last": ms}`, in the clear like the vault's
 /// config (openspec: harden-unlock-and-clipboard).
@@ -54,6 +62,11 @@ const keyExtensionSettings = 'backmycodes_extension_settings';
 /// "Always suggest here": the items the person picked on each host, `{host: [itemId]}`, sealed in the vault, never synced, and
 /// deleted with it. Only the open vault can read or change them.
 const keyExtensionPicks = 'backmycodes_extension_picks';
+
+/// The files a save put in the vault that no run has uploaded yet, `[{item, kind, file, fresh}]`, sealed in the vault and never synced
+/// (item_files.dart): the bytes wait in memory, so an entry still listed here with no server file after the worker stopped is taken
+/// out again at the next unlock or run.
+const keyExtensionPendingFiles = 'backmycodes_extension_pending_files';
 
 /// The order the person gave their logins in this browser, sealed in the vault and never synced: the app keeps no order for logins
 /// (it sorts them by name), and a key of its own on a login would be a format change, so the order stays in the extension.
@@ -145,6 +158,27 @@ class VaultService {
   /// breach check, as the app does.
   bool Function(String? space, String entryId)? passwordHides;
 
+  /// The Kemlock Server account's owner, which a link needs to name an entry whose id isn't a UUID (set by the core service); null
+  /// without one.
+  Owner? Function()? accountOwner;
+
+  Lists? _countedFor;
+  String _countedOwner = '';
+  Map<String, int> _linkCounts = const {};
+
+  /// How many items the entry [id] is linked to, from both ends (the figure of every view's `links`): worked out once for the lists the
+  /// vault holds, so a list of items costs one pass.
+  int linkCount(String id) {
+    final owner = accountOwner?.call();
+    final key = owner == null ? '' : owner.toWire();
+    if (!identical(_countedFor, _lists) || _countedOwner != key) {
+      _linkCounts = linkCountsOf(_lists, account: owner);
+      _countedFor = _lists;
+      _countedOwner = key;
+    }
+    return _linkCounts[id] ?? 0;
+  }
+
   bool _hidden(Login login) => passwordHides?.call(login.spaceId, login.id) ?? false;
 
   /// The ids of the open vault's logins whose password is hidden from this account.
@@ -229,6 +263,7 @@ class VaultService {
     guard(next.logins, now.logins);
     guard(next.cards, now.cards);
     guard(next.identities, now.identities);
+    guard(next.files, now.files);
   }
 
   /// [next], a change made to [now] (the lists the write holds, so this runs inside a builder), with every entry [_guardChanges] would
@@ -274,6 +309,7 @@ class VaultService {
         logins: restoring(next.logins, now.logins),
         cards: restoring(next.cards, now.cards),
         identities: restoring(next.identities, now.identities),
+        files: restoring(next.files, now.files),
       ),
       skipped: skipped,
     );
@@ -477,6 +513,7 @@ class VaultService {
         logins: await vault.loadLogins(session),
         cards: await vault.loadCards(session),
         identities: await vault.loadIdentities(session),
+        files: await vault.loadFiles(session),
       );
       _settings = readSettings(await vault.loadEncryptedValue(keyExtensionSettings, session));
       _picks = readPicks(await vault.loadEncryptedValue(keyExtensionPicks, session));
@@ -581,6 +618,7 @@ class VaultService {
     logins: logins ?? _lists.logins,
     cards: _lists.cards,
     identities: _lists.identities,
+    files: _lists.files,
   );
 
   /// Saves the keys. The lists are read again after the write, so a sync or a save that landed meanwhile stays; a vault that
@@ -657,6 +695,7 @@ class VaultService {
       logins: stampChanged(next.logins, now.logins, now: stampAt),
       cards: stampChanged(next.cards, now.cards, now: stampAt),
       identities: stampChanged(next.identities, now.identities, now: stampAt),
+      files: stampChanged(next.files, now.files, now: stampAt),
     );
     _guardChanges(next);
     final undo = <Future<void> Function()>[];
@@ -684,6 +723,7 @@ class VaultService {
       await put('logins', stamped.logins, now.logins, vault.saveLogins);
       await put('cards', stamped.cards, now.cards, vault.saveCards);
       await put('identities', stamped.identities, now.identities, vault.saveIdentities);
+      await put('files', stamped.files, now.files, vault.saveFiles);
     } catch (error) {
       var restored = true;
       for (final step in undo.reversed) {
@@ -759,6 +799,7 @@ class VaultService {
         logins: _lists.logins,
         cards: _lists.cards,
         identities: _lists.identities,
+        files: _lists.files,
       ),
     );
     await store.flush();
@@ -797,6 +838,7 @@ class VaultService {
     if (changed(next.logins, now.logins)) await vault.saveLogins(next.logins, session);
     if (changed(next.cards, now.cards)) await vault.saveCards(next.cards, session);
     if (changed(next.identities, now.identities)) await vault.saveIdentities(next.identities, session);
+    if (changed(next.files, now.files)) await vault.saveFiles(next.files, session);
     // A vault that locked meanwhile is not put back in memory
     if (identical(_session, session)) {
       _lists = next;
@@ -847,12 +889,17 @@ class VaultService {
       }
     }
     final backup = backupFor(account);
+    final links = linkCount(account.id);
     return codeView(
       account,
       order: order,
       loginId: loginId,
       backupCodesLeft: backup?.codes.where((code) => !code.used).length,
       space: spaceNote?.call(account.spaceId, account.id),
+      // An item that lends websites is a linked one: only a code with links asks
+      lent: links == 0 ? null : lentWebsites(_lists, account, account: accountOwner?.call()),
+      fields: fieldViews(account.fields),
+      links: links,
     );
   }
 
@@ -956,7 +1003,7 @@ class VaultService {
 
   List<Map<String, Object?>> backupCodes() {
     requireSession();
-    return [for (final service in _lists.backupServices) backupView(service, space: spaceNote?.call(service.spaceId, service.id))];
+    return [for (final service in _lists.backupServices) VaultLinks(this).backupViewOf(service)];
   }
 
   Future<String> useBackupCode(String serviceId) async {
@@ -1056,6 +1103,8 @@ class VaultService {
           health: health,
           space: spaceNote?.call(login.spaceId, login.id, login: true),
           hidden: _hidden(login),
+          fields: fieldViews(login.fields),
+          links: linkCount(login.id),
         ),
     ];
   }
@@ -1081,15 +1130,23 @@ class VaultService {
     if (name.isEmpty || (username.isEmpty && password.isEmpty)) {
       throw const CoreFailure(CoreFailure.invalid, 'a login needs a name and a username or a password');
     }
+    // Websites with a rule each win over the plain hosts when the input has them; the rest of what the login holds there is kept
+    final existing = id == null ? null : _login(id);
+    final rules = input['websiteRules'] == null ? null : readRules(input['websiteRules'], existing?.rules ?? const []);
+    final fields = applyFields(existing?.fields ?? const [], input['fields']);
+    final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
     final Login saved;
     if (id == null) {
       final now = nowMs;
+      final Websites sites = rules == null ? (websites: websites.isEmpty ? null : websites, uris: null) : websitesOf(rules);
       saved = Login(
         id: newUuid(),
         name: name,
         username: username.isEmpty ? null : username,
         password: password.isEmpty ? null : password,
-        websites: websites.isEmpty ? null : websites,
+        websites: sites.websites,
+        uris: sites.uris,
+        fields: fields,
         note: note == null || note.isEmpty ? null : note,
         tags: tags == null || tags.isEmpty ? null : tags,
         passwordChangedAt: password.isEmpty ? null : now,
@@ -1100,17 +1157,48 @@ class VaultService {
     } else {
       final current = _login(id);
       editGuard?.call(current.spaceId, id);
-      var next = current.copyWith(
-        name: name,
-        username: username.isEmpty ? unset : username,
-        websites: websites.isEmpty ? unset : websites,
-        note: note == null || note.isEmpty ? unset : note,
-        tags: tags == null ? keep : (tags.isEmpty ? unset : tags),
-      );
-      // A changed password keeps the one it replaces among the previous passwords
-      next = next.withPassword(password.isEmpty ? null : password, nowMs);
-      saved = next;
-      await _saveLogins((held) => [for (final login in held) login.id == id ? next : login]);
+      // The edit is made on the login the write holds, so what another write changed meanwhile (a link, a code, a field, a password or a
+      // website a sync brought) is not put back by the copy read above. What the form sends back as it was given changed nothing, and is
+      // decided against the copy the form was built from: the password, the website rules and the plain websites then stay the held
+      // login's, byte for byte, and only what the person changed is written
+      final passwordChanged = input['keepPassword'] != true && password != (current.password ?? '');
+      final websitesChanged = rules != null
+          ? !sameRules(rules, current.rules)
+          : jsonEncode(websites) != jsonEncode(current.websites ?? const <String>[]);
+      Login edit(Login held) {
+        final heldPassword = passwordChanged ? password : (held.password ?? '');
+        final heldFields = applyFields(held.fields, input['fields']);
+        Object? hosts = keep;
+        Object? uris = keep;
+        if (websitesChanged) {
+          if (rules != null) {
+            final sites = websitesOf(readRules(input['websiteRules'], held.rules));
+            hosts = sites.websites ?? unset;
+            uris = sites.uris ?? unset;
+          } else {
+            hosts = websites.isEmpty ? unset : websites;
+          }
+        }
+        final next = held.copyWith(
+          name: name,
+          username: username.isEmpty ? unset : username,
+          websites: hosts,
+          uris: uris,
+          note: note == null || note.isEmpty ? unset : note,
+          tags: tags == null ? keep : (tags.isEmpty ? unset : tags),
+          fields: identical(heldFields, held.fields) ? null : heldFields,
+        );
+        // A changed password keeps the one it replaces among the previous passwords
+        return next.withPassword(heldPassword.isEmpty ? null : heldPassword, nowMs);
+      }
+
+      // Looked at once now, so a bad input is refused before anything is written
+      saved = edit(current);
+      await _saveLogins((held) {
+        // Deleted while the write waited: there is nothing to save
+        if (!held.any((login) => login.id == id)) throw const CoreFailure(CoreFailure.notFound, 'no such login');
+        return [for (final login in held) login.id == id ? edit(login) : login];
+      });
     }
     // A login that holds a generated password now holds it for good: it is no longer "recently generated"
     if (password.isNotEmpty && _generated.any((item) => item.password == password)) {
@@ -1125,26 +1213,33 @@ class VaultService {
         await store.flush();
       });
     }
+    final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('login', saved.id, refs);
     final index = _lists.logins.indexWhere((login) => login.id == saved.id);
+    // Deleted since the write: the person is told so, not handed a view of nothing
+    if (index < 0) throw const CoreFailure(CoreFailure.notFound, 'no such login');
     final stored = _lists.logins[index];
-    return loginView(
-      stored,
-      order: _loginPlace(saved.id, index),
-      health: await health(),
-      space: spaceNote?.call(stored.spaceId, stored.id, login: true),
-      hidden: _hidden(stored),
-    );
+    return {
+      ...loginView(
+        stored,
+        order: _loginPlace(saved.id, index),
+        health: await health(),
+        space: spaceNote?.call(stored.spaceId, stored.id, login: true),
+        hidden: _hidden(stored),
+        fields: fieldViews(stored.fields),
+        links: linkCount(stored.id),
+      ),
+      if (failures.isNotEmpty) 'linkFailures': failures,
+    };
   }
 
   Future<void> deleteLogin(String id) async {
     requireSession();
     editGuard?.call(_login(id).spaceId, id);
-    await _saveLogins(
-      (held) => [
-        for (final login in held)
-          if (login.id != id) login,
-      ],
-    );
+    // The links to the login go in the same write, worked out from the lists the write holds, so no item is left naming a login that is gone
+    await saveChanged((held) {
+      final removed = held.logins.where((login) => login.id == id).firstOrNull;
+      return removed == null ? held : VaultLinks(this).withoutEntry(held, removed);
+    });
   }
 
   Future<void> ignoreHealth(String id, bool ignored) async {

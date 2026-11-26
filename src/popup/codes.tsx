@@ -5,13 +5,22 @@ import { IconButton, LinkButton, Ring, Tile, useToast, Button } from '../shared/
 import { errorMessage, t } from '../shared/ui/i18n'
 import { Icon } from '../shared/ui/icons'
 import { useCopy, useFlash } from './copy'
-import { groupCode } from './format'
+import { groupCode, hostOf } from './format'
 import { secondsLeft, warnSeconds, type Live } from './live'
 import { ask } from './send'
+import { FieldsSection, LinksSection } from './item-extras'
+import type { Route } from './route'
 import { SpaceBadge } from './spaces'
 
+/** What a code is called: the name it was given, else its issuer, else its account. */
 export function codeName(code: CodeView): string {
-  return code.issuer !== '' ? code.issuer : code.account
+  const name = code.name?.trim() ?? ''
+  return name !== '' ? name : code.issuer !== '' ? code.issuer : code.account
+}
+
+/** The websites a code is used on, as hosts: a line under its name. */
+export function siteLine(websites: string[] | undefined): string {
+  return [...new Set((websites ?? []).map(hostOf))].join(' · ')
 }
 
 /** What the live code of a card or row says: its digits, its seconds left, and the next code in its last seconds. */
@@ -104,18 +113,35 @@ export function CodeLine(props: {
 }
 
 /** One row of the Codes list: a tap copies the code. Its order and tags are changed on their own pages (the vault tools). */
-export function CodeRow(props: { code: CodeView; live: Live }) {
+export function CodeRow(props: {
+  code: CodeView
+  live: Live
+  /** Opens the code's edit page (its name, websites, fields and links). */
+  onEdit?: (id: string) => void
+}) {
   const { code, live } = props
   const copy = useCopy()
   const [copied, flash] = useFlash()
   const { entry, warn, nextHotp } = useLiveCode(code, live)
   const name = codeName(code)
+  const sites = siteLine(code.websites)
+  const edit = props.onEdit !== undefined && code.space?.canEdit !== false && (
+    <IconButton
+      icon="edit"
+      size={16}
+      label={t('extras_editCodeOf', name)}
+      onClick={() => props.onEdit?.(code.id)}
+    />
+  )
   const text = (
     <>
       <Tile name={name} />
       <span class="grow lines">
         <span class="name ellipsis">{name}</span>
-        {code.issuer !== '' && <span class="label ellipsis">{code.account}</span>}
+        {(code.issuer !== '' || name !== code.account) && (
+          <span class="label ellipsis">{code.account}</span>
+        )}
+        {sites !== '' && <span class="label ellipsis">{sites}</span>}
         <SpaceBadge space={code.space} />
       </span>
     </>
@@ -130,6 +156,7 @@ export function CodeRow(props: { code: CodeView; live: Live }) {
             <span>{t('popup_onSecurityKey')}</span>
           </span>
         </div>
+        {edit}
       </li>
     )
   }
@@ -163,8 +190,15 @@ export function CodeRow(props: { code: CodeView; live: Live }) {
       {code.type === 'hotp' && (
         <IconButton icon="refresh" label={t('popup_nextCodeOf', name)} onClick={nextHotp} />
       )}
+      {edit}
     </li>
   )
+}
+
+/** What a service's backup codes are called: the name they were given, else the service's. */
+export function backupName(backup: BackupCodeView): string {
+  const name = backup.name?.trim() ?? ''
+  return name !== '' ? name : backup.issuer
 }
 
 /** A tick-box row of pips: `left` of `total` backup codes still unused. */
@@ -192,6 +226,10 @@ export function BackupCodes(props: {
   onChanged: () => Promise<void>
   /** Opens a service's own page, where its codes are edited (the vault tools). */
   onOpen?: (serviceId: string) => void
+  /** Opens the service's edit page (its name, websites, note, fields and links). */
+  onEdit?: (serviceId: string) => void
+  /** Opens a linked item's page. */
+  onRoute?: (route: Route) => void
 }) {
   const copy = useCopy()
   const say = useToast()
@@ -211,21 +249,32 @@ export function BackupCodes(props: {
     <>
       {props.backups.map((backup) => {
         const count = t('popup_backupCount', backup.left, backup.total)
+        const title = backupName(backup)
+        const sites = siteLine(backup.websites)
         return (
-          <article class="group pad backup" key={backup.serviceId} aria-label={backup.issuer}>
+          <article class="group pad backup" key={backup.serviceId} aria-label={title}>
             <div class="row">
-              <Tile name={backup.issuer} />
+              <Tile name={title} />
               <span class="grow lines">
-                <span class="name">{backup.issuer}</span>
+                <span class="name">{title}</span>
+                {sites !== '' && <span class="label ellipsis">{sites}</span>}
                 <span
                   class={backup.left === 0 || backup.low === true ? 'label warn-text' : 'label'}
                 >
                   {count}
                 </span>
               </span>
+              {props.onEdit !== undefined && backup.space?.canEdit !== false && (
+                <IconButton
+                  icon="edit"
+                  size={16}
+                  label={t('extras_editBackupOf', title)}
+                  onClick={() => props.onEdit?.(backup.serviceId)}
+                />
+              )}
               {props.onOpen !== undefined && (
                 <LinkButton
-                  label={t('tools_manageCodesOf', backup.issuer)}
+                  label={t('tools_manageCodesOf', title)}
                   onClick={() => props.onOpen?.(backup.serviceId)}
                 >
                   {t('tools_manage')}
@@ -236,7 +285,7 @@ export function BackupCodes(props: {
             <div class="actions split">
               <Button
                 disabled={backup.left === 0}
-                label={t('popup_copyBackupOf', backup.issuer)}
+                label={t('popup_copyBackupOf', title)}
                 onClick={() => void copy('backupCode', backup.serviceId)}
               >
                 {t('popup_copy')}
@@ -244,12 +293,24 @@ export function BackupCodes(props: {
               <Button
                 disabled={backup.left === 0}
                 busy={busy === backup.serviceId}
-                label={t('popup_markUsedOf', backup.issuer)}
+                label={t('popup_markUsedOf', title)}
                 onClick={() => void markUsed(backup.serviceId)}
               >
                 {t('popup_markUsed')}
               </Button>
             </div>
+            <FieldsSection
+              item={{ kind: 'backup-codes', id: backup.serviceId }}
+              fields={backup.fields}
+            />
+            {(backup.links ?? 0) > 0 && (
+              <LinksSection
+                item={{ kind: 'backup-codes', id: backup.serviceId }}
+                onRoute={props.onRoute}
+                onChanged={() => void props.onChanged()}
+                readOnly={backup.space?.canEdit === false}
+              />
+            )}
           </article>
         )
       })}

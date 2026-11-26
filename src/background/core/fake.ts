@@ -5,20 +5,31 @@
 import type { AccountRequest, AccountResult } from '../../shared/account'
 import { FakeAccount } from './fake-account'
 import type {
+  AdminFieldDef,
+  BackupCodesInput,
   BackupCodeView,
   CardFull,
   CardInput,
   CardView,
+  CodeInput,
   CodeType,
   CodeView,
   CoreApi,
+  CustomFieldDefs,
+  FileFull,
+  FileInput,
+  FileSync,
+  FileView,
   GeneratedPassword,
   GeneratorOptions,
   HealthReport,
   IdentityFull,
   IdentityInput,
   IdentityView,
+  ItemKind,
+  ItemRef,
   KemlockSignIn,
+  LinkedItemView,
   LiveCode,
   LoginHealth,
   LoginInput,
@@ -32,8 +43,10 @@ import type {
   NoteFull,
   NoteInput,
   NoteView,
+  Opened,
   Settings,
   SignInStep,
+  StagedAttachment,
   RemovalItem,
   SecurityKeyChallenge,
   ServerCheck,
@@ -45,6 +58,7 @@ import type {
   VaultState,
   VaultwardenSignIn,
   WebdavSignIn,
+  WebsiteRuleView,
 } from '../../shared/api'
 import { FakeSends } from './fake-sends'
 import type {
@@ -70,6 +84,8 @@ import * as fakePasskeys from './fake-passkeys'
 import type { StoredPasskey } from './fake-passkeys'
 import { FakeTransfer } from './fake-transfer'
 import { emptyItems, FakeItems, type ItemsDisk } from './fake-items'
+import { FakeExtras } from './fake-extras'
+import { FakeFiles } from './fake-files'
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Codes                                                                                             */
@@ -311,10 +327,15 @@ export interface StoredLogin {
   previous: string[]
   ignored: boolean
   pinned?: boolean
+  /** The rule of each website that has one other than the default (item format). */
+  websiteRules?: WebsiteRuleView[]
 }
 
 export interface StoredCode {
   id: string
+  /** Its own name (item format). */
+  name?: string
+  note?: string
   issuer: string
   account: string
   type: CodeType
@@ -337,6 +358,9 @@ export interface StoredCode {
 
 export interface StoredBackup {
   serviceId: string
+  /** Its own name and websites (item format). */
+  name?: string
+  websites?: string[]
   issuer: string
   codes: string[]
   used: number
@@ -442,6 +466,34 @@ const parseOtpauth = (link: string) => {
   }
 }
 
+/** The schemes a website may use: the web, and the package names the phone apps write (web/src/features/vault/forms/siteRows.ts). */
+const siteSchemes = ['http', 'https', 'androidapp', 'iosapp']
+
+/** Whether a website's text is one the web vault would take: a host, a web address or an app's package, or a regex that compiles. */
+function siteIsFine(uri: string, match: WebsiteRuleView['match']): boolean {
+  if (match === 'regex') {
+    try {
+      new RegExp(uri)
+      return true
+    } catch {
+      return false
+    }
+  }
+  // `localhost:8080` looks like a scheme and is a host with a port
+  if (/^[a-z0-9.-]+:\d{1,5}(?:[/?#].*)?$/i.test(uri)) return true
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(uri)?.[1]?.toLowerCase()
+  if (scheme === undefined) return !/\s/.test(uri)
+  if (!siteSchemes.includes(scheme)) return false
+  if (scheme === 'http' || scheme === 'https') {
+    try {
+      return new URL(uri).host !== ''
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
 // The vault tools' methods join the class through the interface of the same name at the end of this file
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class FakeCore implements CoreApi {
@@ -468,6 +520,38 @@ export class FakeCore implements CoreApi {
     need: () => void this.need(),
     place: () => this.disk.sync?.place ?? null,
     now: () => this.now(),
+  })
+
+  /** The administrator's custom fields, as Kemlock Server would answer them (only when the vault syncs with it). */
+  adminFields: AdminFieldDef[] = []
+  /** Whether the server lets people add fields of their own. */
+  allowOwn = true
+  /** Set it to make files go up and down (`kemlock`) or not (`readOnly`), whatever the vault syncs with. */
+  fileSync: FileSync | undefined
+  /** Items whose end of a link can't be written (a space that is read only), by `refKey` (`login:login-1`). */
+  readonly unwritable = new Set<string>()
+
+  /** Custom fields and links of every kind (src/background/core/fake-extras.ts). */
+  readonly extras = new FakeExtras(
+    () => this.disk.items.extras,
+    {
+      find: (ref) => this.findItem(ref),
+      all: () => this.allItems(),
+      legacy: (ref) => this.legacyLinks(ref),
+      unlegacy: (a, b) => this.clearLegacy(a, b),
+      unwritable: () => this.unwritable,
+    },
+    (word) => new FakeError(word),
+  )
+
+  /** File items and note attachments (src/background/core/fake-files.ts). */
+  readonly fileStore = new FakeFiles({
+    need: () => void this.need(),
+    fileSync: () => this.fileSyncNow(),
+    now: () => this.now(),
+    items: () => this.disk.items,
+    extras: this.extras,
+    revealNote: (id) => this.revealNote(id),
   })
 
   // Added by transfer (begin): import and export (fake-transfer.ts)
@@ -588,7 +672,10 @@ export class FakeCore implements CoreApi {
       unlocked: this.unlocked,
       wrongPasswords,
       ...(lastWrongAt === undefined ? {} : { lastWrongAt }),
-      ...(this.unlocked && sync !== null ? { sync: structuredClone(sync) } : {}),
+      ...(this.unlocked && sync !== null
+        ? { sync: { ...structuredClone(sync), fileSync: this.fileSyncNow() } }
+        : {}),
+      fileSync: this.fileSyncNow(),
     }
   }
 
@@ -619,6 +706,7 @@ export class FakeCore implements CoreApi {
     this.log('lock')
     this.unlocked = false
     this.sends.unload()
+    this.fileStore.unload()
     this.transfer.forget()
     this.disk.session = null
   }
@@ -645,9 +733,42 @@ export class FakeCore implements CoreApi {
 
   /* What it holds --------------------------------------------------------------------------- */
 
-  private codeView(code: StoredCode): CodeView {
+  /** The websites an item holds itself, whatever its kind: a login's, a code's or backup codes'. */
+  private ownWebsites(ref: ItemRef): string[] {
+    switch (ref.kind) {
+      case 'login':
+        return this.disk.logins.find((l) => l.id === ref.id)?.websites ?? []
+      case 'otp':
+        return this.disk.codes.find((c) => c.id === ref.id)?.websites ?? []
+      case 'backup-codes':
+        return this.disk.backups.find((b) => b.serviceId === ref.id)?.websites ?? []
+      default:
+        return []
+    }
+  }
+
+  /** The websites of the items an item is linked to, and those items: what a code or backup codes show in place of their own. */
+  private lent(ref: ItemRef): { websites: string[]; from: ItemRef[] } {
+    const websites: string[] = []
+    const from: ItemRef[] = []
+    for (const item of this.extras.linked(ref)) {
+      const own = this.ownWebsites(item.ref)
+      if (own.length === 0) continue
+      from.push(item.ref)
+      for (const site of own) if (!websites.includes(site)) websites.push(site)
+    }
+    return { websites, from }
+  }
+
+  private codeView(code: StoredCode, failures: string[] = []): CodeView {
+    const ref: ItemRef = { kind: 'otp', id: code.id }
+    const lent = this.lent(ref)
     return {
       id: code.id,
+      ...(code.name === undefined ? {} : { name: code.name }),
+      ...(code.note === undefined ? {} : { note: code.note }),
+      ...this.extras.view(ref),
+      ...(failures.length > 0 ? { linkFailures: failures } : {}),
       issuer: code.issuer,
       account: code.account,
       type: code.type,
@@ -657,7 +778,9 @@ export class FakeCore implements CoreApi {
       order: code.order,
       ...(code.pinned === true ? { pinned: true } : {}),
       onSecurityKey: code.onSecurityKey,
-      websites: [...code.websites],
+      websites: lent.from.length > 0 ? lent.websites : [...code.websites],
+      ownWebsites: [...code.websites],
+      ...(lent.from.length > 0 ? { websitesFrom: lent.from } : {}),
       ...(code.loginId === undefined ? {} : { loginId: code.loginId }),
       ...this.backupLeft(code),
     }
@@ -723,12 +846,18 @@ export class FakeCore implements CoreApi {
     }
   }
 
-  private loginView(login: StoredLogin): LoginView {
+  private loginView(login: StoredLogin, failures: string[] = []): LoginView {
     return {
       id: login.id,
       name: login.name,
       username: login.username,
       websites: [...login.websites],
+      websiteRules: login.websites.map((uri) => ({
+        uri,
+        match: login.websiteRules?.find((rule) => rule.uri === uri)?.match ?? 'default',
+      })),
+      ...this.extras.view({ kind: 'login', id: login.id }),
+      ...(failures.length > 0 ? { linkFailures: failures } : {}),
       tags: [...login.tags],
       order: login.order,
       ...(login.pinned === true ? { pinned: true } : {}),
@@ -760,16 +889,41 @@ export class FakeCore implements CoreApi {
     return { username, password }
   }
 
+  /** The websites a save names and the rules they carry; `websiteRules` win over `websites`, and are checked as the web vault checks them. */
+  private sitesOf(
+    input: LoginInput,
+    held: WebsiteRuleView[] | undefined,
+  ): { websites: string[]; rules: WebsiteRuleView[] } {
+    if (input.websiteRules === undefined) {
+      const websites = [...input.websites]
+      return { websites, rules: (held ?? []).filter((rule) => websites.includes(rule.uri)) }
+    }
+    const rules: WebsiteRuleView[] = []
+    for (const rule of input.websiteRules) {
+      const uri = rule.uri.trim()
+      if (uri === '') continue
+      if (!siteIsFine(uri, rule.match)) throw new FakeError('invalid')
+      if (!rules.some((other) => other.uri === uri)) rules.push({ uri, match: rule.match })
+    }
+    return {
+      websites: rules.map((rule) => rule.uri),
+      rules: rules.filter((rule) => rule.match !== 'default'),
+    }
+  }
+
   async saveLogin(id: string | null, input: LoginInput): Promise<LoginView> {
     this.log('saveLogin')
     const disk = this.need()
     if (id === null) {
+      this.extras.check('login', input)
+      const sites = this.sitesOf(input, undefined)
       const login: StoredLogin = {
         id: this.id('login'),
         name: input.name,
         username: input.username,
         password: input.password,
-        websites: [...input.websites],
+        websites: sites.websites,
+        ...(sites.rules.length === 0 ? {} : { websiteRules: sites.rules }),
         tags: [...(input.tags ?? [])],
         order: disk.logins.length,
         ...(input.note === undefined ? {} : { note: input.note }),
@@ -778,9 +932,11 @@ export class FakeCore implements CoreApi {
         ignored: false,
       }
       disk.logins.push(login)
-      return this.loginView(login)
+      return this.loginView(login, this.extras.apply({ kind: 'login', id: login.id }, input))
     }
     const login = this.findLogin(id)
+    const sites = this.sitesOf(input, login.websiteRules)
+    this.extras.validate({ kind: 'login', id }, input)
     if (login.password !== input.password) {
       if (login.password !== '') login.previous.unshift(login.password)
       login.passwordChangedAt = this.now()
@@ -789,16 +945,19 @@ export class FakeCore implements CoreApi {
       name: input.name,
       username: input.username,
       password: input.password,
-      websites: [...input.websites],
+      websites: sites.websites,
       tags: [...(input.tags ?? login.tags)],
       note: input.note,
     })
-    return this.loginView(login)
+    if (sites.rules.length === 0) delete login.websiteRules
+    else login.websiteRules = sites.rules
+    return this.loginView(login, this.extras.apply({ kind: 'login', id: login.id }, input))
   }
 
   async deleteLogin(id: string): Promise<void> {
     const disk = this.need()
     const login = this.findLogin(id)
+    this.extras.forget({ kind: 'login', id })
     disk.logins = disk.logins.filter((l) => l !== login)
     for (const code of disk.codes) if (code.loginId === id) code.loginId = undefined
   }
@@ -807,14 +966,25 @@ export class FakeCore implements CoreApi {
     this.findLogin(id).ignored = ignored
   }
 
-  async backupCodes(): Promise<BackupCodeView[]> {
-    return this.need().backups.map((b) => ({
+  /** A service's backup codes as a view shows them (the tools' calls answer with it too). */
+  backupView(b: StoredBackup, failures: string[] = []): BackupCodeView {
+    const ref: ItemRef = { kind: 'backup-codes', id: b.serviceId }
+    const lent = this.lent(ref)
+    return {
       serviceId: b.serviceId,
+      ...(b.name === undefined ? {} : { name: b.name }),
       issuer: b.issuer,
+      websites: lent.from.length > 0 ? lent.websites : [...(b.websites ?? [])],
       total: b.codes.length,
       left: b.codes.length - b.used,
       low: b.codes.length > 0 && b.codes.length - b.used <= 2,
-    }))
+      ...this.extras.view(ref),
+      ...(failures.length > 0 ? { linkFailures: failures } : {}),
+    }
+  }
+
+  async backupCodes(): Promise<BackupCodeView[]> {
+    return this.need().backups.map((b) => this.backupView(b))
   }
 
   async useBackupCode(serviceId: string): Promise<string> {
@@ -876,7 +1046,7 @@ export class FakeCore implements CoreApi {
 
   private items(): FakeItems {
     const disk = this.need()
-    return new FakeItems(() => disk.items, this.now, (word) => new FakeError(word))
+    return new FakeItems(() => disk.items, this.now, (word) => new FakeError(word), this.extras)
   }
 
   async notes(): Promise<NoteView[]> {
@@ -1116,7 +1286,9 @@ export class FakeCore implements CoreApi {
 
   async syncStatus(): Promise<SyncStatus | null> {
     this.need()
-    return structuredClone(this.disk.sync)
+    return this.disk.sync === null
+      ? null
+      : { ...structuredClone(this.disk.sync), fileSync: this.fileSyncNow() }
   }
 
   private joined(place: SyncPlace, server: string, account?: string): SignInStep {
@@ -1379,6 +1551,232 @@ export class FakeCore implements CoreApi {
   async sendsClose(handle: string): Promise<void> {
     this.sends.close(handle)
   }
+  /* Custom fields, links, code details, files (item format) ------------------------------- */
+
+  /** Whether files go up and down now: the switch, else whether the vault syncs with Kemlock Server. */
+  private fileSyncNow(): FileSync {
+    return this.fileSync ?? (this.disk.sync?.place === 'kemlock' ? 'kemlock' : 'readOnly')
+  }
+
+  /** The item a ref names: what it is called and the line under it. */
+  private findItem(ref: ItemRef): { name: string; detail?: string } | undefined {
+    const disk = this.disk
+    const named = (name: string, detail?: string) => ({
+      name,
+      ...(detail === undefined || detail === '' ? {} : { detail }),
+    })
+    switch (ref.kind) {
+      case 'login': {
+        const login = disk.logins.find((l) => l.id === ref.id)
+        return login === undefined ? undefined : named(login.name, login.username)
+      }
+      case 'otp': {
+        const code = disk.codes.find((c) => c.id === ref.id)
+        return code === undefined ? undefined : named(code.name ?? code.issuer, code.account)
+      }
+      case 'backup-codes': {
+        const backup = disk.backups.find((b) => b.serviceId === ref.id)
+        return backup === undefined ? undefined : named(backup.name ?? backup.issuer)
+      }
+      case 'note': {
+        const note = disk.items.notes.find((n) => n.id === ref.id)
+        return note === undefined ? undefined : named(note.title)
+      }
+      case 'card': {
+        const card = disk.items.cards.find((c) => c.id === ref.id)
+        return card === undefined ? undefined : named(card.name, card.brand)
+      }
+      case 'identity': {
+        const identity = disk.items.identities.find((i) => i.id === ref.id)
+        return identity === undefined ? undefined : named(identity.name, identity.email)
+      }
+      case 'file': {
+        const file = disk.items.files.find((f) => f.id === ref.id)
+        return file === undefined ? undefined : named(file.name, file.fileName)
+      }
+      default:
+        return this.keysFake.nameOf(ref)
+    }
+  }
+
+  /** Every item that may be linked, for the candidates. */
+  private allItems(): { ref: ItemRef; name: string; detail?: string }[] {
+    const disk = this.disk
+    const kinds: [ItemKind, string[]][] = [
+      ['login', disk.logins.map((l) => l.id)],
+      ['otp', disk.codes.map((c) => c.id)],
+      ['backup-codes', disk.backups.map((b) => b.serviceId)],
+      ['note', disk.items.notes.map((n) => n.id)],
+      ['card', disk.items.cards.map((c) => c.id)],
+      ['identity', disk.items.identities.map((i) => i.id)],
+      ['file', disk.items.files.map((f) => f.id)],
+    ]
+    const out: { ref: ItemRef; name: string; detail?: string }[] = []
+    for (const [kind, ids] of kinds)
+      for (const id of ids) {
+        const ref = { kind, id }
+        const found = this.findItem(ref)
+        if (found !== undefined) out.push({ ref, ...found })
+      }
+    return [...out, ...this.keysFake.items()]
+  }
+
+  /** The link a code and its login keep apart from `links` (`linkedLoginId`). */
+  private legacyLinks(ref: ItemRef): ItemRef[] {
+    const disk = this.disk
+    if (ref.kind === 'otp') {
+      const code = disk.codes.find((c) => c.id === ref.id)
+      return code?.loginId === undefined ? [] : [{ kind: 'login', id: code.loginId }]
+    }
+    if (ref.kind === 'login')
+      return disk.codes.filter((c) => c.loginId === ref.id).map((c) => ({ kind: 'otp' as const, id: c.id }))
+    return []
+  }
+
+  private clearLegacy(a: ItemRef, b: ItemRef): void {
+    const code = [a, b].find((ref) => ref.kind === 'otp')
+    const login = [a, b].find((ref) => ref.kind === 'login')
+    if (code === undefined || login === undefined) return
+    const held = this.disk.codes.find((c) => c.id === code.id)
+    if (held?.loginId !== login.id) return
+    held.loginId = undefined
+    for (const other of this.disk.logins) if (other.codeId === code.id) other.codeId = undefined
+  }
+
+  private itemOf(ref: ItemRef): ItemRef {
+    this.need()
+    if (this.findItem(ref) === undefined) throw new FakeError('notFound')
+    return ref
+  }
+
+  async customFieldDefs(_refresh?: boolean): Promise<CustomFieldDefs> {
+    this.log('customFieldDefs')
+    this.need()
+    // Off Kemlock Server there are no definitions, and a person may add fields of their own
+    return this.disk.sync?.place === 'kemlock'
+      ? { fields: structuredClone(this.adminFields), allowOwn: this.allowOwn }
+      : { fields: [], allowOwn: true }
+  }
+
+  async revealField(ref: ItemRef, index: number): Promise<string> {
+    this.log('revealField')
+    return this.extras.revealField(this.itemOf(ref), index)
+  }
+
+  async revealFields(ref: ItemRef): Promise<{ index: number; value: string }[]> {
+    this.log('revealFields')
+    return this.extras.revealFields(this.itemOf(ref))
+  }
+
+  async linkedItems(ref: ItemRef): Promise<LinkedItemView[]> {
+    return this.extras.linked(this.itemOf(ref))
+  }
+
+  async linkCandidates(ref: ItemRef | null, query: string): Promise<LinkedItemView[]> {
+    this.need()
+    return this.extras.candidates(ref, query)
+  }
+
+  async setLinks(ref: ItemRef, refs: ItemRef[]): Promise<{ linkFailures: string[] }> {
+    this.log('setLinks')
+    return { linkFailures: this.extras.setLinks(this.itemOf(ref), refs) }
+  }
+
+  private findCode(id: string): StoredCode {
+    const code = this.need().codes.find((c) => c.id === id)
+    if (code === undefined) throw new FakeError('notFound')
+    return code
+  }
+
+  async saveCode(id: string, input: CodeInput): Promise<CodeView> {
+    this.log('saveCode')
+    const code = this.findCode(id)
+    this.extras.validate({ kind: 'otp', id }, input)
+    const lent = this.lent({ kind: 'otp', id }).from.length > 0
+    const name = input.name?.trim()
+    if (input.name !== undefined) {
+      if (name === '') delete code.name
+      else code.name = name
+    }
+    // The websites a linked item lends are changed there, not here
+    if (input.websites !== undefined && !lent)
+      code.websites = input.websites.map((site) => site.trim()).filter((site) => site !== '')
+    if (input.note !== undefined) {
+      if (input.note.trim() === '') delete code.note
+      else code.note = input.note
+    }
+    if (input.pinned !== undefined) code.pinned = input.pinned
+    return this.codeView(code, this.extras.apply({ kind: 'otp', id }, input))
+  }
+
+  async saveBackupCodes(serviceId: string, input: BackupCodesInput): Promise<BackupCodeView> {
+    this.log('saveBackupCodes')
+    const backup = this.need().backups.find((b) => b.serviceId === serviceId)
+    if (backup === undefined) throw new FakeError('notFound')
+    this.extras.validate({ kind: 'backup-codes', id: serviceId }, input)
+    if (input.name !== undefined) {
+      if (input.name.trim() === '') delete backup.name
+      else backup.name = input.name.trim()
+    }
+    if (input.websites !== undefined)
+      backup.websites = input.websites.map((site) => site.trim()).filter((site) => site !== '')
+    if (input.note !== undefined) {
+      if (input.note.trim() === '') delete backup.note
+      else backup.note = input.note
+    }
+    return this.backupView(backup, this.extras.apply({ kind: 'backup-codes', id: serviceId }, input))
+  }
+
+  // File items and note attachments: src/background/core/fake-files.ts does the work
+  files(): Promise<FileView[]> {
+    return this.fileStore.files()
+  }
+
+  revealFile(id: string): Promise<FileFull> {
+    return this.fileStore.revealFile(id)
+  }
+
+  deleteFile(id: string): Promise<void> {
+    this.log('deleteFile')
+    return this.fileStore.deleteFile(id)
+  }
+
+  saveFile(id: string | null, input: FileInput): Promise<FileView> {
+    this.log('saveFile')
+    return this.fileStore.saveFile(id, input)
+  }
+
+  stageItemFile(data: string, handle: string | null): Promise<{ handle: string; length: number }> {
+    return this.fileStore.stageItemFile(data, handle)
+  }
+
+  releaseStaged(handle: string): Promise<void> {
+    return this.fileStore.releaseStaged(handle)
+  }
+
+  addAttachments(noteId: string, files: StagedAttachment[]): Promise<NoteFull> {
+    this.log('addAttachments')
+    return this.fileStore.addAttachments(noteId, files)
+  }
+
+  removeAttachment(noteId: string, attachmentId: string): Promise<NoteFull> {
+    this.log('removeAttachment')
+    return this.fileStore.removeAttachment(noteId, attachmentId)
+  }
+
+  openItemFile(ref: ItemRef, attachmentId?: string): Promise<Opened> {
+    this.log('openItemFile')
+    return this.fileStore.openItemFile(ref, attachmentId)
+  }
+
+  readOpened(handle: string, index: number): Promise<string> {
+    return this.fileStore.readOpened(handle, index)
+  }
+
+  closeOpened(handle: string): Promise<void> {
+    return this.fileStore.closeOpened(handle)
+  }
+
   // Added by keys: keys, contacts and the PGP tools, in fake-keys.ts
   private keysState: KeysFake | undefined
   private get keysFake(): KeysFake {
@@ -1386,6 +1784,7 @@ export class FakeCore implements CoreApi {
       this.disk,
       () => this.unlocked && this.disk.exists,
       () => this.now(),
+      this.extras,
     ))
   }
   keys: CoreApi['keys'] = () => this.keysFake.keys()

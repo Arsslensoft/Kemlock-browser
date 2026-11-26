@@ -180,7 +180,7 @@ test.describe('the transfer tab', () => {
       .nth(1)
       .setInputFiles({ name: 'screenshot.png', mimeType: 'image/png', buffer: picture })
     await expect(page.getByText(/^qr codes$/i)).toBeVisible()
-    const row = page.getByRole('row', { name: /^codes/i })
+    const row = page.getByRole('row', { name: /^mfa codes/i })
     await expect(row).toContainText(/codes\s*1\s*0\s*1/i)
   })
 

@@ -61,6 +61,7 @@ import 'account/kit_pieces.dart' show PieceError;
 import 'account/register.dart';
 import 'failure.dart';
 import 'generate.dart' show parseWordList;
+import 'item_files.dart' show PendingFiles;
 import 'matching.dart' show isSharedHost;
 import 'spaces_service.dart';
 import 'vault_service.dart';
@@ -123,6 +124,7 @@ Map<String, RemovalItem> _removalNames(Lists lists) => {
   for (final key in lists.keys) key.id: (name: key.name, kind: 'key'),
   for (final passkey in lists.passkeys) passkey.id: (name: passkey.rpName ?? passkey.rpId, kind: 'passkey'),
   for (final contact in lists.contacts) contact.id: (name: contact.name, kind: 'contact'),
+  for (final file in lists.files) file.id: (name: file.name, kind: 'file'),
 };
 
 /// The most entries a "Review" list names.
@@ -282,6 +284,21 @@ class SyncService implements SpacesHost {
   /// What the account's own flows hold between calls (account/sync_account.dart).
   final _accountState = AccountState();
 
+  /// The sealed bytes of the files waiting to be uploaded, which a run with Kemlock Server asks for (item_files.dart). The browser keeps
+  /// no other file, so no other place is given a store.
+  final PendingFiles pendingFiles = PendingFiles();
+
+  /// Called after a run that merged (item_files.dart takes out the entry of a file that never went up, which only a merge can say),
+  /// and, after any run, once the loop is over (custom_fields.dart reads the admin's fields again). Set by the core service.
+  Future<void> Function()? afterMerge;
+  void Function()? afterRun;
+
+  /// Whether a run of this loop merged what it read.
+  var _merged = false;
+
+  @override
+  KmFileStore get fileStore => pendingFiles;
+
   CoreDataAccess get _data => CoreDataAccess(_vault);
 
   DateTime Function() get _clock => _vault.platform.clock;
@@ -338,6 +355,7 @@ class SyncService implements SpacesHost {
     _kemlock = null;
     _vaultwarden = null;
     _dpops.clear();
+    pendingFiles.clear();
     spaces.unload();
   }
 
@@ -402,6 +420,8 @@ class SyncService implements SpacesHost {
     final stopped = place == 'kemlock' && _accountState.moveUnfinished;
     return {
       'place': place,
+      // Files go up and come down only with Kemlock Server; any other place lists them and no more
+      'fileSync': place == 'kemlock' ? 'kemlock' : 'readOnly',
       'server': server,
       'account': ?account,
       'deviceName': ?device,
@@ -1043,6 +1063,9 @@ class SyncService implements SpacesHost {
     values: SealedValues(_store, _vault.requireSession()),
     clientFor: _vault.platform.clientFor,
     proofsFor: _proofsFor,
+    // The files waiting to go up; a run fetches none (`fetchMissing: false`: they are opened on demand)
+    fileStore: pendingFiles,
+    fetchMissing: false,
     // The anchors of the account's spaces travel with the vault's own scope, as the phone's do
     anchors: kmAnchorsOf(anchors, _vault.requireSession()),
     clock: _clock,
@@ -1165,12 +1188,21 @@ class SyncService implements SpacesHost {
   Future<void> _runLoop() async {
     _running = true;
     try {
+      _merged = false;
       do {
         _again = false;
         await _runOnce();
         // The spaces go after the vault's own scope; one the person changed under is run again with the rest
         if (!_again && await spaces.runAll()) _again = true;
       } while (_again);
+      if (_merged) {
+        try {
+          await afterMerge?.call();
+        } catch (_) {
+          // A file entry that couldn't be settled is tried again after the next merge
+        }
+      }
+      afterRun?.call();
     } finally {
       _running = false;
       _current = null;
@@ -1247,6 +1279,7 @@ class SyncService implements SpacesHost {
       await _saveStates();
       _status[key] = ScopeStatus(lastSyncAt: at);
       _removalChoice = null;
+      _merged = true;
     } finally {
       client?.close();
     }
@@ -1343,6 +1376,7 @@ class SyncService implements SpacesHost {
     logins: doc.logins,
     cards: doc.cards,
     identities: doc.identities,
+    files: doc.files,
     seq: seq,
     extra: doc.extra,
   );

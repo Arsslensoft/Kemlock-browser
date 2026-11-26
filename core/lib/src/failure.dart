@@ -35,6 +35,15 @@ class CoreFailure implements Exception {
   /// What the call works on changed since the page looked (a sync, another page): look again, then ask again.
   static const stale = 'stale';
 
+  /// A staged or opened file the core doesn't hold (the worker stopped meanwhile, or it was closed): choose or open it again.
+  static const lost = 'lost';
+
+  /// A file over the 50 MiB a file may be.
+  static const tooLarge = 'tooLarge';
+
+  /// More files than a note may hold (100).
+  static const tooMany = 'tooMany';
+
   /// Anything else; [message] says what.
   static const failed = 'failed';
 

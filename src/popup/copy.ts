@@ -23,6 +23,7 @@ const said: Record<What, string> = {
   phone: 'items_copiedPhone',
   documentNumber: 'items_copiedDocumentNumber',
   noteText: 'items_copiedNote',
+  field: 'extras_copiedField',
 }
 
 /** The seconds the clipboard keeps what was copied (the setting), for the toast's second line. */

@@ -6,7 +6,7 @@
 // copies it itself (`copyKey`). A passphrase is a value of one call and is kept nowhere. Times are milliseconds since the
 // epoch.
 
-import type { VaultState } from './api'
+import type { ItemExtras, ItemExtrasInput, VaultState } from './api'
 
 /* ----------------------------------------------------------------------------------------------- */
 /* What the vault holds                                                                              */
@@ -139,13 +139,23 @@ export interface KeyPreview {
 
 export type ContactSource = 'paste' | 'file'
 
-/** Someone else's OpenPGP public key, kept in the vault. */
-export interface ContactView {
+/**
+ * A person in the vault: a name with a company, an email, a phone and an address, and, optionally, their OpenPGP public key. Without
+ * a key (`hasKey` false) the key's members are empty: no fingerprint, no user IDs, nothing to encrypt to.
+ */
+export interface ContactView extends ItemExtras {
   id: string
   name: string
+  company?: string
+  email?: string
+  phone?: string
+  address?: string
+  /** The contact holds a public key. */
+  hasKey: boolean
   fingerprint: string
   line: string
   userIds: string[]
+  /** `paste`, `file`, or `manual` for a contact made without a key. */
   source: string
   sourceEmail?: string
   /** The fingerprint of the key the contact holds is the one compared with its owner. */
@@ -277,6 +287,21 @@ export interface SshVerified {
   own: { id: string; name: string } | null
 }
 
+/**
+ * What `saveContact` takes: with an `id`, the members that change (a member left out stays, an empty text clears it); with `id: null`,
+ * a new contact with no key (`source: 'manual'`), which needs a name. A key is added with `addContacts`.
+ */
+export interface ContactSave extends ItemExtrasInput {
+  id: string | null
+  name?: string
+  company?: string
+  email?: string
+  phone?: string
+  address?: string
+  note?: string
+  checked?: boolean
+}
+
 /* ----------------------------------------------------------------------------------------------- */
 /* The calls                                                                                         */
 /* ----------------------------------------------------------------------------------------------- */
@@ -307,12 +332,7 @@ export interface KeysCoreApi {
   addContacts(
     args: Source & { source?: ContactSource; checked?: string[]; replacing?: string },
   ): Promise<ContactView[]>
-  saveContact(args: {
-    id: string
-    name?: string
-    note?: string
-    checked?: boolean
-  }): Promise<ContactView>
+  saveContact(args: ContactSave): Promise<ContactView>
   contactPublic(id: string): Promise<{ pem: string; fileName: string }>
   deleteContact(id: string): Promise<void>
 
@@ -351,12 +371,7 @@ export interface KeysPageApi {
   addContacts(
     args: Source & { source?: ContactSource; checked?: string[]; replacing?: string },
   ): Promise<ContactView[]>
-  saveContact(args: {
-    id: string
-    name?: string
-    note?: string
-    checked?: boolean
-  }): Promise<ContactView>
+  saveContact(args: ContactSave): Promise<ContactView>
   contactPublic(args: { id: string }): Promise<{ pem: string; fileName: string }>
   deleteContact(args: { id: string }): Promise<void>
 

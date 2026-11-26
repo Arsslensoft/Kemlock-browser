@@ -356,6 +356,9 @@ describe('a field’s menu for a conditional request', () => {
     name,
     username,
     websites: [],
+    websiteRules: [],
+    fields: [],
+    links: 0,
     tags: [],
     order: 0,
     hasPassword: true,
@@ -364,7 +367,7 @@ describe('a field’s menu for a conditional request', () => {
     health: { reused: false, weak: false, withoutItsCode: false, ignored: false },
   })
   const view = (over: Partial<MenuView> = {}): MenuView => ({
-    state: { exists: true, unlocked: true, wrongPasswords: 0 },
+    state: { exists: true, unlocked: true, wrongPasswords: 0, fileSync: 'readOnly' },
     match: { site: 'orbit-cloud.com', logins: ['l1'], codes: [] },
     logins: [login('l1', 'Orbit Cloud', 'alice')],
     codes: [],
