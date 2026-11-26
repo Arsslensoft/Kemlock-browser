@@ -176,7 +176,10 @@ export function TextField(props: {
           <input
             {...common}
             class={props.mono ? 'mono' : undefined}
-            type={(props.type ?? 'text') as 'text'}
+            // A website is often a bare host ("example.com") or a rule's pattern, which the browser's own check of type="url" calls
+            // invalid and then silently keeps the form from being sent: the keyboard hint is kept, the check is left to the form.
+            type={(props.type === 'url' ? 'text' : (props.type ?? 'text')) as 'text'}
+            {...(props.type === 'url' ? { inputMode: 'url' as const } : {})}
             spellcheck={false}
             onInput={(event) => props.onInput(event.currentTarget.value)}
           />
