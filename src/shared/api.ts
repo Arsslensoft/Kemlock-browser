@@ -355,6 +355,8 @@ export interface FileView {
   changedAt: number
   onServer: boolean
   links: number
+  /** On a saved view: the names of the items whose end of a new link could not be written. */
+  linkFailures?: string[]
   /** The shared space it is in, as for a note. */
   space?: Record<string, unknown>
 }
