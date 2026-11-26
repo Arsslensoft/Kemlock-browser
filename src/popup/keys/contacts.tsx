@@ -625,25 +625,22 @@ export function ContactPage(props: {
                 return
               }
               // Only what changed goes, so a member left alone is never rewritten
-              void run(
-                async () => {
-                  const saved = await ask('saveContact', {
-                    id: item.id,
-                    ...(same('name') || details.name.trim() === ''
-                      ? {}
-                      : { name: details.name.trim() }),
-                    ...(same('company') ? {} : { company: details.company.trim() }),
-                    ...(same('email') ? {} : { email: details.email.trim() }),
-                    ...(same('phone') ? {} : { phone: details.phone.trim() }),
-                    ...(same('address') ? {} : { address: details.address.trim() }),
-                    ...(same('note') ? {} : { note: details.note.trim() }),
-                    ...extras.members(),
-                  })
-                  // The rows just written are the page's start again: a second save must not send them twice
-                  extras.reset(saved.fields)
-                },
-                t('keys_saveDone'),
-              )
+              void run(async () => {
+                const saved = await ask('saveContact', {
+                  id: item.id,
+                  ...(same('name') || details.name.trim() === ''
+                    ? {}
+                    : { name: details.name.trim() }),
+                  ...(same('company') ? {} : { company: details.company.trim() }),
+                  ...(same('email') ? {} : { email: details.email.trim() }),
+                  ...(same('phone') ? {} : { phone: details.phone.trim() }),
+                  ...(same('address') ? {} : { address: details.address.trim() }),
+                  ...(same('note') ? {} : { note: details.note.trim() }),
+                  ...extras.members(),
+                })
+                // The rows just written are the page's start again: a second save must not send them twice
+                extras.reset(saved.fields)
+              }, t('keys_saveDone'))
             }}
           >
             <DetailFields value={details} onChange={setDetails} />

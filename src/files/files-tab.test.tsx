@@ -3,7 +3,13 @@ import { h, type ComponentChildren } from 'preact'
 import { act } from 'preact/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Send from '../popup/send'
-import { fileOf, fileFull, filesMessage, installFilesChrome, noteWith } from '../popup/files-testing'
+import {
+  fileOf,
+  fileFull,
+  filesMessage,
+  installFilesChrome,
+  noteWith,
+} from '../popup/files-testing'
 import {
   background,
   button,
@@ -35,7 +41,8 @@ vi.mock('../popup/send', async (importActual) => {
 })
 
 const t = (name: string, ...subs: (string | number)[]) => filesMessage('en', name, subs)
-const mountTab = (node: ComponentChildren = h(FilesTab, null)) => mount(h(ToastProvider, null, node))
+const mountTab = (node: ComponentChildren = h(FilesTab, null)) =>
+  mount(h(ToastProvider, null, node))
 
 let fake: ReturnType<typeof installFilesChrome>
 
@@ -51,7 +58,10 @@ afterEach(() => {
 })
 
 /** The handlers of a tab over Kemlock Server (or not), with the staging and the saves a test cares about. */
-function handlers(over: Record<string, unknown> = {}, fileSync: 'kemlock' | 'readOnly' = 'kemlock') {
+function handlers(
+  over: Record<string, unknown> = {},
+  fileSync: 'kemlock' | 'readOnly' = 'kemlock',
+) {
   return {
     pageState: () => vaultState({ fileSync }),
     stageItemFile: (args: { data: string; handle?: string }) => ({
@@ -112,9 +122,7 @@ describe('the address’s hash', () => {
 describe('the files tab', () => {
   it('says to unlock in the toolbar while the vault is locked, and tries again', async () => {
     let unlocked = false
-    background.reset(
-      handlers({ pageState: () => vaultState({ unlocked, fileSync: 'kemlock' }) }),
-    )
+    background.reset(handlers({ pageState: () => vaultState({ unlocked, fileSync: 'kemlock' }) }))
     const root = await mountTab()
     expect(text(root)).toContain(t('files_lockedTitle'))
     expect(root.querySelector('form')).toBeNull()
@@ -179,7 +187,9 @@ describe('a new file', () => {
     const size = itemFileChunkBytes * 2 + 5
     await pick(root, fileOf(bytes(size), 'video.mp4', ''))
     await submit(root.querySelector('form'))
-    const calls = background.of('stageItemFile').map((call) => call.args as { data: string; handle?: string })
+    const calls = background
+      .of('stageItemFile')
+      .map((call) => call.args as { data: string; handle?: string })
     expect(calls).toHaveLength(3)
     expect(calls.map((call) => call.handle)).toEqual([undefined, 'h1', 'h1'])
     expect(calls[2]!.data).toBe(toBase64(bytes(5)))
@@ -269,7 +279,9 @@ describe('a new file', () => {
 describe('a replacement file', () => {
   it('puts the new file under the item and keeps its name, notes and pin', async () => {
     location.hash = '#replace/f1'
-    background.reset(handlers({ revealFile: () => fileFull({ notes: 'the flat', pinned: true, tags: ['home'] }) }))
+    background.reset(
+      handlers({ revealFile: () => fileFull({ notes: 'the flat', pinned: true, tags: ['home'] }) }),
+    )
     const root = await mountTab()
     expect(text(root)).toContain(t('files_replacing', 'Lease'))
     await pick(root, fileOf(bytes(30), 'lease-v2.pdf', 'application/pdf'))
@@ -309,7 +321,12 @@ describe('files for a note', () => {
     )
     const root = await mountTab()
     const names = ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.png']
-    await pick(root, ...names.map((name) => fileOf(bytes(8), name, name.endsWith('png') ? 'image/png' : 'text/plain')))
+    await pick(
+      root,
+      ...names.map((name) =>
+        fileOf(bytes(8), name, name.endsWith('png') ? 'image/png' : 'text/plain'),
+      ),
+    )
     for (const name of names) expect(text(root)).toContain(name)
     await submit(root.querySelector('form'))
     const calls = background.of('addAttachments').map((call) => call.args)

@@ -48,7 +48,10 @@ describe('what a website may be', () => {
 
 describe('the rows of a login', () => {
   it('start from its rules, also when it has no plain website to go with them', () => {
-    const login = { websites: [], websiteRules: [{ uri: '^https://orbit', match: 'regex' as const }] }
+    const login = {
+      websites: [],
+      websiteRules: [{ uri: '^https://orbit', match: 'regex' as const }],
+    }
     expect(siteRowsOf(login)).toEqual([{ uri: '^https://orbit', match: 'regex' }])
     expect(rulesOf(login)).toEqual(login.websiteRules)
   })
@@ -58,7 +61,9 @@ describe('the rows of a login', () => {
       { uri: 'github.com', match: 'default' },
     ])
     expect(siteRowsOf({ websites: [], websiteRules: [] })).toEqual([{ uri: '', match: 'domain' }])
-    expect(siteRowsOf(undefined, ['new.example'])).toEqual([{ uri: 'new.example', match: 'domain' }])
+    expect(siteRowsOf(undefined, ['new.example'])).toEqual([
+      { uri: 'new.example', match: 'domain' },
+    ])
   })
 
   it('say whether they are what the login holds, a blank row aside', () => {

@@ -14,10 +14,7 @@ import { stageBlob } from './stage'
 const stagedAtOnce = 4
 
 type State =
-  | { kind: 'waiting' }
-  | { kind: 'sending' }
-  | { kind: 'added' }
-  | { kind: 'failed'; why: string }
+  { kind: 'waiting' } | { kind: 'sending' } | { kind: 'added' } | { kind: 'failed'; why: string }
 
 interface Chosen {
   /** Which chosen file it is, so the same file chosen twice stays two rows. */

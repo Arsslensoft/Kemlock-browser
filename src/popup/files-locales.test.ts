@@ -45,7 +45,9 @@ function otherNames(): string[] {
     .flatMap((file) =>
       Object.keys(JSON.parse(readFileSync(join(parts, file), 'utf8')) as Record<string, string>),
     )
-  return [...others, ...Object.keys(baseEn), ...Object.keys(appEn)].map((name) => name.toLowerCase())
+  return [...others, ...Object.keys(baseEn), ...Object.keys(appEn)].map((name) =>
+    name.toLowerCase(),
+  )
 }
 
 describe('the files strings', () => {

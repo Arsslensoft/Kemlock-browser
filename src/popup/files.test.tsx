@@ -8,7 +8,14 @@ import { ToastProvider } from '../shared/ui/components'
 import { App } from './app'
 import { EditFile } from './file-edit'
 import { itemFilesKeepAlivePort } from '../shared/item-files'
-import { attachment, fileFull, fileView, filesMessage, installFilesChrome, noteWith } from './files-testing'
+import {
+  attachment,
+  fileFull,
+  fileView,
+  filesMessage,
+  installFilesChrome,
+  noteWith,
+} from './files-testing'
 import {
   background,
   button,
@@ -80,7 +87,11 @@ vi.mock('./code-edit', () => ({ CodeEditPage: () => null, BackupEditPage: () => 
 const t = (name: string, ...subs: (string | number)[]) => filesMessage('en', name, subs)
 const openPopup = () => mount(h(ToastProvider, null, h(App, null)))
 
-const withServer = syncStatus({ place: 'kemlock', server: 'https://kem.example.com', fileSync: 'kemlock' })
+const withServer = syncStatus({
+  place: 'kemlock',
+  server: 'https://kem.example.com',
+  fileSync: 'kemlock',
+})
 const withoutServer = syncStatus({ fileSync: 'readOnly' })
 
 let fake: ReturnType<typeof installFilesChrome>
@@ -206,7 +217,8 @@ describe('a File item’s page', () => {
   it('downloads the file piece by piece, saves it under its name and lets the core go of it', async () => {
     const root = await openFile({
       openItemFile: () => ({ handle: 'o1', size: 10, name: 'lease.pdf', type: 'application/pdf' }),
-      readOpened: (args: { index: number }) => (args.index === 0 ? 'aGVsbG8=' : args.index === 1 ? 'd29ybGQ=' : ''),
+      readOpened: (args: { index: number }) =>
+        args.index === 0 ? 'aGVsbG8=' : args.index === 1 ? 'd29ybGQ=' : '',
       closeOpened: () => undefined,
     })
     await click(button(root, t('files_downloadNamed', 'lease.pdf')))
@@ -293,7 +305,12 @@ describe('a File item’s page', () => {
   it('has no way to change or download it with another sync, and says so', async () => {
     const root = await openFile({}, withoutServer)
     expect(text(root)).toContain(t('files_needSync'))
-    for (const label of [t('files_downloadNamed', 'lease.pdf'), t('files_replace'), t('files_delete'), 'Edit'])
+    for (const label of [
+      t('files_downloadNamed', 'lease.pdf'),
+      t('files_replace'),
+      t('files_delete'),
+      'Edit',
+    ])
       expect(button(root, label), label).toBeNull()
     expect(button(root, t('files_copyName'))).not.toBeNull()
   })
@@ -377,7 +394,11 @@ describe('a File item’s edit page', () => {
   it('starts a new file in the files tab, where the file is chosen', async () => {
     background.reset(handlers())
     const root = await mount(
-      h(ToastProvider, null, h(EditFile, { id: null, onBack: () => undefined, onSaved: () => undefined })),
+      h(
+        ToastProvider,
+        null,
+        h(EditFile, { id: null, onBack: () => undefined, onSaved: () => undefined }),
+      ),
     )
     expect(text(root)).toContain(t('files_chooseInTab'))
     await click(button(root, t('files_choose')))
@@ -387,7 +408,11 @@ describe('a File item’s edit page', () => {
   it('says what files need with another sync, and offers nothing to change', async () => {
     background.reset(handlers({}, withoutServer))
     const root = await mount(
-      h(ToastProvider, null, h(EditFile, { id: 'f1', onBack: () => undefined, onSaved: () => undefined })),
+      h(
+        ToastProvider,
+        null,
+        h(EditFile, { id: 'f1', onBack: () => undefined, onSaved: () => undefined }),
+      ),
     )
     expect(text(root)).toContain(t('files_needSync'))
     expect(root.querySelector('form')).toBeNull()

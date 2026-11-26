@@ -46,7 +46,9 @@ export function FilePicker(props: {
       <span class="files-drop-icon" aria-hidden="true">
         <Icon name="folder" size={28} weight={1.6} />
       </span>
-      <p class="files-drop-title">{t(props.multiple === true ? 'files_dropMany' : 'files_dropOne')}</p>
+      <p class="files-drop-title">
+        {t(props.multiple === true ? 'files_dropMany' : 'files_dropOne')}
+      </p>
       <input
         ref={input}
         type="file"
