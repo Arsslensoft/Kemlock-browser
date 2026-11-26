@@ -14,8 +14,10 @@ import { loadChoices, toOptions } from './choices'
 import { codeName } from './codes'
 import type { Vault } from './data'
 import { hostOf } from './format'
+import { FieldsEditor, LinkPicker, useItemExtras } from './item-extras'
 import type { Prefill } from './route'
 import { ask } from './send'
+import { SitesEditor, siteRowsOf, siteRulesOf, sitesProblem, type SiteRow } from './site-rules'
 import { SpaceField } from './spaces'
 
 export function EditLogin(props: {
@@ -32,12 +34,15 @@ export function EditLogin(props: {
   const [name, setName] = useState(login?.name ?? props.prefill?.name ?? '')
   const [username, setUsername] = useState(login?.username ?? '')
   const [password, setPassword] = useState(props.prefill?.password ?? '')
-  const [websites, setWebsites] = useState<string[]>(
+  const [sites, setSites] = useState<SiteRow[]>(() =>
     login !== undefined && login.websites.length > 0
-      ? login.websites
-      : props.prefill !== undefined && props.prefill.websites.length > 0
-        ? props.prefill.websites
-        : [''],
+      ? siteRowsOf(login)
+      : siteRowsOf(undefined, props.prefill?.websites ?? []),
+  )
+  const extras = useItemExtras(
+    'login',
+    login === undefined ? null : { kind: 'login', id: login.id },
+    login?.fields,
   )
   const [note, setNote] = useState(login?.note ?? '')
   const [codeId, setCodeId] = useState(login?.codeId ?? '')
@@ -91,25 +96,33 @@ export function EditLogin(props: {
   }
 
   const save = async () => {
-    const sites = websites.map((site) => site.trim()).filter((site) => site !== '')
+    const rules = siteRulesOf(sites)
     if (username.trim() === '' && password === '' && !hidden) {
       setError(t('popup_needsSecret'))
+      return
+    }
+    const problem = sitesProblem(sites) ?? extras.problem
+    if (problem !== undefined) {
+      setError(problem)
       return
     }
     const input: LoginInput = {
       name:
         name.trim() !== ''
           ? name.trim()
-          : sites[0] !== undefined
-            ? hostOf(sites[0])
+          : rules[0] !== undefined
+            ? hostOf(rules[0].uri)
             : username.trim(),
       username: username.trim(),
       password: hidden ? '' : password,
       ...(hidden ? { keepPassword: true } : {}),
-      websites: sites,
+      // A regular expression is no address to match a host with: only the rules carry it
+      websites: rules.filter((rule) => rule.match !== 'regex').map((rule) => rule.uri),
+      websiteRules: rules,
       note: note.trim() === '' ? undefined : note,
       // The vault's tags are shown, never changed: they go back as they came.
       tags: login?.tags,
+      ...extras.members(),
     }
     setBusy(true)
     setError(undefined)
@@ -151,45 +164,7 @@ export function EditLogin(props: {
         <div class="body form-body">
           {error !== undefined && <Notice kind="error">{error}</Notice>}
           <TextField label={t('popup_fieldName')} value={name} onInput={setName} />
-          <div class="stack sites">
-            {websites.map((site, index) => (
-              <TextField
-                key={index}
-                label={t('popup_fieldWebsite')}
-                value={site}
-                type="url"
-                placeholder="example.com"
-                onInput={(value) =>
-                  setWebsites((previous) => previous.map((s, i) => (i === index ? value : s)))
-                }
-                trailing={
-                  websites.length > 1 ? (
-                    <IconButton
-                      icon="x"
-                      size={16}
-                      weight={2}
-                      label={t(
-                        'popup_removeWebsite',
-                        site === '' ? String(index + 1) : hostOf(site),
-                      )}
-                      onClick={() =>
-                        setWebsites((previous) => previous.filter((_, i) => i !== index))
-                      }
-                    />
-                  ) : undefined
-                }
-              />
-            ))}
-            <div class="actions start">
-              <Button
-                kind="ghost"
-                icon="plus"
-                onClick={() => setWebsites((previous) => [...previous, ''])}
-              >
-                {t('popup_addWebsite')}
-              </Button>
-            </div>
-          </div>
+          <SitesEditor value={sites} onChange={setSites} />
           <TextField
             label={t('popup_fieldUsername')}
             value={username}
@@ -223,6 +198,7 @@ export function EditLogin(props: {
           )}
           {hidden && <p class="muted">{t('spaces_passwordHiddenEdit')}</p>}
           <TextField label={t('popup_fieldNote')} value={note} multiline onInput={setNote} />
+          <FieldsEditor {...extras.fieldsProps} />
           {props.id === null && <SpaceField value={space} onChange={setSpace} />}
           <SelectField
             stacked
@@ -237,12 +213,19 @@ export function EditLogin(props: {
             ]}
             onChange={setCodeId}
           />
+          <LinkPicker {...extras.linkProps} />
         </div>
         <div class="foot-bar">
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded}>
+          <Button
+            kind="primary"
+            tall
+            type="submit"
+            busy={busy}
+            disabled={!loaded || extras.loading}
+          >
             {t('popup_save')}
           </Button>
         </div>
