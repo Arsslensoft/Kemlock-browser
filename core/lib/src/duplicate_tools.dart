@@ -300,7 +300,8 @@ class DuplicateTools {
         final relinkedNow = choices.relink(lists, now: now, account: owner);
         final sameRelink =
             jsonEncode(relinkedNow.kept.toJson()) == jsonEncode(relinking.kept.toJson()) &&
-            jsonEncode([for (final step in relinkedNow.undo) step.toJson()]) == jsonEncode([for (final step in relinking.undo) step.toJson()]);
+            jsonEncode([for (final step in relinkedNow.undo) step.toJson()]) ==
+                jsonEncode([for (final step in relinking.undo) step.toJson()]);
         if (_stale(group, lists) || !sameLinks || !sameRelink) {
           throw const CoreFailure(CoreFailure.stale, 'an item changed since the check: check again');
         }

@@ -33,14 +33,14 @@ Future<String> addLogin(CoreService core, String name, {String secret = 'Hunter2
             'password': secret,
             'websites': ['orbit-cloud.com'],
           },
-        ]))['id']! as String;
+        ]))['id']!
         as String;
 
 Future<String> addNote(CoreService core, String title, {List<Map<String, Object?>> links = const []}) async =>
     (await object(core, 'saveNote', [
           null,
           {'title': title, 'text': 't', 'links': links},
-        ]))['id']! as String;
+        ]))['id']!
         as String;
 
 Future<String> addCode(CoreService core, String issuer, {String secret = 'JBSWY3DPEHPK3PXP'}) async =>
@@ -105,22 +105,26 @@ void main() {
 
     test('a card and an identity linked to a note drop the link on deleting', () async {
       final note = await addNote(core, 'Recovery');
-      final card = (await object(core, 'saveCard', [
-        null,
-        {
-          'name': 'Visa',
-          'number': '4111111111111111',
-          'links': [ref('note', note)],
-        },
-      ]))['id']! as String;
-      final identity = (await object(core, 'saveIdentity', [
-        null,
-        {
-          'name': 'Me',
-          'email': 'me@orbit-cloud.com',
-          'links': [ref('note', note)],
-        },
-      ]))['id']! as String;
+      final card =
+          (await object(core, 'saveCard', [
+                null,
+                {
+                  'name': 'Visa',
+                  'number': '4111111111111111',
+                  'links': [ref('note', note)],
+                },
+              ]))['id']!
+              as String;
+      final identity =
+          (await object(core, 'saveIdentity', [
+                null,
+                {
+                  'name': 'Me',
+                  'email': 'me@orbit-cloud.com',
+                  'links': [ref('note', note)],
+                },
+              ]))['id']!
+              as String;
       expect(core.vault.lists.notes.single.links.names(card), isTrue);
       expect(core.vault.lists.notes.single.links.names(identity), isTrue);
 
@@ -247,9 +251,7 @@ void main() {
 
       expect(core.vault.lists.accounts.single.id, one);
       expect(core.vault.lists.logins.single.accountId, one);
-      expect((await core.call('linkedItems', [ref('login', login)]))! as List<Object?>, [
-        containsPair('ref', ref('otp', one)),
-      ]);
+      expect((await core.call('linkedItems', [ref('login', login)]))! as List<Object?>, [containsPair('ref', ref('otp', one))]);
     });
 
     test('is done, and a read-only end is left as it was, when an entry that named the removed login may not be edited', () async {
