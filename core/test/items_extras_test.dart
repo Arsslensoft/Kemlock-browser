@@ -77,7 +77,10 @@ void main() {
         },
       ]);
       final id = saved['id']! as String;
-      await core.call('saveLogin', [id, {'name': 'Orbit 2', 'username': 'sam', 'keepPassword': true}]);
+      await core.call('saveLogin', [
+        id,
+        {'name': 'Orbit 2', 'username': 'sam', 'keepPassword': true},
+      ]);
       expect(core.vault.lists.logins.single.fields.single.value, '9876');
       await core.call('saveLogin', [
         id,
@@ -179,7 +182,9 @@ void main() {
               username: 'sam',
               password: 'pw',
               websites: ['example.co'],
-              uris: [WebsiteRule('example.co', match: WebsiteMatch.baseDomain, extra: {'uriChecksum': 'z'})],
+              uris: [
+                WebsiteRule('example.co', match: WebsiteMatch.baseDomain, extra: {'uriChecksum': 'z'}),
+              ],
               addedAt: 5,
               extra: {
                 'urls': ['example.co'],
@@ -231,7 +236,10 @@ void main() {
 
   group('links', () {
     test('are written at both ends, shown on both, counted, and taken away from either', () async {
-      final login = await object(core, 'saveLogin', [null, {'name': 'Orbit', 'username': 'sam', 'password': 'pw'}]);
+      final login = await object(core, 'saveLogin', [
+        null,
+        {'name': 'Orbit', 'username': 'sam', 'password': 'pw'},
+      ]);
       final note = await object(core, 'saveNote', [
         null,
         {
@@ -257,20 +265,35 @@ void main() {
     });
 
     test('are offered, as candidates, only for items that are not the item or linked to it already', () async {
-      final login = await object(core, 'saveLogin', [null, {'name': 'Orbit', 'username': 'sam', 'password': 'pw'}]);
-      final one = await object(core, 'saveNote', [null, {'title': 'Alpha', 'text': ''}]);
-      await core.call('saveNote', [null, {'title': 'Beta', 'text': ''}]);
+      final login = await object(core, 'saveLogin', [
+        null,
+        {'name': 'Orbit', 'username': 'sam', 'password': 'pw'},
+      ]);
+      final one = await object(core, 'saveNote', [
+        null,
+        {'title': 'Alpha', 'text': ''},
+      ]);
+      await core.call('saveNote', [
+        null,
+        {'title': 'Beta', 'text': ''},
+      ]);
       final loginRef = ref('login', login['id']! as String);
       expect((await list(core, 'linkCandidates', [loginRef, ''])).map((v) => v['name']), ['Alpha', 'Beta']);
       expect((await list(core, 'linkCandidates', [loginRef, 'bet'])).map((v) => v['name']), ['Beta']);
-      await core.call('setLinks', [loginRef, [ref('note', one['id']! as String)]]);
+      await core.call('setLinks', [
+        loginRef,
+        [ref('note', one['id']! as String)],
+      ]);
       expect((await list(core, 'linkCandidates', [loginRef, ''])).map((v) => v['name']), ['Beta']);
       // For a new item nothing is excluded but what the vault doesn't offer
       expect(await list(core, 'linkCandidates', [null, '']), hasLength(3));
     });
 
     test('a link an end can not make is named, and the others are made', () async {
-      final login = await object(core, 'saveLogin', [null, {'name': 'Orbit', 'username': 'sam', 'password': 'pw'}]);
+      final login = await object(core, 'saveLogin', [
+        null,
+        {'name': 'Orbit', 'username': 'sam', 'password': 'pw'},
+      ]);
       final failures = await core.call('setLinks', [
         ref('login', login['id']! as String),
         [ref('note', 'no-such-note')],
@@ -296,10 +319,17 @@ void main() {
     test('an item a link names that the vault does not hold stays, and is not shown', () async {
       const gone = '99999999-9999-4999-8999-999999999999';
       await core.vault.applySynced(
-        const Lists(logins: [Login(id: 'l1', name: 'Orbit', username: 'sam', password: 'pw', links: [ItemLink(gone)], addedAt: 1)]),
+        const Lists(
+          logins: [
+            Login(id: 'l1', name: 'Orbit', username: 'sam', password: 'pw', links: [ItemLink(gone)], addedAt: 1),
+          ],
+        ),
       );
       expect(await list(core, 'linkedItems', [ref('login', 'l1')]), isEmpty);
-      await core.call('saveLogin', ['l1', {'name': 'Orbit', 'username': 'sam', 'keepPassword': true, 'links': <Object?>[]}]);
+      await core.call('saveLogin', [
+        'l1',
+        {'name': 'Orbit', 'username': 'sam', 'keepPassword': true, 'links': <Object?>[]},
+      ]);
       expect(core.vault.lists.logins.single.links.names(gone), isTrue);
     });
   });
@@ -357,7 +387,9 @@ void main() {
       expect(view['links'], 1);
       await core.call('saveCode', [
         codeId,
-        {'websites': ['changed.example.co']},
+        {
+          'websites': ['changed.example.co'],
+        },
       ]);
       expect(core.vault.lists.accounts.single.websites, ['own.example.co'], reason: 'the login holds them');
       // Unlinked, it writes its own again
@@ -421,7 +453,12 @@ void main() {
     });
 
     test('needs a name when it is new, and can not be written to without a key', () async {
-      await expectLater(core.call('saveContact', [<String, Object?>{'company': 'x'}]), failure(CoreFailure.invalid));
+      await expectLater(
+        core.call('saveContact', [
+          <String, Object?>{'company': 'x'},
+        ]),
+        failure(CoreFailure.invalid),
+      );
       final made = await object(core, 'saveContact', [
         {'name': 'Ada'},
       ]);

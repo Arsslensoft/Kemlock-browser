@@ -581,12 +581,7 @@ class KeysService {
       return text == null || text.isEmpty ? unset : text;
     }
 
-    next = next.copyWith(
-      company: detail('company'),
-      email: detail('email'),
-      phone: detail('phone'),
-      address: detail('address'),
-    );
+    next = next.copyWith(company: detail('company'), email: detail('email'), phone: detail('phone'), address: detail('address'));
     if (args.containsKey('note')) {
       final note = fieldString(args, 'note')?.trim();
       next = next.copyWith(note: note == null || note.isEmpty ? unset : note);
@@ -605,9 +600,7 @@ class KeysService {
     }
     final refs = args.containsKey('links') ? parseRefs(args['links']) : null;
     final saved = next;
-    await _saveContacts(
-      (held) => contact == null ? [...held, saved] : [for (final other in held) other.id == saved.id ? saved : other],
-    );
+    await _saveContacts((held) => contact == null ? [...held, saved] : [for (final other in held) other.id == saved.id ? saved : other]);
     final failures = refs == null ? const <String>[] : await vault.setLinksOf('contact', saved.id, refs);
     return {..._view(_contact(saved.id), _now), if (failures.isNotEmpty) 'linkFailures': failures};
   }

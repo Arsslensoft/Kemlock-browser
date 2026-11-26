@@ -603,7 +603,7 @@ class ItemFiles {
           await _vault.saveChanged(
             (held) => listsWithFiles(held, [
               for (final item in held.files)
-                if (item.id != saved.id) item else if (current != null) current,
+                if (item.id != saved.id) item else ?current,
             ]),
           );
           throw const CoreFailure(CoreFailure.failed, 'the file did not go up');

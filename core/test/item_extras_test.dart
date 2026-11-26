@@ -120,10 +120,30 @@ void main() {
       final fields = read(original);
       expect(() => applyFields(fields, 'x'), invalid());
       expect(() => applyFields(fields, ['x']), invalid());
-      expect(() => applyFields(fields, [{'name': 'a', 'kind': 'secret', 'value': ''}]), invalid());
-      expect(() => applyFields(fields, [{'name': 'a' * 201, 'kind': 'text', 'value': ''}]), invalid());
-      expect(() => applyFields(fields, [{'name': 'a', 'kind': 'text', 'value': 'v' * 10001}]), invalid());
-      expect(() => applyFields(fields, [for (var i = 0; i < 101; i++) {'name': 'f$i', 'kind': 'text', 'value': ''}]), invalid());
+      expect(
+        () => applyFields(fields, [
+          {'name': 'a', 'kind': 'secret', 'value': ''},
+        ]),
+        invalid(),
+      );
+      expect(
+        () => applyFields(fields, [
+          {'name': 'a' * 201, 'kind': 'text', 'value': ''},
+        ]),
+        invalid(),
+      );
+      expect(
+        () => applyFields(fields, [
+          {'name': 'a', 'kind': 'text', 'value': 'v' * 10001},
+        ]),
+        invalid(),
+      );
+      expect(
+        () => applyFields(fields, [
+          for (var i = 0; i < 101; i++) {'name': 'f$i', 'kind': 'text', 'value': ''},
+        ]),
+        invalid(),
+      );
     });
   });
 
@@ -171,12 +191,42 @@ void main() {
     });
 
     test('refuse a scheme that is not the web or an app, a pattern that does not compile, an unknown rule and too many', () {
-      expect(() => readRules([{'uri': 'javascript:alert(1)', 'match': 'default'}], const []), invalid());
-      expect(() => readRules([{'uri': 'javascript:alert(1)', 'match': 'startsWith'}], const []), invalid());
-      expect(() => readRules([{'uri': 'ftp://example.co', 'match': 'exact'}], const []), invalid());
-      expect(() => readRules([{'uri': '(', 'match': 'regex'}], const []), invalid());
-      expect(() => readRules([{'uri': 'example.co', 'match': 'sometimes'}], const []), invalid());
-      expect(() => readRules([for (var i = 0; i < 51; i++) {'uri': 'a$i.example.co'}], const []), invalid());
+      expect(
+        () => readRules([
+          {'uri': 'javascript:alert(1)', 'match': 'default'},
+        ], const []),
+        invalid(),
+      );
+      expect(
+        () => readRules([
+          {'uri': 'javascript:alert(1)', 'match': 'startsWith'},
+        ], const []),
+        invalid(),
+      );
+      expect(
+        () => readRules([
+          {'uri': 'ftp://example.co', 'match': 'exact'},
+        ], const []),
+        invalid(),
+      );
+      expect(
+        () => readRules([
+          {'uri': '(', 'match': 'regex'},
+        ], const []),
+        invalid(),
+      );
+      expect(
+        () => readRules([
+          {'uri': 'example.co', 'match': 'sometimes'},
+        ], const []),
+        invalid(),
+      );
+      expect(
+        () => readRules([
+          for (var i = 0; i < 51; i++) {'uri': 'a$i.example.co'},
+        ], const []),
+        invalid(),
+      );
       expect(() => readRules('example.co', const []), invalid());
     });
 
@@ -205,15 +255,34 @@ void main() {
     });
 
     test('to an item the vault does not hold are kept and not counted', () {
-      final lists = Lists(logins: [Login(id: a, name: 'A', links: const [ItemLink(b)], addedAt: 1)]);
+      final lists = Lists(
+        logins: [
+          Login(id: a, name: 'A', links: const [ItemLink(b)], addedAt: 1),
+        ],
+      );
       expect(linkCountsOf(lists), isEmpty);
     });
 
     test('are read from an input, which names the kind and the entry id of each', () {
-      expect(parseRefs([{'kind': 'login', 'id': a}]), [(kind: 'login', id: a)]);
-      expect(() => parseRefs([{'kind': 'login'}]), invalid());
+      expect(
+        parseRefs([
+          {'kind': 'login', 'id': a},
+        ]),
+        [(kind: 'login', id: a)],
+      );
+      expect(
+        () => parseRefs([
+          {'kind': 'login'},
+        ]),
+        invalid(),
+      );
       expect(() => parseRefs('a'), invalid());
-      expect(() => parseRefs([for (var i = 0; i < 101; i++) {'kind': 'login', 'id': '$i'}]), invalid());
+      expect(
+        () => parseRefs([
+          for (var i = 0; i < 101; i++) {'kind': 'login', 'id': '$i'},
+        ]),
+        invalid(),
+      );
     });
   });
 }

@@ -151,9 +151,7 @@ List<CustomField> applyFields(List<CustomField> current, Object? input) {
   for (final row in added) {
     final next = read(row);
     if (next.name.trim().isEmpty) continue;
-    out.add(
-      CustomField(name: next.name.trim(), value: next.keepValue ? '' : next.value, kind: next.kind, adminField: next.admin),
-    );
+    out.add(CustomField(name: next.name.trim(), value: next.keepValue ? '' : next.value, kind: next.kind, adminField: next.admin));
   }
   return _sameJson([for (final field in out) field.toJson()], [for (final field in current) field.toJson()]) ? current : out;
 }
@@ -230,14 +228,20 @@ List<WebsiteRule> readRules(Object? input, List<WebsiteRule> current) {
     if (text.length > websiteUriMax) throw _invalid('a website is too long');
     final name = asString(row['match'], 'default');
     final number = _ruleNumber(name);
-    final same = [for (final (i, rule) in current.indexed) if (!used.contains(i) && rule.uri == text && ruleName(rule.match) == name) i];
+    final same = [
+      for (final (i, rule) in current.indexed)
+        if (!used.contains(i) && rule.uri == text && ruleName(rule.match) == name) i,
+    ];
     if (same.isNotEmpty) {
       used.add(same.first);
       rules.add(current[same.first]);
       continue;
     }
     final uri = _ruleUri(text, name);
-    final alike = [for (final (i, rule) in current.indexed) if (!used.contains(i) && rule.uri == uri) i];
+    final alike = [
+      for (final (i, rule) in current.indexed)
+        if (!used.contains(i) && rule.uri == uri) i,
+    ];
     if (alike.isNotEmpty) {
       used.add(alike.first);
       rules.add(current[alike.first].withMatch(number, uri: uri));

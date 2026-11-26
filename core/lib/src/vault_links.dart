@@ -103,7 +103,14 @@ extension VaultLinks on VaultService {
       } on CoreFailure {
         continue;
       }
-      out.add(_linkedView(LinkedItem(id: linkIdOf(entry, account: owner).toLowerCase(), entry: entry)));
+      out.add(
+        _linkedView(
+          LinkedItem(
+            id: linkIdOf(entry, account: owner).toLowerCase(),
+            entry: entry,
+          ),
+        ),
+      );
     }
     return out;
   }
@@ -122,7 +129,7 @@ extension VaultLinks on VaultService {
       for (final item in linkedItemsOf(lists, self, account: owner))
         if (item.entry != null) item.id: item,
     };
-    final desired = <String, VaultEntry<dynamic>>{};
+    final desired = <String, VaultEntry<Object?>>{};
     for (final ref in wanted) {
       final other = findEntry(lists, ref.kind, ref.id);
       if (other == null) {
@@ -161,9 +168,7 @@ extension VaultLinks on VaultService {
           failed.add(entryNameOf(b));
           return;
         }
-        final result = link
-            ? linkEntries(a, b, now: nowMs, account: owner)
-            : unlinkEntries(a, b, now: nowMs, account: owner);
+        final result = link ? linkEntries(a, b, now: nowMs, account: owner) : unlinkEntries(a, b, now: nowMs, account: owner);
         next = listsWithEntry(listsWithEntry(next, result.a), result.b);
       }
 

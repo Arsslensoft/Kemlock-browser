@@ -142,13 +142,25 @@ void main() {
         ]),
         failure(CoreFailure.unavailable),
       );
-      await expectLater(core.call('openItemFile', [{'kind': 'note', 'id': 'n1'}, 'a1']), failure(CoreFailure.unavailable));
+      await expectLater(
+        core.call('openItemFile', [
+          {'kind': 'note', 'id': 'n1'},
+          'a1',
+        ]),
+        failure(CoreFailure.unavailable),
+      );
       expect(core.vault.lists.notes.single.files, hasLength(1));
       expect(core.vault.lists.files, isEmpty);
     });
 
     test('a File item needs a file when it is new', () async {
-      await expectLater(core.call('saveFile', [null, {'name': 'x'}]), failure(CoreFailure.invalid));
+      await expectLater(
+        core.call('saveFile', [
+          null,
+          {'name': 'x'},
+        ]),
+        failure(CoreFailure.invalid),
+      );
     });
   });
 
@@ -197,7 +209,12 @@ void main() {
       final before = core.vault.lists.files.first.file.toJson();
       final view = await object(core, 'saveFile', [
         f1,
-        {'name': 'Passport', 'notes': '', 'pinned': false, 'tags': ['id']},
+        {
+          'name': 'Passport',
+          'notes': '',
+          'pinned': false,
+          'tags': ['id'],
+        },
       ]);
       expect(view['name'], 'Passport');
       expect(view['pinned'], isFalse);
@@ -205,7 +222,13 @@ void main() {
       final held = core.vault.lists.files.first;
       expect(held.notes, isNull);
       expect(held.file.toJson(), before);
-      await expectLater(core.call('saveFile', [f1, {'name': '  '}]), failure(CoreFailure.invalid));
+      await expectLater(
+        core.call('saveFile', [
+          f1,
+          {'name': '  '},
+        ]),
+        failure(CoreFailure.invalid),
+      );
     });
 
     test('are deleted', () async {
@@ -215,7 +238,10 @@ void main() {
     });
 
     test('are linked to other items, and show it', () async {
-      final note = await object(core, 'saveNote', [null, {'title': 'Trip', 'text': ''}]);
+      final note = await object(core, 'saveNote', [
+        null,
+        {'title': 'Trip', 'text': ''},
+      ]);
       final view = await object(core, 'saveFile', [
         f1,
         {
@@ -227,7 +253,12 @@ void main() {
       ]);
       expect(view['links'], 1);
       expect(core.vault.lists.notes.single.links, hasLength(1));
-      expect((await list(core, 'linkedItems', [{'kind': 'file', 'id': f1}])).single['name'], 'Trip');
+      expect(
+        (await list(core, 'linkedItems', [
+          {'kind': 'file', 'id': f1},
+        ])).single['name'],
+        'Trip',
+      );
     });
   });
 
@@ -302,7 +333,11 @@ void main() {
     });
 
     test('is left alone while its bytes are held, because it is going up', () async {
-      await core.vault.applySynced(Lists(files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)]));
+      await core.vault.applySynced(
+        Lists(
+          files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)],
+        ),
+      );
       await remember([
         {'item': f1, 'kind': 'file', 'file': 'a3', 'fresh': true},
       ]);
@@ -313,7 +348,11 @@ void main() {
     });
 
     test('is settled when the vault opens', () async {
-      await core.vault.applySynced(Lists(files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)]));
+      await core.vault.applySynced(
+        Lists(
+          files: [VaultFile(id: f1, name: 'New', file: attachment('a3'), addedAt: 1)],
+        ),
+      );
       await remember([
         {'item': f1, 'kind': 'file', 'file': 'a3', 'fresh': true},
       ]);
