@@ -30,7 +30,7 @@ import {
 } from './file-actions'
 import './files.css'
 import { allTags } from './format'
-import { FieldsSection, LinksSection } from './item-extras'
+import { FieldsEditor, FieldsSection, LinkPicker, LinksSection, useItemExtras } from './item-extras'
 import { DeleteQuestion, ItemBar } from './items-ui'
 import type { Route } from './route'
 import { ask } from './send'
@@ -273,6 +273,11 @@ export function EditNote(props: {
   const [pinned, setPinned] = useState<boolean | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
+  const extras = useItemExtras(
+    'note',
+    props.id === null ? null : { kind: 'note', id: props.id },
+    note?.fields,
+  )
 
   if (props.id !== null && note === undefined) return <Gone onBack={props.onBack} />
   // An existing note saves only once its text is read: saving the empty box would erase it
@@ -291,12 +296,16 @@ export function EditNote(props: {
       setError(t('items_noteTooLong', over))
       return
     }
+    if (extras.problem !== undefined) {
+      setError(extras.problem)
+      return
+    }
     setBusy(true)
     setError(undefined)
     try {
       const saved = await ask('saveNote', {
         id: props.id,
-        input: { title: shownTitle.trim(), text: shownText, pinned: shownPin },
+        input: { title: shownTitle.trim(), text: shownText, pinned: shownPin, ...extras.members() },
       })
       await vault.reload()
       props.onSaved(saved.id)
@@ -338,12 +347,20 @@ export function EditNote(props: {
           <Group>
             <Switch checked={shownPin} label={t('items_pin')} onChange={setPinned} />
           </Group>
+          <FieldsEditor {...extras.fieldsProps} />
+          <LinkPicker {...extras.linkProps} />
         </div>
         <div class="foot-bar">
           <Button tall onClick={props.onBack}>
             {t('popup_cancel')}
           </Button>
-          <Button kind="primary" tall type="submit" busy={busy} disabled={!loaded}>
+          <Button
+            kind="primary"
+            tall
+            type="submit"
+            busy={busy}
+            disabled={!loaded || extras.loading}
+          >
             {t('popup_save')}
           </Button>
         </div>
