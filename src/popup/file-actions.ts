@@ -2,6 +2,7 @@
 // said when the core refuses. Files are Kemlock Server's: with another sync they are listed and left alone (`fileSync`).
 import { useState } from 'preact/hooks'
 import type { FileSync, ItemRef, SyncStatus } from '../shared/api'
+import { holdBackground } from '../files/keepalive'
 import { readFile, saveBlob } from '../sends/files'
 import { errorMessage, hasMessage, t } from '../shared/ui/i18n'
 import { ask } from './send'
@@ -77,22 +78,28 @@ export function fileError(error: unknown): string {
 
 /**
  * Saves the file of [ref] (a File item, or a note's attachment) to the downloads: the background opens it, the pieces are read one at
- * a time into a blob, the browser saves the blob under the file's name, and the background lets the file go.
+ * a time into a blob, the browser saves the blob under the file's name, and the background lets the file go. A port is held open
+ * to the background while it runs: the background closes what the file's pieces were read from if the popup goes away first.
  */
 export async function downloadItemFile(
   ref: ItemRef,
   attachmentId: string | undefined,
   fallbackName: string,
 ): Promise<void> {
-  const opened = await ask(
-    'openItemFile',
-    attachmentId === undefined ? { ref } : { ref, attachmentId },
-  )
+  const release = holdBackground()
   try {
-    const blob = await readFile((index) => ask('readOpened', { handle: opened.handle, index }))
-    saveBlob(blob, opened.name === '' ? fallbackName : opened.name)
+    const opened = await ask(
+      'openItemFile',
+      attachmentId === undefined ? { ref } : { ref, attachmentId },
+    )
+    try {
+      const blob = await readFile((index) => ask('readOpened', { handle: opened.handle, index }))
+      saveBlob(blob, opened.name === '' ? fallbackName : opened.name)
+    } finally {
+      await ask('closeOpened', { handle: opened.handle }).catch(() => undefined)
+    }
   } finally {
-    await ask('closeOpened', { handle: opened.handle }).catch(() => undefined)
+    release()
   }
 }
 
