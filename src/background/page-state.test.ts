@@ -29,6 +29,7 @@ describe('pageState', () => {
       tab('sends'),
       tab('keys'),
       tab('transfer'),
+      tab('files'),
     ])
       expect(await h.ok<VaultState>({ kind: 'pageState' }, sender)).toMatchObject({
         exists: true,
