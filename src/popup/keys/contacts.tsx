@@ -626,8 +626,8 @@ export function ContactPage(props: {
               }
               // Only what changed goes, so a member left alone is never rewritten
               void run(
-                () =>
-                  ask('saveContact', {
+                async () => {
+                  const saved = await ask('saveContact', {
                     id: item.id,
                     ...(same('name') || details.name.trim() === ''
                       ? {}
@@ -638,7 +638,10 @@ export function ContactPage(props: {
                     ...(same('address') ? {} : { address: details.address.trim() }),
                     ...(same('note') ? {} : { note: details.note.trim() }),
                     ...extras.members(),
-                  }),
+                  })
+                  // The rows just written are the page's start again: a second save must not send them twice
+                  extras.reset(saved.fields)
+                },
                 t('keys_saveDone'),
               )
             }}
