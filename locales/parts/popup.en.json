@@ -126,7 +126,7 @@
   "popup_newLogin": "New login",
   "popup_next": "next",
   "popup_nextCodeOf": "Next MFA code for {name}",
-  "popup_noCodeFound": "No code was found on this page. Open the page that shows the QR code, then try again.",
+  "popup_noCodeFound": "No MFA code was found on this page. Open the page that shows the QR code, then try again.",
   "popup_noCodeLinked": "No MFA code",
   "popup_noCodes": "No MFA codes yet. Use Add an MFA code on a site’s two-step setup page.",
   "popup_noLogins": "No logins yet. Kemlock offers to save one when you sign in to a site.",

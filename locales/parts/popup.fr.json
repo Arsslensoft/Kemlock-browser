@@ -126,7 +126,7 @@
   "popup_newLogin": "Nouvel identifiant",
   "popup_next": "suivant",
   "popup_nextCodeOf": "Code MFA suivant de {name}",
-  "popup_noCodeFound": "Aucun code trouvé sur cette page. Ouvrez la page qui affiche le QR code, puis réessayez.",
+  "popup_noCodeFound": "Aucun code MFA trouvé sur cette page. Ouvrez la page qui affiche le QR code, puis réessayez.",
   "popup_noCodeLinked": "Aucun code MFA",
   "popup_noCodes": "Aucun code MFA pour l’instant. Utilisez Ajouter un code MFA sur la page de configuration en deux étapes d’un site.",
   "popup_noLogins": "Aucun identifiant pour l’instant. Kemlock propose d’en enregistrer un lorsque vous vous connectez à un site.",
