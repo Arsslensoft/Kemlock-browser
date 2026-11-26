@@ -201,19 +201,24 @@ extension VaultLinks on VaultService {
     requireSession();
     final current = _account(id);
     editGuard?.call(current.spaceId, id);
-    var next = current;
-    if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
-    if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
-    if (input['pinned'] is bool) next = next.copyWith(pinned: input['pinned'] == true ? true : unset);
-    if (input.containsKey('websites') && lentWebsites(_lists, current, account: accountOwner?.call()) == null) {
-      final hosts = readHosts(input['websites']);
-      next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+    final lent = lentWebsites(_lists, current, account: accountOwner?.call()) != null;
+    // The edit is made on the code the write holds, so what a run wrote meanwhile (an HOTP counter) is not put back
+    OtpAccount edit(OtpAccount held) {
+      var next = held;
+      if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
+      if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
+      if (input['pinned'] is bool) next = next.copyWith(pinned: input['pinned'] == true ? true : unset);
+      if (input.containsKey('websites') && !lent) {
+        final hosts = readHosts(input['websites']);
+        next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+      }
+      final fields = applyFields(next.fields, input['fields']);
+      return identical(fields, next.fields) ? next : next.copyWith(fields: fields);
     }
-    final fields = applyFields(next.fields, input['fields']);
-    if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+
+    edit(current);
     final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
-    final saved = next;
-    await _saveAccounts((held) => [for (final account in held) account.id == id ? saved : account]);
+    await _saveAccounts((held) => [for (final account in held) account.id == id ? edit(account) : account]);
     final failures = refs == null ? const <String>[] : await setLinksOf('otp', id, refs);
     final index = _lists.accounts.indexWhere((account) => account.id == id);
     return {..._codeView(_lists.accounts[index], index), if (failures.isNotEmpty) 'linkFailures': failures};
@@ -225,18 +230,22 @@ extension VaultLinks on VaultService {
     final current = _lists.backupServices.where((service) => service.id == serviceId).firstOrNull;
     if (current == null) throw const CoreFailure(CoreFailure.notFound, 'no such service');
     editGuard?.call(current.spaceId, serviceId);
-    var next = current;
-    if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
-    if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
-    if (input.containsKey('websites')) {
-      final hosts = readHosts(input['websites']);
-      next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+    // The edit is made on the service the write holds, so a code used meanwhile stays used
+    BackupService edit(BackupService held) {
+      var next = held;
+      if (input.containsKey('name')) next = next.copyWith(name: _textOf(input['name'], 'the name') ?? unset);
+      if (input.containsKey('note')) next = next.copyWith(note: _textOf(input['note'], 'the note', max: noteTextLimit) ?? unset);
+      if (input.containsKey('websites')) {
+        final hosts = readHosts(input['websites']);
+        next = next.copyWith(websites: hosts.isEmpty ? unset : hosts);
+      }
+      final fields = applyFields(next.fields, input['fields']);
+      return identical(fields, next.fields) ? next : next.copyWith(fields: fields);
     }
-    final fields = applyFields(next.fields, input['fields']);
-    if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+
+    edit(current);
     final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
-    final saved = next;
-    await _saveServices((held) => [for (final service in held) service.id == serviceId ? saved : service]);
+    await _saveServices((held) => [for (final service in held) service.id == serviceId ? edit(service) : service]);
     final failures = refs == null ? const <String>[] : await setLinksOf('backup-codes', serviceId, refs);
     final stored = _lists.backupServices.firstWhere((service) => service.id == serviceId);
     return {...backupViewOf(stored), if (failures.isNotEmpty) 'linkFailures': failures};

@@ -123,7 +123,8 @@ extension VaultItems on VaultService {
     if (title == null) throw const CoreFailure(CoreFailure.invalid, 'a note needs a title');
     if (text.length > noteTextLimit) throw const CoreFailure(CoreFailure.invalid, 'the note is too long');
     final current = id == null ? null : _find(_lists.notes, id, 'note');
-    final fields = applyFields(current?.fields ?? const [], input['fields']);
+    // Looked at once now, so a bad row is refused before anything is written; the edit itself is made on the note the write holds
+    applyFields(current?.fields ?? const [], input['fields']);
     final refs = input.containsKey('links') ? parseRefs(input['links']) : null;
     final SecureNote saved;
     if (current == null) {
@@ -132,7 +133,7 @@ extension VaultItems on VaultService {
         id: newUuid(),
         title: title,
         text: text,
-        fields: fields,
+        fields: applyFields(const [], input['fields']),
         tags: tags == null || tags.isEmpty ? null : tags,
         pinned: input['pinned'] == true ? true : null,
         addedAt: nowMs,
@@ -140,14 +141,20 @@ extension VaultItems on VaultService {
       await _saveNotes((held) => [...held, saved]);
     } else {
       editGuard?.call(current.spaceId, current.id);
-      saved = current.copyWith(
-        title: title,
-        text: text,
-        tags: _tagChange(input['tags']),
-        pinned: _pinChange(input['pinned']),
-        fields: identical(fields, current.fields) ? null : fields,
-      );
-      await _saveNotes((held) => [for (final note in held) note.id == id ? saved : note]);
+      // The members a run or an upload writes meanwhile (the files a note names, a link) are the held note's, never the copy read above
+      SecureNote edit(SecureNote held) {
+        final fields = applyFields(held.fields, input['fields']);
+        return held.copyWith(
+          title: title,
+          text: text,
+          tags: _tagChange(input['tags']),
+          pinned: _pinChange(input['pinned']),
+          fields: identical(fields, held.fields) ? null : fields,
+        );
+      }
+
+      saved = edit(current);
+      await _saveNotes((held) => [for (final note in held) note.id == id ? edit(note) : note]);
     }
     final failures = refs == null ? const <String>[] : await VaultLinks(this).setLinksOf('note', saved.id, refs);
     final stored = _find(_lists.notes, saved.id, 'note');

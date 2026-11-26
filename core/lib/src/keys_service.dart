@@ -570,10 +570,7 @@ class KeysService {
     vault.requireSession();
     final id = fieldString(args, 'id');
     final contact = id == null ? null : _contact(id);
-    var next = contact ?? Contact(id: newUuid(), name: '', source: ContactSource.manual, addedAt: vault.nowMs);
-    final name = fieldString(args, 'name')?.trim();
-    if (name != null && name.isNotEmpty) next = next.copyWith(name: name);
-    if (contact == null && next.name.isEmpty) throw const CoreFailure(CoreFailure.invalid, 'a contact needs a name');
+    final fresh = Contact(id: newUuid(), name: '', source: ContactSource.manual, addedAt: vault.nowMs);
     Object? detail(String key) {
       if (!args.containsKey(key)) return keep;
       final text = fieldString(args, key)?.trim();
@@ -581,26 +578,37 @@ class KeysService {
       return text == null || text.isEmpty ? unset : text;
     }
 
-    next = next.copyWith(company: detail('company'), email: detail('email'), phone: detail('phone'), address: detail('address'));
-    if (args.containsKey('note')) {
-      final note = fieldString(args, 'note')?.trim();
-      next = next.copyWith(note: note == null || note.isEmpty ? unset : note);
-    }
-    final fields = applyFields(next.fields, args['fields']);
-    if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
-    final checked = args['checked'];
-    if (checked is bool && contact != null) {
-      final info = contactInfoOf(contact);
-      if (checked) {
-        if (info == null) throw const CoreFailure(CoreFailure.invalid, 'the key cannot be read');
-        next = withCheckedAddresses(next).checked(info.primary.fingerprintHex, vault.nowMs, addresses: keyAddresses(info));
-      } else {
-        next = next.unchecked();
+    // The edit is made on the contact the write holds, so what changed it meanwhile (a run, a comparison) is not put back
+    Contact edit(Contact base) {
+      var next = base;
+      final name = fieldString(args, 'name')?.trim();
+      if (name != null && name.isNotEmpty) next = next.copyWith(name: name);
+      if (contact == null && next.name.isEmpty) throw const CoreFailure(CoreFailure.invalid, 'a contact needs a name');
+      next = next.copyWith(company: detail('company'), email: detail('email'), phone: detail('phone'), address: detail('address'));
+      if (args.containsKey('note')) {
+        final note = fieldString(args, 'note')?.trim();
+        next = next.copyWith(note: note == null || note.isEmpty ? unset : note);
       }
+      final fields = applyFields(next.fields, args['fields']);
+      if (!identical(fields, next.fields)) next = next.copyWith(fields: fields);
+      final checked = args['checked'];
+      if (checked is bool && contact != null) {
+        final info = contactInfoOf(next);
+        if (checked) {
+          if (info == null) throw const CoreFailure(CoreFailure.invalid, 'the key cannot be read');
+          next = withCheckedAddresses(next).checked(info.primary.fingerprintHex, vault.nowMs, addresses: keyAddresses(info));
+        } else {
+          next = next.unchecked();
+        }
+      }
+      return next;
     }
+
+    final saved = edit(contact ?? fresh);
     final refs = args.containsKey('links') ? parseRefs(args['links']) : null;
-    final saved = next;
-    await _saveContacts((held) => contact == null ? [...held, saved] : [for (final other in held) other.id == saved.id ? saved : other]);
+    await _saveContacts(
+      (held) => contact == null ? [...held, saved] : [for (final other in held) other.id == saved.id ? edit(other) : other],
+    );
     final failures = refs == null ? const <String>[] : await vault.setLinksOf('contact', saved.id, refs);
     return {..._view(_contact(saved.id), _now), if (failures.isNotEmpty) 'linkFailures': failures};
   }

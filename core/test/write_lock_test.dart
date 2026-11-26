@@ -6,6 +6,7 @@ import 'package:kemlock_core/features/sync/sync_merge.dart' show Lists;
 import 'package:kemlock_core/models/secure_note.dart';
 import 'package:kemlock_extension_core/src/core_service.dart';
 import 'package:kemlock_extension_core/src/failure.dart';
+import 'package:kemlock_extension_core/src/item_extras.dart' show listsWithEntry;
 import 'package:kemlock_extension_core/src/storage_area.dart';
 import 'package:kemlock_extension_core/src/vault_service.dart';
 import 'package:test/test.dart';
@@ -209,5 +210,58 @@ void main() {
       Future.wait([core.vault.useBackupCode(id), core.vault.useBackupCode(id)]),
       throwsA(isA<CoreFailure>().having((e) => e.code, 'code', CoreFailure.notFound)),
     );
+  });
+
+  group('an edit is made on the entry the write holds, not on a copy read before it waited', () {
+    test('a note saved with a new title keeps the file a run just named', () async {
+      final saved = await object(core, 'saveNote', [null, note('Papers')]);
+      final id = saved['id']! as String;
+      final file = NoteAttachment(id: 'a1', name: 'a.pdf', size: 1, key: 'a2V5', addedAt: 1);
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.notes.single.copyWith(attachments: [file]))),
+        core.call('saveNote', [id, note('Renamed')]),
+      ]);
+      expect(core.vault.lists.notes.single.title, 'Renamed');
+      expect(core.vault.lists.notes.single.files.map((f) => f.id), ['a1']);
+    });
+
+    test('a code saved with a new name keeps the counter a press moved', () async {
+      final added = await object(core, 'addCode', ['otpauth://hotp/Orbit:sam?secret=JBSWY3DPEHPK3PXP&issuer=Orbit&counter=4', null, null]);
+      final id = added['id']! as String;
+      await Future.wait<Object?>([
+        core.vault.nextHotp(id),
+        core.call('saveCode', [id, {'name': 'Work'}]),
+      ]);
+      expect(core.vault.lists.accounts.single.name, 'Work');
+      expect(core.vault.lists.accounts.single.counter, 5);
+    });
+
+    test('backup codes saved with a new name keep the code a press used', () async {
+      final service = await object(core, 'addBackupService', ['Orbit', 'aaaa-1111
+bbbb-2222
+cccc-3333']);
+      final id = service['serviceId']! as String;
+      await Future.wait<Object?>([
+        core.vault.useBackupCode(id),
+        core.call('saveBackupCodes', [id, {'name': 'Work'}]),
+      ]);
+      expect(core.vault.lists.backupServices.single.name, 'Work');
+      expect(core.vault.lists.backupServices.single.codes.where((code) => code.used), hasLength(1));
+    });
+
+    test('a contact saved with a new name keeps the phone another write gave it', () async {
+      final saved = await object(core, 'saveContact', [
+        {'name': 'Sam'},
+      ]);
+      final id = saved['id']! as String;
+      await Future.wait<Object?>([
+        core.vault.saveChanged((held) => listsWithEntry(held, held.contacts.single.copyWith(phone: '555'))),
+        core.call('saveContact', [
+          {'id': id, 'name': 'Samuel'},
+        ]),
+      ]);
+      expect(core.vault.lists.contacts.single.name, 'Samuel');
+      expect(core.vault.lists.contacts.single.phone, '555');
+    });
   });
 }
