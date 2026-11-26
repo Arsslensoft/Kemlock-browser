@@ -616,6 +616,8 @@ class TransferService {
           for (final identity in merged.identities)
             if (identityIds.add(identity.id)) identity,
         ], held.identities),
+        // File items aren't imported, but the ones the vault holds stay
+        files: held.files,
       );
       final editable = vault.keepingEditable(held, next);
       skipped = editable.skipped;
@@ -748,6 +750,7 @@ class TransferService {
           logins: lists.logins,
           cards: lists.cards,
           identities: lists.identities,
+          files: lists.files,
           now: now,
         );
         // The check the app offers after a backup: the file opens with its password, and holds what was exported
@@ -773,6 +776,7 @@ class TransferService {
             logins: lists.logins,
             cards: lists.cards,
             identities: lists.identities,
+            files: lists.files,
             now: now,
           ),
         );
